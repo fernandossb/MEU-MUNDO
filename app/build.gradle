@@ -1,0 +1,55 @@
+plugins {
+  id 'com.android.application'
+}
+
+// O número da versão vem do workflow (contagem de commits do git), então cada
+// envio para o main já vira uma versão nova sem ninguém editar nada à mão.
+def numeroDoBuild = (project.findProperty('buildNumber') ?: '1') as Integer
+
+// A assinatura só entra se os segredos existirem. Sem eles o workflow compila
+// uma versão de teste, que instala normalmente mas não aceita atualizar por
+// cima (o Android recusa APK com assinatura diferente).
+def caminhoDaChave = System.getenv('ANDROID_KEYSTORE_PATH')
+def temChave = caminhoDaChave != null && !caminhoDaChave.isEmpty()
+
+android {
+  namespace 'br.com.reinoinfinito'
+  compileSdk 34
+
+  defaultConfig {
+    applicationId 'br.com.reinoinfinito'
+    minSdk 26
+    targetSdk 34
+    versionCode numeroDoBuild
+    versionName "1.0.${numeroDoBuild}"
+  }
+
+  if (temChave) {
+    signingConfigs {
+      release {
+        storeFile file(caminhoDaChave)
+        storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+        keyAlias System.getenv('ANDROID_KEY_ALIAS')
+        keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      minifyEnabled false
+      if (temChave) signingConfig signingConfigs.release
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
+}
+
+dependencies {
+  // Só para o FileProvider, que entrega o APK baixado ao instalador do Android
+  // (desde o Android 7 não se pode mais passar um caminho de arquivo cru).
+  implementation 'androidx.core:core:1.13.1'
+}

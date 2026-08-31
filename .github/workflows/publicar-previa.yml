@@ -1,0 +1,55 @@
+name: Publicar prévia no navegador
+
+# Publica o jogo como site, para abrir no celular sem instalar nada.
+# Endereço: https://fernandossb.github.io/MEU-MUNDO/
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'index.html'
+      - '.github/workflows/publicar-previa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: previa-pages
+  cancel-in-progress: false
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.publicacao.outputs.page_url }}
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+
+      - name: Separar só o que vai para o site
+        run: |
+          set -e
+          mkdir -p site
+          cp index.html site/index.html
+          ls -lh site
+
+      - name: Configurar Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Empacotar
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Publicar
+        id: publicacao
+        uses: actions/deploy-pages@v4
+
+      - name: Endereço
+        run: echo "Prévia em ${{ steps.publicacao.outputs.page_url }}"

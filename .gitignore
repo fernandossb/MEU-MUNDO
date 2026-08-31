@@ -1,4 +1,15 @@
-# nada de build aqui: o jogo é um arquivo só
+# chave de assinatura: NUNCA vai para o GitHub
+*.jks
+*.keystore
+chave-base64.txt
+
+# build do Android
+.gradle/
+build/
+app/build/
+local.properties
+app/src/main/assets/www/
+
 node_modules/
 *.log
 .DS_Store

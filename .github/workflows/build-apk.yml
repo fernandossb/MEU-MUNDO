@@ -1,0 +1,154 @@
+name: Gerar APK
+
+# Todo envio para o main vira uma versão nova: o número do build é a contagem
+# de commits, então nunca precisa editar versão à mão. O APK sai anexado a um
+# Release, que é de onde o próprio app baixa a atualização.
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'index.html'
+      - 'app/**'
+      - 'build.gradle'
+      - 'settings.gradle'
+      - 'gradle.properties'
+      - '.github/workflows/build-apk.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compilar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Baixar projeto
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # precisa do histórico inteiro para contar commits
+
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configurar Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar SDK 34
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Conferir o jogo antes de empacotar
+        run: |
+          set -e
+          test -f index.html
+          grep -q "REINO INFINITO" index.html
+          # Extrai o script do jogo e checa a sintaxe: melhor quebrar aqui do
+          # que gerar um APK que abre numa tela preta.
+          sed -n '/<script>/,/<\/script>/p' index.html | sed '1d;$d' > /tmp/jogo.js
+          test -s /tmp/jogo.js
+          node --check /tmp/jogo.js
+          echo "javascript do jogo: sintaxe ok ($(wc -l < /tmp/jogo.js) linhas)"
+
+      - name: Colocar o jogo dentro do app
+        run: |
+          mkdir -p app/src/main/assets/www
+          cp index.html app/src/main/assets/www/index.html
+          ls -la app/src/main/assets/www
+
+      - name: Numerar a versão
+        id: versao
+        run: |
+          NUMERO=$(git rev-list --count HEAD)
+          echo "numero=$NUMERO" >> "$GITHUB_OUTPUT"
+          echo "nome=1.0.$NUMERO" >> "$GITHUB_OUTPUT"
+          echo "tag=build-$NUMERO" >> "$GITHUB_OUTPUT"
+          echo "Versão 1.0.$NUMERO (build $NUMERO)"
+
+      - name: Existe chave de assinatura?
+        id: chave
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS" ]; then echo "tem=sim" >> "$GITHUB_OUTPUT"; else echo "tem=nao" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Restaurar a chave
+        if: steps.chave.outputs.tem == 'sim'
+        env:
+          KS: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          printf '%s' "$KS" | base64 --decode > "$RUNNER_TEMP/meu-mundo.jks"
+          test -s "$RUNNER_TEMP/meu-mundo.jks"
+
+      - name: Compilar APK assinado
+        if: steps.chave.outputs.tem == 'sim'
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/meu-mundo.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: gradle --no-daemon clean assembleRelease -PbuildNumber=${{ steps.versao.outputs.numero }}
+
+      - name: Compilar APK de teste (sem chave)
+        if: steps.chave.outputs.tem == 'nao'
+        run: gradle --no-daemon clean assembleDebug -PbuildNumber=${{ steps.versao.outputs.numero }}
+
+      - name: Separar o APK
+        id: apk
+        run: |
+          set -e
+          mkdir -p saida
+          if [ "${{ steps.chave.outputs.tem }}" = "sim" ]; then
+            ORIGEM=app/build/outputs/apk/release/app-release.apk
+            AVISO="Instale e atualize normalmente por cima."
+          else
+            ORIGEM=app/build/outputs/apk/debug/app-debug.apk
+            AVISO="ATENÇÃO: versão de teste, sem chave de assinatura fixa. Instala, mas para atualizar é preciso desinstalar antes. Configure os segredos ANDROID_KEYSTORE_* para ter atualização automática."
+          fi
+          test -f "$ORIGEM"
+          NOME="Meu-Mundo-${{ steps.versao.outputs.nome }}.apk"
+          cp "$ORIGEM" "saida/$NOME"
+          echo "nome=$NOME" >> "$GITHUB_OUTPUT"
+          echo "aviso=$AVISO" >> "$GITHUB_OUTPUT"
+          ls -lh saida
+
+      - name: Guardar o APK como artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: Meu-Mundo-APK
+          path: saida/${{ steps.apk.outputs.nome }}
+          retention-days: 30
+
+      - name: Publicar o Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.versao.outputs.tag }}
+          NOME_VERSAO: ${{ steps.versao.outputs.nome }}
+          ARQUIVO: ${{ steps.apk.outputs.nome }}
+          AVISO: ${{ steps.apk.outputs.aviso }}
+        run: |
+          set -e
+          {
+            echo "## Meu Mundo $NOME_VERSAO"
+            echo
+            git log -1 --pretty=format:'%s%n%n%b'
+            echo
+            echo "---"
+            echo "$AVISO"
+          } > notas.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "saida/$ARQUIVO" --clobber
+            gh release edit "$TAG" --title "Meu Mundo $NOME_VERSAO" --notes-file notas.md --latest
+          else
+            gh release create "$TAG" "saida/$ARQUIVO" --title "Meu Mundo $NOME_VERSAO" --notes-file notas.md --latest
+          fi
+          echo "Release publicado: $TAG"
