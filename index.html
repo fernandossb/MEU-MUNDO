@@ -231,8 +231,11 @@ const TILE  = 28;
 const CHUNK = 24;
 const CPX   = CHUNK * TILE;
 const SUB   = 2;            // amostras de terreno por tile (suavização)
-const ANO   = 300;          // segundos de jogo por ano
-const OFFLINE_MAX = 6 * 3600;   // teto de recuperação com o jogo fechado
+const DIA   = 3600;         // um dia inteiro leva uma hora de verdade
+const ANO   = 12 * DIA;     // doze dias por ano, um por mês
+// Com o dia valendo uma hora, o teto precisa ser maior para uma noite de sono
+// ainda mexer na vila: 24 h fora = 24 dias = dois anos de vila.
+const OFFLINE_MAX = 24 * 3600;
 
 // Se não houver save, o mundo nasce SEMPRE desta semente. Sorteio aqui faria
 // o mapa mudar a cada abertura em qualquer aparelho que bloqueie armazenamento.
@@ -380,14 +383,29 @@ function elevacao(tx, ty) {
 
 function umidade(tx, ty) { return fbm(tx * 0.006 + 41.7, ty * 0.006 - 18.3, SEED + 999, 3); }
 
+// O bioma de um tile custa dois ruídos de várias oitavas. Com busca de caminho
+// e checagem de linha de visão, a mesma pergunta passou a ser feita milhares de
+// vezes por segundo — então a resposta fica guardada. É a otimização que
+// sustenta o A*.
+const cacheBioma = new Map();
+
 function biomaEm(tx, ty) {
+  const k = tx + ',' + ty;
+  const guardado = cacheBioma.get(k);
+  if (guardado !== undefined) return guardado;
+
   const e = elevacao(tx, ty);
-  if (e < 0.315) return B.AGUA;
-  if (e < 0.365) return B.RASO;
-  if (e < 0.405) return B.AREIA;
-  if (e < 0.74)  return umidade(tx, ty) > 0.47 ? B.FLORESTA : B.CAMPO;
-  if (e < 0.88)  return B.ROCHA;
-  return B.NEVE;
+  let b;
+  if (e < 0.315) b = B.AGUA;
+  else if (e < 0.365) b = B.RASO;
+  else if (e < 0.405) b = B.AREIA;
+  else if (e < 0.74)  b = umidade(tx, ty) > 0.47 ? B.FLORESTA : B.CAMPO;
+  else if (e < 0.88)  b = B.ROCHA;
+  else b = B.NEVE;
+
+  if (cacheBioma.size > 90000) cacheBioma.clear();   // teto de memória
+  cacheBioma.set(k, b);
+  return b;
 }
 
 const RAMPA = [
@@ -543,42 +561,42 @@ function acharNo(x, y, tipo, maxTiles) {
 
 const PREDIO = {
   centro: {
-    nome:'Centro da Vila', icone:'🏰', w:3, h:3, tempo:26, custo:{ madeira:250, pedra:100 },
+    nome:'Centro da Vila', icone:'🏰', w:3, h:3, tempo:260, custo:{ madeira:250, pedra:100 },
     pop:6, entrega:true, cor:'#b08a52', teto:'#8d5f38',
   },
   casa: {
-    nome:'Casa', icone:'🏠', w:2, h:2, tempo:7, custo:{ madeira:30 },
+    nome:'Casa', icone:'🏠', w:2, h:2, tempo:70, custo:{ madeira:30 },
     pop:5, moradia:true, cor:'#c2a271', teto:'#9a4f3c',
   },
   deposito: {
-    nome:'Depósito', icone:'📦', w:2, h:2, tempo:11, custo:{ madeira:80 },
+    nome:'Depósito', icone:'📦', w:2, h:2, tempo:110, custo:{ madeira:80 },
     pop:0, entrega:true, cor:'#a98d63', teto:'#6d5a3c',
   },
   fazenda: {
-    nome:'Fazenda', icone:'🌾', w:3, h:3, tempo:12, custo:{ madeira:60 },
+    nome:'Fazenda', icone:'🌾', w:3, h:3, tempo:120, custo:{ madeira:60 },
     pop:0, fazenda:true, cor:'#caa94f', teto:'#8f7a34',
   },
   oficina: {
-    nome:'Oficina', icone:'🛞', w:2, h:2, tempo:14, custo:{ madeira:90, pedra:30 },
+    nome:'Oficina', icone:'🛞', w:2, h:2, tempo:140, custo:{ madeira:90, pedra:30 },
     pop:0, produz:'carroca', cor:'#9b7f5e', teto:'#5f4a33',
   },
   estabulo: {
-    nome:'Estábulo', icone:'🐴', w:3, h:2, tempo:15, custo:{ madeira:110, comida:60 },
+    nome:'Estábulo', icone:'🐴', w:3, h:2, tempo:150, custo:{ madeira:110, comida:60 },
     pop:0, produz:'cavalo', cor:'#a8865c', teto:'#74532f',
   },
   cais: {
-    nome:'Cais', icone:'🎣', w:2, h:2, tempo:13, custo:{ madeira:70 },
+    nome:'Cais', icone:'🎣', w:2, h:2, tempo:130, custo:{ madeira:70 },
     pop:0, fazenda:true, pesca:true, beiraDagua:true, cor:'#9a8a72', teto:'#5d6b74',
   },
   mercado: {
-    nome:'Mercado', icone:'🏪', w:3, h:2, tempo:16, custo:{ madeira:120, pedra:40 },
+    nome:'Mercado', icone:'🏪', w:3, h:2, tempo:160, custo:{ madeira:120, pedra:40 },
     pop:0, entrega:true, comercio:true, cor:'#c4a06a', teto:'#8c3f3a',
   },
 };
 
 const VEICULO = {
-  carroca: { nome:'carroça', carga:26, veloc:0.92, custo:{ madeira:40, pedra:10 }, tempo:40 },
-  cavalo:  { nome:'cavalo',  carga:6,  veloc:1.65, custo:{ madeira:20, comida:70 }, tempo:55 },
+  carroca: { nome:'carroça', carga:26, veloc:0.92, custo:{ madeira:40, pedra:10 }, tempo:400 },
+  cavalo:  { nome:'cavalo',  carga:6,  veloc:1.65, custo:{ madeira:20, comida:70 }, tempo:550 },
 };
 
 /* --------------------------------------------------------------- pessoas -- */
@@ -635,7 +653,7 @@ const jogo = {
   recursos: { madeira:220, comida:200, pedra:80 },
   predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
   cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
-  clima: 'limpo', mesAnterior: -1,
+  clima: 'limpo', mesAnterior: -1, diaTotal: 0,
   pedido: null, autoAprovar: false,
   fome: false, salvoEm: Date.now(),
 };
@@ -780,7 +798,9 @@ function invalidarArea(tx, ty, w, h) {
 
 const VEL = 78;
 const CARGA = 12;
-const TAXA = 1.2;    // maior que antes porque agora ninguem trabalha de noite
+// Um nó de 10 leva ~100 s para ser extraído: com o dia de uma hora, dá uns
+// quinze nós por jornada, que é ritmo de gente trabalhando e não de formiga.
+const TAXA = 0.1;
 
 // Lote valido: terra firme, sem predio e sem rua em cima (a rua e o corredor).
 function tileLivre(tx, ty) {
@@ -810,14 +830,128 @@ function capacidadeDe(p) {
   return c;
 }
 
-function mover(p, ax, ay, dt) {
+/* ------------------------------------------------------ achar caminho ---- */
+/*
+   Antes o aldeão ia em linha reta e, batendo, tentava escorregar de lado. Isso
+   dá conta de uma pedra, mas não de uma casa: ele ficava preso atrás dela para
+   sempre. Agora existe busca de caminho (A*) pelo grid de tiles — e ela cobra
+   mais barato por andar na rua, então a vila naturalmente usa as vias.
+*/
+
+// Fila de prioridade mínima: sem ela, cada busca varreria a lista inteira.
+function MonteMin() {
+  const a = [];
+  return {
+    tam: () => a.length,
+    por(no, custo) {
+      a.push([custo, no]);
+      let i = a.length - 1;
+      while (i > 0) {
+        const pai = (i - 1) >> 1;
+        if (a[pai][0] <= a[i][0]) break;
+        [a[pai], a[i]] = [a[i], a[pai]]; i = pai;
+      }
+    },
+    tira() {
+      const topo = a[0];
+      const fim = a.pop();
+      if (a.length) {
+        a[0] = fim;
+        let i = 0;
+        for (;;) {
+          const e = i * 2 + 1, d = e + 1;
+          let m = i;
+          if (e < a.length && a[e][0] < a[m][0]) m = e;
+          if (d < a.length && a[d][0] < a[m][0]) m = d;
+          if (m === i) break;
+          [a[m], a[i]] = [a[i], a[m]]; i = m;
+        }
+      }
+      return topo[1];
+    },
+  };
+}
+
+const tileBloqueado = (tx, ty) => SOLIDO[biomaEm(tx, ty)] || ocupado.has(nk(tx, ty));
+
+// Só interessa o que está no caminho AGORA. Checar a linha inteira até um alvo
+// a 400 px fazia o A* disparar por um obstáculo lá longe, que o aldeão nem ia
+// encontrar — e a busca por rota completa é o que travava o jogo.
+const VISTA = 150;
+
+function linhaLivre(x0, y0, x1, y1, alcance) {
+  const dx = x1 - x0, dy = y1 - y0;
+  const d = Math.hypot(dx, dy);
+  if (d < 1) return true;
+  const ate = Math.min(d, alcance || VISTA);
+  const passos = Math.ceil(ate / 9);
+  for (let i = 1; i <= passos; i++) {
+    const t = (i / passos) * (ate / d);
+    if (bloqueado(x0 + dx * t, y0 + dy * t)) return false;
+  }
+  return true;
+}
+
+const VIZINHOS = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+
+function acharCaminho(x0, y0, x1, y1, tetoNos) {
+  const ax = Math.floor(x0 / TILE), ay = Math.floor(y0 / TILE);
+  const bx = Math.floor(x1 / TILE), by = Math.floor(y1 / TILE);
+  if (ax === bx && ay === by) return null;
+
+  const teto = tetoNos || 1400;
+  const inicio = ax + ',' + ay;
+  const custo = new Map([[inicio, 0]]);
+  const veioDe = new Map();
+  const fila = MonteMin();
+  const h = (tx, ty) => Math.hypot(tx - bx, ty - by);
+  fila.por([ax, ay], h(ax, ay));
+
+  let visitados = 0, chegada = null;
+  while (fila.tam() && visitados < teto) {
+    const [cx, cy] = fila.tira();
+    visitados++;
+    // O destino costuma ser um prédio (tile ocupado): encostar nele já serve.
+    if ((cx === bx && cy === by) || (Math.abs(cx - bx) <= 1 && Math.abs(cy - by) <= 1)) {
+      chegada = cx + ',' + cy;
+      break;
+    }
+    const gAtual = custo.get(cx + ',' + cy);
+    for (const [dx, dy] of VIZINHOS) {
+      const nx = cx + dx, ny = cy + dy;
+      if (tileBloqueado(nx, ny)) continue;
+      // Diagonal só passa se os dois lados estiverem livres — senão o aldeão
+      // atravessa a quina da casa.
+      if (dx && dy && (tileBloqueado(cx + dx, cy) || tileBloqueado(cx, cy + dy))) continue;
+      const passo = (dx && dy ? 1.414 : 1) * (jogo.estradas.has(nk(nx, ny)) ? 0.55 : 1);
+      const g = gAtual + passo;
+      const k = nx + ',' + ny;
+      if (custo.has(k) && custo.get(k) <= g) continue;
+      custo.set(k, g);
+      veioDe.set(k, cx + ',' + cy);
+      fila.por([nx, ny], g + h(nx, ny));
+    }
+  }
+  if (!chegada) return null;
+
+  const caminho = [];
+  let atual = chegada;
+  while (atual && atual !== inicio) {
+    const [tx, ty] = atual.split(',').map(Number);
+    caminho.push([tx, ty]);
+    atual = veioDe.get(atual);
+  }
+  caminho.reverse();
+  return caminho.length ? caminho : null;
+}
+
+function passoReto(p, ax, ay, dt) {
   let dx = ax - p.x, dy = ay - p.y;
   const d = Math.hypot(dx, dy);
-  if (d < 1) return 0;
+  if (d < 0.5) return true;
   dx /= d; dy /= d;
   const passo = velocidadeDe(p) * dt;
   if (dx > 0.1) p.dir = 1; else if (dx < -0.1) p.dir = -1;
-  p.passo += dt;
 
   const nx = p.x + dx * passo, ny = p.y + dy * passo;
   let andou = false;
@@ -825,11 +959,53 @@ function mover(p, ax, ay, dt) {
   if (!bloqueado(p.x, ny)) { p.y = ny; andou = true; }
   if (!andou) {
     for (const s of [1, -1]) {
-      const ax2 = p.x + (-dy * s) * passo, ay2 = p.y + (dx * s) * passo;
-      if (!bloqueado(ax2, ay2)) { p.x = ax2; p.y = ay2; andou = true; break; }
+      const px = p.x + (-dy * s) * passo, py = p.y + (dx * s) * passo;
+      if (!bloqueado(px, py)) { p.x = px; p.y = py; andou = true; break; }
     }
   }
-  p.travado = andou ? 0 : p.travado + dt;
+  return andou;
+}
+
+function mover(p, ax, ay, dt) {
+  const d = Math.hypot(ax - p.x, ay - p.y);
+  if (d < 1) return 0;
+  p.passo += dt;
+
+  // 1) Caminho livre? Vai reto e esquece o resto.
+  if (linhaLivre(p.x, p.y, ax, ay)) {
+    p.caminho = null;
+    p.travado = passoReto(p, ax, ay, dt) ? 0 : p.travado + dt;
+    return d;
+  }
+
+  // 2) Tem parede logo à frente: calcula um contorno. A busca é limitada — o
+  // objetivo é passar pela casa que está na frente, não traçar a viagem toda.
+  const alvoK = Math.floor(ax / TILE) + ',' + Math.floor(ay / TILE);
+  p.recalculo = (p.recalculo || 0) - dt;
+  if ((!p.caminho || p.caminhoPara !== alvoK) && p.recalculo <= 0) {
+    p.caminho = acharCaminho(p.x, p.y, ax, ay, 500);
+    p.caminhoPara = alvoK;
+    // Falhou? Guarda a falha por alguns segundos. Repetir uma busca que não
+    // tem resposta, todo quadro, era o que derrubava o desempenho.
+    p.recalculo = p.caminho ? 1.2 : 4;
+  }
+  if (!p.caminho || !p.caminho.length) {
+    // Sem rota: segue reto e escorrega; o estado que chamou desiste sozinho
+    // quando 'travado' passar do limite.
+    p.travado = passoReto(p, ax, ay, dt) ? p.travado : p.travado + dt;
+    return d;
+  }
+
+  const [tx, ty] = p.caminho[0];
+  const px = (tx + 0.5) * TILE, py = (ty + 0.5) * TILE;
+  if (Math.hypot(px - p.x, py - p.y) < 7) {
+    p.caminho.shift();
+    if (!p.caminho.length) { p.caminho = null; return d; }
+  }
+  const alvo2 = p.caminho[0] || [tx, ty];
+  const andou = passoReto(p, (alvo2[0] + 0.5) * TILE, (alvo2[1] + 0.5) * TILE, dt);
+  if (!andou) { p.travado += dt; p.caminho = null; }   // rota velha: recalcula
+  else p.travado = 0;
   return d;
 }
 
@@ -1101,7 +1277,7 @@ function atualizarPessoa(p, dt) {
       const obra = p.alvo;
       if (!obra || !jogo.obrasEstrada.includes(obra)) { p.estado = 'ocioso'; p.alvo = null; break; }
       obra.t = (obra.t || 0) + dt;
-      if (obra.t > 0.5) {
+      if (obra.t > 3) {      // um trecho de rua leva ~3 s
         obra.t = 0;
         const t = obra.tiles[obra.feitos];
         if (t && jogo.recursos.pedra >= 1) {
@@ -1135,9 +1311,9 @@ function atualizarPessoa(p, dt) {
       if (pr.def.pesca) {
         // Peixe não tem estação: só a tempestade tira o barco da água.
         const mar = jogo.clima === 'tempestade' ? 0.25 : 1;
-        jogo.recursos.comida += (fase === FASE.IDOSO ? 0.40 : 0.58) * mar * dt;
+        jogo.recursos.comida += (fase === FASE.IDOSO ? 0.033 : 0.048) * mar * dt;
       } else {
-        jogo.recursos.comida += (fase === FASE.IDOSO ? 0.42 : 0.62) * fatorLavoura() * dt;
+        jogo.recursos.comida += (fase === FASE.IDOSO ? 0.035 : 0.052) * fatorLavoura() * dt;
       }
       break;
     }
@@ -1476,7 +1652,7 @@ function construirAuto(chave) {
   jogo.pedido = {
     chave, tx: lote.tx, ty: lote.ty,
     quem: quem ? nomeCompleto(quem) : 'O conselho',
-    anoPedido: jogo.ano,
+    diaPedido: jogo.diaTotal || 0,
   };
   if (!emRecuperacao) mostrarPedido();
   crônica((quem ? quem.nome : 'O conselho') + ' pediu para construir ' + def.nome + '.');
@@ -1653,7 +1829,7 @@ function casaComVaga() {
 }
 
 // Virada de mês: sorteia o tempo e, na primavera, a mata volta.
-function virouMes() {
+function virouDia() {
   const climaAntes = jogo.clima;
   sortearClima();
   if (jogo.clima !== climaAntes && !emRecuperacao) {
@@ -1662,6 +1838,7 @@ function virouMes() {
   }
   if (ESTACAO_DO_MES[mesAtual()] === 'primavera') rebrotarMata();
   feiraDoMes();
+  tickDia();
 }
 
 // O mercado troca o que sobra pelo que falta, a três por um. É o que faz a
@@ -1707,10 +1884,15 @@ function rebrotarMata() {
 }
 
 // Um ano inteiro de vida da vila. Roda igual online e no modo offline.
-function tickAno() {
-  jogo.ano++;
-  // Pedido sem resposta por um ano: eles desistem e tocam a vida.
-  if (jogo.pedido && jogo.ano - jogo.pedido.anoPedido >= 1) {
+// Um DIA de vida da vila. Antes isto era um tick por ano; com o dia valendo
+// uma hora, um tick anual significaria doze horas sem nada acontecer. As
+// probabilidades foram divididas por doze, então o comportamento por ano é o
+// mesmo de antes — só que distribuído ao longo dos doze dias.
+const DIAS_NO_ANO = 12;
+function tickDia() {
+  jogo.diaTotal = (jogo.diaTotal || 0) + 1;
+  // Pedido sem resposta por três dias: eles desistem e tocam a vida.
+  if (jogo.pedido && jogo.diaTotal - (jogo.pedido.diaPedido || 0) >= 3) {
     crônica('Cansados de esperar, desistiram da obra de ' + PREDIO[jogo.pedido.chave].nome + '.');
     jogo.pedido = null;
     if (!emRecuperacao) esconderPedido();
@@ -1719,7 +1901,7 @@ function tickAno() {
 
   for (const p of jogo.pessoas) {
     const antes = faseDaIdade(p.idade);
-    p.idade += 1;
+    p.idade += 1 / DIAS_NO_ANO;
     const depois = faseDaIdade(p.idade);
     if (antes !== depois) {
       if (depois === FASE.ADULTO) { crônica(nomeCompleto(p) + ' virou adulto(a) aos 15.'); p.estado = 'ocioso'; }
@@ -1732,7 +1914,7 @@ function tickAno() {
   const homens = solteiros.filter(p => p.sexo === 'm'), mulheres = solteiros.filter(p => p.sexo === 'f');
   const pares = Math.min(homens.length, mulheres.length);
   for (let i = 0; i < pares; i++) {
-    if (rnd() > 0.35) continue;
+    if (rnd() > 0.35 / DIAS_NO_ANO) continue;
     const a = homens[i], b = mulheres[i];
     a.conjugeId = b.id; b.conjugeId = a.id;
     if (!a.casaId) a.casaId = b.casaId;
@@ -1749,7 +1931,7 @@ function tickAno() {
       const casa = casaComVaga();
       if (!casa) break;
       if (popAtual() >= popMax()) break;
-      if (rnd() > 0.22) continue;
+      if (rnd() > 0.22 / DIAS_NO_ANO) continue;
       const pai = pessoaPorId(mae.conjugeId);
       const bebe = criarPessoa({
         x: mae.x + entre(-12, 12), y: mae.y + entre(-12, 12),
@@ -1769,7 +1951,7 @@ function tickAno() {
     if (p.idade > p.vidaMax) chance = 0.35 + (p.idade - p.vidaMax) * 0.06;
     else if (p.idade > p.vidaMax - 10) chance = 0.05;
     if (jogo.fome) chance += faseDaIdade(p.idade) === FASE.ADULTO ? 0.05 : 0.14;
-    if (rnd() < chance) {
+    if (rnd() < chance / DIAS_NO_ANO) {
       mortos.push(p);
       crônica(nomeCompleto(p) + ' morreu aos ' + Math.floor(p.idade) + '.', true);
       removerPessoa(p);
@@ -1826,11 +2008,11 @@ function recuperarOffline(segundos) {
       const ef = (fase === FASE.IDOSO ? 0.6 : 1) * EFIC;
       const of = OFICIO[p.oficio];
       if (of && of.rec) por[of.rec] += TAXA * ef * 0.45;    // desconto de ida e volta
-      else if (p.oficio === 'fazendeiro') por.comida += (fase === FASE.IDOSO ? 0.42 : 0.62) * EFIC;
+      else if (p.oficio === 'fazendeiro') por.comida += (fase === FASE.IDOSO ? 0.035 : 0.052) * EFIC;
     }
     const teto = tetoEstoque();
     for (const k in por) jogo.recursos[k] = Math.min(Math.max(teto, jogo.recursos[k]), jogo.recursos[k] + por[k] * seg);
-    jogo.recursos.comida -= popAtual() * 6 * (seg / ANO);
+    jogo.recursos.comida -= popAtual() * 6 * (seg / DIA);
     if (jogo.recursos.comida <= 0) { jogo.recursos.comida = 0; jogo.fome = true; }
     else if (jogo.fome && jogo.recursos.comida > popAtual() * 2) jogo.fome = false;
   }
@@ -1869,16 +2051,22 @@ function recuperarOffline(segundos) {
     }
   }
 
-  const anos = Math.floor(s / ANO);
-  rel.anos = anos;
-  for (let i = 0; i < anos; i++) {
-    render(ANO);
+  // A vida da vila anda por DIA. Contar em anos aqui faria uma noite inteira
+  // fora não render tick nenhum, já que um ano leva doze horas.
+  const dias = Math.floor(s / DIA);
+  rel.dias = dias;
+  rel.anos = +(dias / DIAS_NO_ANO).toFixed(1);
+  for (let i = 0; i < dias; i++) {
+    render(DIA);
     avancarObras();
-    const r = tickAno();
+    const r = tickDia();
     rel.nascidos += r.nascidos; rel.mortos += r.mortos;
+    jogo.anoFrac += 1 / DIAS_NO_ANO;
+    while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
   }
-  render(s - anos * ANO);
+  render(s - dias * DIA);
   avancarObras();
+  jogo.mesAnterior = mesAtual();
 
   emRecuperacao = false;
   for (const k in inicio) rel[k] = Math.round(jogo.recursos[k] - inicio[k]);
@@ -2083,7 +2271,7 @@ function atualizarHUD() {
   if (dormindo) elPovo.dormindo.querySelector('b').textContent = dormindo;
   const est = estacaoAtual(), cli = climaAtual();
   elCal.relogio.textContent = relogio();
-  elCal.data.textContent = MESES[mesAtual()] + ', ano ' + jogo.ano;
+  elCal.data.textContent = 'Dia ' + (mesAtual() + 1) + ' · ' + MESES[mesAtual()] + ' · ano ' + jogo.ano;
   elCal.estacao.textContent = est.icone + ' ' + est.nome;
   elCal.clima.textContent = cli.icone;
   elCal.clima.title = cli.nome;
@@ -2273,7 +2461,7 @@ function abrirFicha(p) {
 
 function mostrarRelatorio(rel) {
   const h = Math.floor(rel.segundos / 3600), m = Math.round((rel.segundos % 3600) / 60);
-  el('relatorio-tempo').textContent = 'A vila viveu ' + (h ? h + 'h ' : '') + m + 'min sem você — ' + rel.anos + ' ano(s).';
+  el('relatorio-tempo').textContent = 'A vila viveu ' + (h ? h + 'h ' : '') + m + 'min sem você — ' + rel.dias + ' dia(s), ' + rel.anos + ' ano(s).';
   const linhas = [
     '🌳 +' + rel.madeira + '   🍖 +' + rel.comida + '   ⛏ +' + rel.pedra,
     '👶 ' + rel.nascidos + ' nasceram · 🕯️ ' + rel.mortos + ' morreram',
@@ -2290,18 +2478,27 @@ const mm = el('minimap'), mmx = mm.getContext('2d');
 const MMS = 92, MMP = 4;
 let mmT = 0;
 
+// O terreno do minimapa custa 8 mil amostras de ruído. Refazer isso a cada
+// meio segundo com a câmera parada era o trecho mais caro do jogo — agora só
+// refaz quando a vista realmente andou.
+let mmTerreno = null, mmCentro = null, mmSeed = null;
+
 function desenharMinimapa() {
   const ptx = Math.floor(cam.x / TILE), pty = Math.floor(cam.y / TILE);
-  const img = mmx.createImageData(MMS, MMS), d = img.data;
-  // Sem sombreamento aqui: são 8 mil pixels a cada meio segundo, e o relevo
-  // não se lê nesse tamanho de qualquer jeito.
-  for (let y = 0; y < MMS; y++)
-    for (let x = 0; x < MMS; x++) {
-      const c = corDaRampa(elevacao(ptx + (x - MMS / 2) * MMP, pty + (y - MMS / 2) * MMP));
-      const i = (y * MMS + x) * 4;
-      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
-    }
-  mmx.putImageData(img, 0, 0);
+
+  const mudou = !mmTerreno || mmSeed !== SEED || !mmCentro
+             || Math.abs(ptx - mmCentro[0]) >= MMP || Math.abs(pty - mmCentro[1]) >= MMP;
+  if (mudou) {
+    const img = mmx.createImageData(MMS, MMS), d = img.data;
+    for (let y = 0; y < MMS; y++)
+      for (let x = 0; x < MMS; x++) {
+        const c = corDaRampa(elevacao(ptx + (x - MMS / 2) * MMP, pty + (y - MMS / 2) * MMP));
+        const i = (y * MMS + x) * 4;
+        d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+      }
+    mmTerreno = img; mmCentro = [ptx, pty]; mmSeed = SEED;
+  }
+  mmx.putImageData(mmTerreno, 0, 0);
   mmx.fillStyle = '#e8d9a8';
   for (const k of jogo.estradas) {
     const [tx, ty] = k.split(',').map(Number);
@@ -3585,7 +3782,7 @@ function passo(dt) {
   }
 
   // Consumo de comida: 6 por pessoa por ano (item 9).
-  jogo.recursos.comida -= popAtual() * (6 / ANO) * dt;
+  jogo.recursos.comida -= popAtual() * (6 / DIA) * dt;   // seis por pessoa por dia
   if (jogo.recursos.comida <= 0) {
     jogo.recursos.comida = 0;
     if (!jogo.fome) { jogo.fome = true; crônica('A vila passou a sentir fome.', true); aviso('⚠️ Sem comida — a vila está passando fome'); }
@@ -3594,10 +3791,10 @@ function passo(dt) {
   }
 
   jogo.anoFrac += dt / ANO;
-  while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; tickAno(); }
+  while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
 
   const mes = mesAtual();
-  if (mes !== jogo.mesAnterior) { jogo.mesAnterior = mes; virouMes(); }
+  if (mes !== jogo.mesAnterior) { jogo.mesAnterior = mes; virouDia(); }
 
   for (let i = flutuantes.length - 1; i >= 0; i--) {
     flutuantes[i].t += dt;
@@ -3829,7 +4026,7 @@ function gravar() {
       v: 2, seed: SEED, salvoEm: jogo.salvoEm,
       cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
-      clima: jogo.clima, mesAnterior: jogo.mesAnterior,
+      clima: jogo.clima, mesAnterior: jogo.mesAnterior, diaTotal: jogo.diaTotal,
       pedido: jogo.pedido, autoAprovar: jogo.autoAprovar,
       predios: jogo.predios.map(p => ({ id:p.id, c:p.chave, tx:p.tx, ty:p.ty, pr:p.progresso,
         mor:p.moradores, prod:p.produzindo, trab:p.trabalhador })),
@@ -3858,11 +4055,13 @@ function carregar() {
     Object.assign(jogo.recursos, s.recursos || {});
     jogo.ano = s.ano || 1; jogo.anoFrac = s.anoFrac || 0; jogo.fome = !!s.fome;
     jogo.clima = s.clima || 'limpo'; jogo.mesAnterior = s.mesAnterior !== undefined ? s.mesAnterior : -1;
+    jogo.diaTotal = s.diaTotal || 0;
     jogo.pedido = s.pedido || null; jogo.autoAprovar = !!s.autoAprovar;
     jogo.proxId = s.proxId || 1;
     proxPredioId = s.proxPredioId || 1;
     jogo.cronica = s.cronica || [];
 
+    cacheBioma.clear();          // semente nova, terreno novo
     restante.clear();
     for (const [k, v] of (s.nos || [])) restante.set(k, v);
     jogo.estradas = new Set(s.estradas || []);
@@ -3924,12 +4123,12 @@ function acharInicio() {
 function novaVila(seed) {
   SEED = (seed | 0) || (Math.random() * 1e9 | 0);
   sorteio = (SEED ^ 0x9e3779b9) >>> 0;
-  chunks.clear(); restante.clear(); ocupado.clear();
+  chunks.clear(); cacheBioma.clear(); restante.clear(); ocupado.clear();
   jogo.predios = []; jogo.pessoas = []; jogo.estradas = new Set(); jogo.obrasEstrada = [];
   jogo.cronica = []; jogo.proxId = 1; proxPredioId = 1;
   jogo.recursos = { madeira:220, comida:200, pedra:80 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
-  jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.pedido = null;
+  jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.pedido = null; jogo.diaTotal = 0;
   esconderPedido(); sairModoRua();
   colocando = null; placeEl.classList.remove('on'); barEl.classList.remove('escondido'); selecao = [];
 

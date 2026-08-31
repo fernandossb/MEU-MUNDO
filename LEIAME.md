@@ -46,10 +46,11 @@ Suas ordens são atalhos, não obrigação.
 
 ## O tempo, as estações e o clima
 
-O ano continua em **5 minutos**. Para o dia e a noite serem assistíveis, o ciclo
-do sol precisa de uns 25 segundos — o que dá exatamente **12 ciclos por ano**.
-Então cada mês passa como um dia completo: o relógio marca a hora, a data anda
-de mês em mês. Foi o único jeito de ter dia e noite mantendo a proporção.
+Um **dia inteiro leva uma hora** de verdade. O ano tem doze dias, um por mês —
+então um ano de vila leva doze horas, e a história dela se mede em dias, não em
+minutos. A demografia (envelhecer, casar, nascer, morrer) corre **por dia**, com
+as taxas anuais divididas por doze: o comportamento ao longo do ano é o mesmo,
+só distribuído.
 
 À noite todo mundo larga o serviço e volta para casa: as ruas esvaziam, as
 janelas acendem. As taxas de coleta foram aumentadas para compensar o
@@ -118,6 +119,14 @@ anda por cima. São construídas tile a tile, por gente de verdade.
 
 ---
 
+## Como eles andam
+
+As pessoas usam **busca de caminho (A*)** pelo grid de tiles, mas só quando
+precisam: primeiro tentam a linha reta, e a busca só entra quando há obstáculo
+nos 150 px à frente. A rota cobra mais barato por andar na rua, então a vila
+usa as vias que construiu. Antes elas só escorregavam de lado ao bater — o que
+resolve uma pedra e não uma casa, e por isso ficavam presas atrás dos prédios.
+
 ## As pessoas
 
 Seis perfis desenhados: **criança**, **adulto** e **idoso**, em masculino e
@@ -156,8 +165,8 @@ nascimentos param e as mortes aumentam.
 
 ## A vila continua sem você
 
-Ao fechar e reabrir, o jogo recupera até **6 horas** de ausência — o que dá
-até **72 anos de vila**. Aparece um relatório do que aconteceu: quanto foi
+Ao fechar e reabrir, o jogo recupera até **24 horas** de ausência — o que dá
+até **24 dias de vila, dois anos**. Aparece um relatório do que aconteceu: quanto foi
 colhido, quem nasceu, quem morreu, o que foi construído.
 
 A recuperação produz e consome **ano a ano** (não de uma vez só), senão
