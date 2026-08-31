@@ -10,6 +10,19 @@ requisição de rede, nenhuma instalação. Funciona 100% offline no celular.
 > O jogo é pacífico por decisão de projeto: não há exércitos, combate nem
 > inimigos, e nada disso está planejado.
 
+## O mundo
+
+O relevo tem praia, campo, **mata fechada**, morros, serras de rocha e **picos
+com neve** — as montanhas se formam em cadeias no interior dos continentes, não
+como picos soltos no meio do campo. O terreno é sombreado pela inclinação
+(encosta virada para a luz clareia, a oposta escurece), que é o que faz o mapa
+ter volume em vez de ser mancha colorida.
+
+Os pesos do relevo foram **medidos, não chutados**: amostrando 40 mil tiles, a
+combinação escolhida dá cerca de 7% de terreno alto sem mexer na linha da água.
+Regiões diferentes do mundo têm caráter diferente — pode ser preciso viajar
+para achar montanha.
+
 ---
 
 ## Como jogar
@@ -35,14 +48,18 @@ Suas ordens são atalhos, não obrigação.
 
 **O conselho** reavalia a vila a cada ano e decide, nesta ordem:
 
-1. **Casa**, se a população encostou no teto — e só com comida guardada para
-   sustentar mais bocas (o freio que impede a bola de neve)
-2. **Fazenda**, uma a cada 8 moradores
-3. **Depósito**, se muita gente está andando longe demais para entregar
-4. **Estrada**, ligando o que ficou solto na malha
+1. **Rua nova**, se a malha está menor que o tamanho da população pede — a via
+   vem antes do lote
+2. **Fazenda**, se a comida está curta (menos de 8 por morador guardados)
+3. **Casa**, se a população encostou no teto e há comida para sustentar mais
+   bocas — o freio que impede a bola de neve
+4. **Fazenda** de rotina, uma a cada 7 moradores
 5. **Oficina** (10+ moradores) e **Estábulo** (18+)
-6. **Centro da Vila** novo, quando a vila está cheia e sobrando recurso — é
+6. **Depósito**, se muita gente anda longe demais para entregar
+7. **Centro da Vila** novo, quando a vila está cheia e sobrando recurso — é
    assim que a expansão vira infinita
+
+Se falta lote com frente para a rua, ele abre rua e constrói no ano seguinte.
 
 **Os ofícios mudam.** Todo ano parte dos adultos reconsidera a vida e migra
 para o recurso mais escasso. Sem isso, quem virava colhedor no primeiro ano
@@ -201,6 +218,7 @@ para uma vila de 10 pessoas. **Atualizar o app não apaga o save.**
 - **Depleção de recursos no modo offline**: com o jogo fechado, as árvores não
   diminuem. Simplificação consciente — o teto de estoque segura o exagero.
 - **Estações do ano e clima**.
+- **Depleção de recursos com o jogo fechado**: as árvores não diminuem offline.
 
 [un]: https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/aging_theme_household_size_and_composition_around_the_world_2017_data_booklet.pdf
 [genus]: https://genus.springeropen.com/articles/10.1186/s41118-024-00211-6
