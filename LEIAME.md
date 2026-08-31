@@ -113,35 +113,84 @@ você dorme.
 
 ---
 
-## Rodar offline no celular
+## Jogar no celular
 
-1. Copie **`index.html`** para o telefone (cabo, Google Drive, mandar pra si mesmo — tanto faz).
-2. Abra pelo gerenciador de arquivos escolhendo o Chrome.
-3. Pronto. O jogo salva sozinho no aparelho, a cada 0,6 s e ao sair.
+Três caminhos, do mais simples ao mais completo:
 
-Para testar pela Wi-Fi antes de copiar, com o celular na mesma rede do PC:
+**1. Aplicativo (APK)** — o jeito recomendado
+Baixe o APK mais recente em
+[Releases](https://github.com/fernandossb/MEU-MUNDO/releases/latest) e instale.
+O app **procura atualização sozinho** ao abrir: se houver versão nova, ele
+mostra o que mudou, baixa e instala. Sua vila continua salva.
 
-```bash
-node servidor.js
+**2. Pelo navegador, sem instalar**
+https://fernandossb.github.io/MEU-MUNDO/ — abre e joga. Precisa de internet só
+para carregar a página; depois funciona.
+
+**3. Arquivo solto, 100% offline**
+Copie o `index.html` para o telefone e abra escolhendo o Chrome. Nem rede,
+nem instalação.
+
+Para testar pela Wi-Fi com o celular na mesma rede do PC: `node servidor.js`
+e abra `http://IP-DO-PC:8123` (o `ipconfig` mostra o IP).
+
+O jogo salva sozinho a cada 0,6 s e ao sair. Se o navegador bloquear o
+armazenamento local, ele continua rodando — só não salva.
+
+---
+
+## Como as atualizações funcionam
+
+Cada envio para o `main` dispara dois robôs:
+
+| Robô | O que faz |
+|---|---|
+| **Gerar APK** | confere a sintaxe do jogo, empacota no app, compila e publica um Release novo |
+| **Publicar prévia** | atualiza o site do GitHub Pages |
+
+O número da versão é a **contagem de commits** — ninguém edita versão à mão.
+O Release recebe a tag `build-N`, e é exatamente essa tag que o app compara
+com o próprio `versionCode` para saber se há coisa nova.
+
+### A chave de assinatura (uma vez só)
+
+O Android recusa instalar uma atualização assinada com chave diferente da que
+está no aparelho. Por isso, rode **uma vez**:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File criar-chave-de-assinatura.ps1
 ```
 
-E abra `http://IP-DO-PC:8123` no celular (`ipconfig` mostra o IP).
+Ele cria a chave e mostra os 4 segredos para cadastrar em
+[Settings → Secrets → Actions](https://github.com/fernandossb/MEU-MUNDO/settings/secrets/actions):
+`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`,
+`ANDROID_KEY_PASSWORD`.
 
-Se o navegador bloquear o armazenamento local, o jogo continua rodando —
-só não salva.
+Sem esses segredos o robô ainda compila, mas sai uma **versão de teste**: ela
+instala normalmente, só não aceita atualizar por cima (é preciso desinstalar
+antes). Com eles, a atualização automática funciona.
+
+> A chave e o `chave-base64.txt` estão no `.gitignore` e nunca vão para o
+> GitHub. Guarde o `.jks` e a senha: perdê-los significa não conseguir mais
+> atualizar por cima da versão instalada.
 
 ---
 
 ## Estrutura
 
 ```
-index.html    o jogo inteiro (terreno, IA, demografia, desenho, save)
-servidor.js   servidor estático de 20 linhas, só para testar na rede local
-LEIAME.md     este arquivo
+index.html                     o jogo inteiro (terreno, IA, demografia, desenho, save)
+app/                           casca Android (WebView + checagem de atualização)
+.github/workflows/             os dois robôs: APK e prévia
+criar-chave-de-assinatura.ps1  gera a chave de assinatura (rodar uma vez)
+servidor.js                    servidor estático, só para testar na rede local
 ```
 
+O jogo é copiado para dentro do app só na hora de compilar — não existe uma
+segunda cópia no repositório para sair do lugar.
+
 O save mora no `localStorage`, na chave `reinoInfinito.v2`, e ocupa ~3 KB
-para uma vila de 10 pessoas.
+para uma vila de 10 pessoas. **Atualizar o app não apaga o save.**
 
 ---
 
