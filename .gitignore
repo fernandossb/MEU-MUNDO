@@ -2,6 +2,7 @@
 *.jks
 *.keystore
 chave-base64.txt
+SEGREDOS-PARA-O-GITHUB.txt
 
 # build do Android
 .gradle/
