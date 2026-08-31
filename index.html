@@ -1,0 +1,2137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#14200f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Reino Infinito</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body {
+    width:100%; height:100%; overflow:hidden; background:#0d1410; color:#eef3ea;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    user-select:none; -webkit-user-select:none; touch-action:none; overscroll-behavior:none;
+  }
+  #game { display:block; width:100%; height:100%; }
+  #ui { position:fixed; inset:0; pointer-events:none; }
+  .panel {
+    background:rgba(12,20,15,.78); border:1px solid rgba(255,255,255,.13);
+    border-radius:12px; backdrop-filter:blur(7px); -webkit-backdrop-filter:blur(7px);
+  }
+  .btn {
+    pointer-events:auto; display:flex; align-items:center; justify-content:center;
+    gap:6px; padding:9px 12px; border-radius:11px; font-size:13px; line-height:1;
+    background:rgba(22,34,26,.85); border:1px solid rgba(255,255,255,.14);
+    transition:transform .07s, background .12s, opacity .12s;
+  }
+  .btn:active { transform:scale(.94); background:rgba(255,255,255,.18); }
+  .btn.off { opacity:.36; }
+  .btn.sel { background:rgba(120,190,110,.34); border-color:rgba(160,230,150,.65); }
+  .cost { font-size:11px; opacity:.68; font-variant-numeric:tabular-nums; }
+
+  #topo {
+    position:absolute; top:calc(env(safe-area-inset-top) + 8px); left:8px;
+    display:flex; flex-direction:column; gap:5px; align-items:flex-start; max-width:calc(100% - 116px);
+  }
+  #res { display:flex; gap:10px; padding:8px 12px; font-size:14px; font-variant-numeric:tabular-nums; flex-wrap:wrap; }
+  #res span { display:flex; align-items:center; gap:4px; }
+  #res b { font-weight:600; }
+  #povo { padding:6px 12px; font-size:12px; display:flex; gap:9px; opacity:.92; flex-wrap:wrap; }
+  #povo i { font-style:normal; opacity:.65; }
+
+  #mapwrap { position:absolute; top:calc(env(safe-area-inset-top) + 8px); right:8px; padding:4px; line-height:0; }
+  #minimap { width:92px; height:92px; border-radius:8px; }
+  #lateral {
+    position:absolute; right:8px; top:calc(env(safe-area-inset-top) + 108px);
+    display:flex; flex-direction:column; gap:6px;
+  }
+  #lateral .btn { width:38px; height:38px; padding:0; font-size:17px; }
+
+  #toast {
+    position:absolute; left:50%; top:calc(env(safe-area-inset-top) + 96px); transform:translateX(-50%);
+    padding:8px 15px; font-size:13px; opacity:0; transition:opacity .2s; max-width:92vw; text-align:center;
+  }
+  #toast.on { opacity:1; }
+
+  /* Barra inferior: construção OU confirmação, nunca as duas (item 6). */
+  #rodape {
+    position:absolute; left:8px; right:8px; bottom:calc(env(safe-area-inset-bottom) + 8px);
+    display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none;
+  }
+  #bar { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
+  #bar .btn { flex:0 0 auto; flex-direction:column; gap:3px; min-width:64px; padding:7px 9px; }
+  #bar .ic { font-size:18px; }
+  #bar.escondido { display:none; }
+  #place { display:none; flex-direction:column; align-items:center; gap:8px; }
+  #place.on { display:flex; }
+  #placenome {
+    pointer-events:none; padding:7px 13px; font-size:13px; border-radius:11px; text-align:center;
+    background:rgba(12,20,15,.85); border:1px solid rgba(255,255,255,.13);
+  }
+  #placebotoes { display:flex; gap:12px; }
+  #placebotoes .btn { font-size:22px; width:60px; height:60px; padding:0; border-radius:50%; }
+
+  .folha {
+    position:absolute; inset:0; background:rgba(8,12,10,.88); pointer-events:auto; display:none;
+    flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:20px;
+    backdrop-filter:blur(9px); -webkit-backdrop-filter:blur(9px); text-align:center;
+  }
+  .folha.on { display:flex; }
+  .folha h1 { font-size:24px; font-weight:600; letter-spacing:.4px; }
+  .folha h2 { font-size:17px; font-weight:600; }
+  .folha p { font-size:13px; opacity:.74; max-width:380px; line-height:1.55; }
+  .folha .row { display:flex; gap:9px; align-items:center; flex-wrap:wrap; justify-content:center; }
+  input {
+    font:inherit; color:inherit; background:rgba(255,255,255,.09);
+    border:1px solid rgba(255,255,255,.2); border-radius:10px; padding:9px 13px; width:150px; text-align:center;
+  }
+  .hint { font-size:11.5px; opacity:.55; }
+  kbd { background:rgba(255,255,255,.12); border-radius:4px; padding:1px 5px; font-size:11px; }
+
+  #cronica .lista {
+    width:min(460px, 92vw); max-height:56vh; overflow-y:auto; text-align:left;
+    display:flex; flex-direction:column; gap:5px; padding:4px 2px;
+  }
+  #cronica .ev {
+    font-size:12.5px; line-height:1.45; padding:7px 10px; border-radius:9px;
+    background:rgba(255,255,255,.05); border-left:3px solid rgba(150,200,140,.5);
+  }
+  #cronica .ev .ano { opacity:.5; font-size:11px; margin-right:6px; font-variant-numeric:tabular-nums; }
+  #relatorio .linhas { display:flex; flex-direction:column; gap:6px; font-size:13.5px; }
+  #ficha .cartao { width:min(360px,92vw); text-align:left; font-size:13px; line-height:1.6; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="ui">
+  <div id="topo">
+    <div id="res" class="panel">
+      <span>🌳<b id="r-madeira">0</b></span>
+      <span>🍖<b id="r-comida">0</b></span>
+      <span>⛏<b id="r-pedra">0</b></span>
+      <span>🏠<b id="r-pop">0</b></span>
+    </div>
+    <div id="povo" class="panel">
+      <span><i>ano</i> <b id="p-ano">1</b></span>
+      <span>🧒<b id="p-criancas">0</b></span>
+      <span>🧑<b id="p-adultos">0</b></span>
+      <span>🧓<b id="p-idosos">0</b></span>
+      <span><i>sem trabalho</i> <b id="p-sem">0</b></span>
+    </div>
+  </div>
+
+  <div id="mapwrap" class="panel"><canvas id="minimap" width="92" height="92"></canvas></div>
+  <div id="lateral">
+    <div id="btn-cronica" class="btn panel">📜</div>
+    <div id="btn-menu" class="btn panel">☰</div>
+  </div>
+  <div id="toast" class="panel"></div>
+
+  <div id="rodape">
+    <div id="place">
+      <div id="placenome"></div>
+      <div id="placebotoes">
+        <div class="btn" id="place-ok">✓</div>
+        <div class="btn" id="place-no">✕</div>
+      </div>
+    </div>
+    <div id="bar"></div>
+  </div>
+
+  <div id="menu" class="folha">
+    <h1>Reino Infinito</h1>
+    <p>Uma vila que vive sozinha. As pessoas nascem, crescem, escolhem ofício, casam, envelhecem e morrem — e o conselho da vila decide o que construir mesmo com o jogo fechado.</p>
+    <p class="hint">Arraste para mover · pince para zoom · toque numa pessoa para ver a ficha dela · <kbd>WASD</kbd> e roda do mouse no computador</p>
+    <div class="row"><label class="hint">Semente</label><input id="seedin" inputmode="numeric"></div>
+    <div class="row">
+      <div class="btn" id="btn-voltar">Continuar</div>
+      <div class="btn" id="btn-novo">Nova vila</div>
+    </div>
+    <div class="btn" id="btn-apagar" style="opacity:.6">Apagar progresso</div>
+    <p class="hint">Salva sozinho · funciona 100% offline</p>
+  </div>
+
+  <div id="cronica" class="folha">
+    <h2>📜 Crônica da vila</h2>
+    <div class="lista" id="cronica-lista"></div>
+    <div class="btn" id="cronica-fechar">Fechar</div>
+  </div>
+
+  <div id="relatorio" class="folha">
+    <h2>Enquanto você esteve fora</h2>
+    <div id="relatorio-tempo" class="hint"></div>
+    <div class="linhas panel" id="relatorio-linhas" style="padding:14px 18px"></div>
+    <div class="btn" id="relatorio-fechar">Continuar a história</div>
+  </div>
+
+  <div id="ficha" class="folha">
+    <div class="cartao panel" id="ficha-corpo" style="padding:16px 18px"></div>
+    <div class="btn" id="ficha-fechar">Fechar</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+/* ============================================================================
+   REINO INFINITO — simulador de vila viva. Arquivo único, sem dependências.
+
+   O mapa é infinito e determinístico (ruído por semente). O que é guardado é
+   só o que mudou: pessoas, prédios, estradas, recursos gastos e a crônica.
+
+   A demografia segue números reais de censo (ver LEIAME.md):
+   · domicílio médio global ~3,45 pessoas, 80% dos países entre 2,3 e 5
+   · razão de dependência 0,59 → ~63% adultos ativos, ~26% crianças, ~11% idosos
+   · participação na força de trabalho ~61% dos adultos
+   · cidade em expansão acelerada ~3,3% ao ano
+   ========================================================================== */
+
+const TILE  = 28;
+const CHUNK = 24;
+const CPX   = CHUNK * TILE;
+const SUB   = 2;            // amostras de terreno por tile (suavização)
+const ANO   = 300;          // segundos de jogo por ano
+const OFFLINE_MAX = 6 * 3600;   // teto de recuperação com o jogo fechado
+
+/* ---------------------------------------------------------------- ruído --- */
+
+let SEED = 20260831;
+
+function hash2(x, y, s) {
+  let h = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(s | 0, 1442695041);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+function vnoise(x, y, s) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi, s),     b = hash2(xi + 1, yi, s);
+  const c = hash2(xi, yi + 1, s), d = hash2(xi + 1, yi + 1, s);
+  return (a * (1 - u) + b * u) * (1 - v) + (c * (1 - u) + d * u) * v;
+}
+
+function fbm(x, y, s, oct) {
+  let t = 0, amp = 1, f = 1, n = 0;
+  for (let i = 0; i < oct; i++) {
+    t += vnoise(x * f, y * f, s + i * 101) * amp;
+    n += amp; amp *= 0.5; f *= 2;
+  }
+  return t / n;
+}
+
+let sorteio = 1;
+function rnd() { sorteio = (Math.imul(sorteio, 1103515245) + 12345) >>> 0; return sorteio / 4294967296; }
+const escolher = a => a[Math.floor(rnd() * a.length)];
+const entre = (a, b) => a + rnd() * (b - a);
+const inteiroEntre = (a, b) => Math.floor(entre(a, b + 1));
+
+/* --------------------------------------------------------------- biomas --- */
+
+const B = { AGUA:0, RASO:1, AREIA:2, CAMPO:3, FLORESTA:4, ROCHA:5 };
+const SOLIDO = { [B.AGUA]:true, [B.RASO]:true, [B.AREIA]:false, [B.CAMPO]:false, [B.FLORESTA]:false, [B.ROCHA]:false };
+
+function elevacao(tx, ty) {
+  const cont = fbm(tx * 0.0032, ty * 0.0032, SEED, 4);
+  const det  = fbm(tx * 0.019,  ty * 0.019,  SEED + 555, 3);
+  return cont * 0.8 + det * 0.2;
+}
+function umidade(tx, ty) { return fbm(tx * 0.006 + 41.7, ty * 0.006 - 18.3, SEED + 999, 3); }
+
+function biomaEm(tx, ty) {
+  const e = elevacao(tx, ty);
+  if (e < 0.315) return B.AGUA;
+  if (e < 0.365) return B.RASO;
+  if (e < 0.405) return B.AREIA;
+  if (e < 0.80)  return umidade(tx, ty) > 0.54 ? B.FLORESTA : B.CAMPO;
+  return B.ROCHA;
+}
+
+// Paleta contínua: em vez de um bloco de cor por tile (o que deixava tudo
+// quadriculado), a cor é interpolada pela elevação e depois amostrada em
+// resolução maior e reescalada com suavização.
+const RAMPA = [
+  [0.00, [ 22, 52, 88]], [0.26, [ 30, 74,116]], [0.315, [ 52,108,146]],
+  [0.365, [ 96,150,168]],
+  [0.385, [208,194,152]],   // praia: termina em 0,405 no jogo, então a cor
+  [0.412, [120,156, 88]],   // precisa virar campo já aí — senão parece deserto
+  [0.620, [ 92,138, 76]],
+  [0.740, [ 64,110, 62]],   // floresta
+  [0.800, [104,110,100]],   // rocha
+  [0.880, [140,140,132]], [1.00, [226,230,234]],
+];
+
+function corTerreno(tx, ty) {
+  const e = elevacao(tx, ty);
+  let i = 0;
+  while (i < RAMPA.length - 2 && e > RAMPA[i + 1][0]) i++;
+  const a = RAMPA[i], b = RAMPA[i + 1];
+  const t = Math.max(0, Math.min(1, (e - a[0]) / (b[0] - a[0])));
+  let r = a[1][0] + (b[1][0] - a[1][0]) * t;
+  let g = a[1][1] + (b[1][1] - a[1][1]) * t;
+  let bl = a[1][2] + (b[1][2] - a[1][2]) * t;
+  if (e > 0.405 && e < 0.80) {
+    // Terra seca puxa para o dourado, terra úmida para o verde escuro.
+    const m = umidade(tx, ty);
+    const k = (m - 0.5) * 46;
+    r -= k; g -= k * 0.25; bl -= k * 0.7;
+  }
+  const n = (hash2(Math.round(tx * SUB), Math.round(ty * SUB), SEED + 31) - 0.5) * 13;
+  return [r + n, g + n, bl + n];
+}
+
+/* ------------------------------------------------------------- recursos --- */
+
+const RECURSO = {
+  madeira: { nome:'madeira', icone:'🌳', total:120 },
+  comida:  { nome:'comida',  icone:'🍖', total: 90 },
+  pedra:   { nome:'pedra',   icone:'⛏', total:150 },
+};
+
+function noNatural(tx, ty) {
+  const b = biomaEm(tx, ty);
+  const r = hash2(tx, ty, SEED + 7);
+  if (b === B.FLORESTA) { if (r < 0.30) return 'madeira'; if (r < 0.345) return 'comida'; }
+  else if (b === B.CAMPO) { if (r < 0.05) return 'madeira'; if (r < 0.085) return 'comida'; if (r < 0.10) return 'pedra'; }
+  else if (b === B.ROCHA) { if (r < 0.16) return 'pedra'; if (r < 0.18) return 'madeira'; }
+  else if (b === B.AREIA) { if (r < 0.02) return 'pedra'; }
+  return null;
+}
+
+const restante = new Map();
+const nk = (tx, ty) => tx + ',' + ty;
+
+function noEm(tx, ty) {
+  const tipo = noNatural(tx, ty);
+  if (!tipo) return null;
+  const k = nk(tx, ty);
+  const q = restante.has(k) ? restante.get(k) : RECURSO[tipo].total;
+  if (q <= 0) return null;
+  return { tx, ty, tipo, q, x:(tx + 0.5) * TILE, y:(ty + 0.5) * TILE };
+}
+
+function gastarNo(tx, ty, qtd) {
+  const n = noEm(tx, ty);
+  if (!n) return 0;
+  const tirado = Math.min(qtd, n.q);
+  restante.set(nk(tx, ty), n.q - tirado);
+  if (n.q - tirado <= 0) invalidarChunkDoTile(tx, ty);
+  return tirado;
+}
+
+function acharNo(x, y, tipo, maxTiles) {
+  const tx0 = Math.floor(x / TILE), ty0 = Math.floor(y / TILE);
+  for (let r = 1; r <= (maxTiles || 26); r++) {
+    let melhor = null, dMelhor = Infinity;
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        const tx = tx0 + dx, ty = ty0 + dy;
+        if (ocupado.has(nk(tx, ty))) continue;
+        const n = noEm(tx, ty);
+        if (!n || (tipo && n.tipo !== tipo)) continue;
+        const d = (n.x - x) ** 2 + (n.y - y) ** 2;
+        if (d < dMelhor) { dMelhor = d; melhor = n; }
+      }
+    if (melhor) return melhor;
+  }
+  return null;
+}
+
+/* ---------------------------------------------------------- construções --- */
+
+const PREDIO = {
+  centro: {
+    nome:'Centro da Vila', icone:'🏰', w:3, h:3, tempo:26, custo:{ madeira:250, pedra:100 },
+    pop:6, entrega:true, cor:'#b08a52', teto:'#8d5f38',
+  },
+  casa: {
+    nome:'Casa', icone:'🏠', w:2, h:2, tempo:7, custo:{ madeira:30 },
+    pop:5, moradia:true, cor:'#c2a271', teto:'#9a4f3c',
+  },
+  deposito: {
+    nome:'Depósito', icone:'📦', w:2, h:2, tempo:11, custo:{ madeira:80 },
+    pop:0, entrega:true, cor:'#a98d63', teto:'#6d5a3c',
+  },
+  fazenda: {
+    nome:'Fazenda', icone:'🌾', w:3, h:3, tempo:12, custo:{ madeira:60 },
+    pop:0, fazenda:true, cor:'#caa94f', teto:'#8f7a34',
+  },
+  oficina: {
+    nome:'Oficina', icone:'🛞', w:2, h:2, tempo:14, custo:{ madeira:90, pedra:30 },
+    pop:0, produz:'carroca', cor:'#9b7f5e', teto:'#5f4a33',
+  },
+  estabulo: {
+    nome:'Estábulo', icone:'🐴', w:3, h:2, tempo:15, custo:{ madeira:110, comida:60 },
+    pop:0, produz:'cavalo', cor:'#a8865c', teto:'#74532f',
+  },
+};
+
+const VEICULO = {
+  carroca: { nome:'carroça', carga:26, veloc:0.92, custo:{ madeira:40, pedra:10 }, tempo:40 },
+  cavalo:  { nome:'cavalo',  carga:6,  veloc:1.65, custo:{ madeira:20, comida:70 }, tempo:55 },
+};
+
+/* --------------------------------------------------------------- pessoas -- */
+
+const NOMES_M = ['Antônio','Bento','Caio','Davi','Elias','Felipe','Gabriel','Heitor','Ivo','João',
+  'Lucas','Miguel','Nuno','Otávio','Pedro','Rafael','Samuel','Téo','Vicente','Yuri'];
+const NOMES_F = ['Alice','Beatriz','Clara','Dora','Elisa','Fernanda','Gabriela','Helena','Íris','Júlia',
+  'Laura','Manuela','Nina','Olívia','Pilar','Rita','Sofia','Tereza','Valentina','Zoé'];
+const SOBRENOMES = ['Almeida','Barbosa','Cardoso','Duarte','Esteves','Ferreira','Gomes','Henriques',
+  'Jardim','Lopes','Macedo','Nogueira','Oliveira','Pereira','Queiroz','Ramos','Silveira','Teixeira','Vasques','Xavier'];
+const TRACOS = ['trabalhadora','sonhador','teimosa','generoso','curiosa','calado','brincalhona','destemido','paciente','inquieta'];
+
+const OFICIO = {
+  lenhador:   { nome:'lenhador',   rec:'madeira', icone:'🪓' },
+  colhedor:   { nome:'colhedor',   rec:'comida',  icone:'🧺' },
+  pedreiro:   { nome:'pedreiro',   rec:'pedra',   icone:'⛏' },
+  fazendeiro: { nome:'fazendeiro', rec:null,      icone:'🌾' },
+  construtor: { nome:'construtor', rec:null,      icone:'🔨' },
+  nenhum:     { nome:'sem ofício', rec:null,      icone:'·' },
+};
+
+const FASE = { CRIANCA:'crianca', ADULTO:'adulto', IDOSO:'idoso' };
+const faseDaIdade = i => i < 15 ? FASE.CRIANCA : (i < 65 ? FASE.ADULTO : FASE.IDOSO);
+
+function nomeCompleto(p) { return p.nome + ' ' + p.sobrenome; }
+
+function criarPessoa(op) {
+  const sexo = op.sexo || (rnd() < 0.5 ? 'm' : 'f');
+  const p = {
+    id: jogo.proxId++,
+    nome: op.nome || escolher(sexo === 'm' ? NOMES_M : NOMES_F),
+    sobrenome: op.sobrenome || escolher(SOBRENOMES),
+    sexo,
+    idade: op.idade !== undefined ? op.idade : entre(18, 40),
+    vidaMax: entre(62, 92),
+    traco: escolher(TRACOS),
+    x: op.x, y: op.y,
+    oficio: 'nenhum',
+    estado: 'ocioso', alvo: null, carga: 0, cargaTipo: null,
+    dir: 1, passo: 0, ociosoT: 0, travado: 0,
+    casaId: null, conjugeId: null, veiculo: null, fazendaId: null,
+    ordemManual: false,
+  };
+  jogo.pessoas.push(p);
+  return p;
+}
+
+const pessoaPorId = id => jogo.pessoas.find(p => p.id === id) || null;
+
+/* ----------------------------------------------------------- estado ------ */
+
+const jogo = {
+  recursos: { madeira:220, comida:200, pedra:80 },
+  predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
+  cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
+  fome: false, salvoEm: Date.now(),
+};
+
+const ocupado = new Map();
+
+function marcarOcupacao(p, on) {
+  for (let y = 0; y < p.def.h; y++)
+    for (let x = 0; x < p.def.w; x++) {
+      const k = nk(p.tx + x, p.ty + y);
+      if (on) ocupado.set(k, p); else ocupado.delete(k);
+    }
+}
+
+function popMax() {
+  let n = 0;
+  for (const p of jogo.predios) if (p.progresso >= 1) n += p.def.pop;
+  return n;
+}
+const popAtual = () => jogo.pessoas.length;
+const temPredio = c => jogo.predios.some(p => p.chave === c && p.progresso >= 1);
+const obrasAtivas = () => jogo.predios.filter(p => p.progresso < 1).length;
+
+function contarFases() {
+  const c = { crianca:0, adulto:0, idoso:0, semOficio:0 };
+  for (const p of jogo.pessoas) {
+    const f = faseDaIdade(p.idade);
+    c[f]++;
+    if (f !== FASE.CRIANCA && p.oficio === 'nenhum') c.semOficio++;
+  }
+  return c;
+}
+
+/* --------------------------------------------------------------- crônica -- */
+
+function crônica(texto, destaque) {
+  jogo.cronica.push({ ano: jogo.ano, texto, destaque: !!destaque });
+  if (jogo.cronica.length > 240) jogo.cronica.splice(0, jogo.cronica.length - 240);
+}
+
+/* -------------------------------------------------------------- chunks --- */
+
+const chunks = new Map();
+let agora = 0;
+
+function montarChunk(cx, cy) {
+  const N = CHUNK * SUB;
+  const peq = document.createElement('canvas');
+  peq.width = N; peq.height = N;
+  const pg = peq.getContext('2d');
+  const img = pg.createImageData(N, N);
+  const d = img.data;
+  for (let y = 0; y < N; y++)
+    for (let x = 0; x < N; x++) {
+      const c = corTerreno(cx * CHUNK + x / SUB, cy * CHUNK + y / SUB);
+      const i = (y * N + x) * 4;
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+    }
+  pg.putImageData(img, 0, 0);
+
+  const cv = document.createElement('canvas');
+  cv.width = CPX; cv.height = CPX;
+  const g = cv.getContext('2d');
+  g.imageSmoothingEnabled = true;
+  if ('imageSmoothingQuality' in g) g.imageSmoothingQuality = 'high';
+  g.drawImage(peq, 0, 0, N, N, 0, 0, CPX, CPX);
+
+  // Detalhe fino por cima do borrão: devolve textura sem devolver o quadriculado.
+  const nos = [];
+  for (let ly = 0; ly < CHUNK; ly++)
+    for (let lx = 0; lx < CHUNK; lx++) {
+      const tx = cx * CHUNK + lx, ty = cy * CHUNK + ly;
+      const b = biomaEm(tx, ty);
+      if (b === B.CAMPO || b === B.FLORESTA) {
+        g.fillStyle = 'rgba(255,255,255,.05)';
+        for (let i = 0; i < 3; i++) {
+          const hx = hash2(tx, ty, SEED + 200 + i), hy = hash2(tx, ty, SEED + 300 + i);
+          g.fillRect(lx * TILE + hx * TILE, ly * TILE + hy * TILE, 1.6, 3.4);
+        }
+      } else if (b === B.ROCHA) {
+        g.fillStyle = 'rgba(0,0,0,.09)';
+        g.fillRect(lx * TILE + hash2(tx, ty, SEED + 600) * TILE, ly * TILE + hash2(tx, ty, SEED + 700) * TILE, 4, 2.5);
+      } else if (b === B.AREIA) {
+        g.fillStyle = 'rgba(130,100,60,.09)';
+        g.fillRect(lx * TILE + hash2(tx, ty, SEED + 400) * TILE, ly * TILE + hash2(tx, ty, SEED + 500) * TILE, 2, 2);
+      }
+      const n = noEm(tx, ty);
+      if (n && !ocupado.has(nk(tx, ty))) {
+        n.s = 0.85 + hash2(tx, ty, SEED + 950) * 0.35;
+        n.semente = hash2(tx, ty, SEED + 960);
+        nos.push(n);
+      }
+    }
+
+  const ch = { cv, nos, cx, cy, visto: agora };
+  chunks.set(cx + ',' + cy, ch);
+  return ch;
+}
+
+function pegarChunk(cx, cy) {
+  const ch = chunks.get(cx + ',' + cy);
+  if (ch) { ch.visto = agora; return ch; }
+  return montarChunk(cx, cy);
+}
+function invalidarChunkDoTile(tx, ty) { chunks.delete(Math.floor(tx / CHUNK) + ',' + Math.floor(ty / CHUNK)); }
+function invalidarArea(tx, ty, w, h) {
+  for (let y = -1; y <= h; y++) for (let x = -1; x <= w; x++) invalidarChunkDoTile(tx + x, ty + y);
+}
+
+/* ------------------------------------------------------------ movimento -- */
+
+const VEL = 78;
+const CARGA = 12;
+const TAXA = 0.85;
+
+function tileLivre(tx, ty) { return !SOLIDO[biomaEm(tx, ty)] && !ocupado.has(nk(tx, ty)); }
+function bloqueado(x, y) {
+  const tx = Math.floor(x / TILE), ty = Math.floor(y / TILE);
+  return SOLIDO[biomaEm(tx, ty)] || ocupado.has(nk(tx, ty));
+}
+const emEstrada = (x, y) => jogo.estradas.has(nk(Math.floor(x / TILE), Math.floor(y / TILE)));
+
+function velocidadeDe(p) {
+  let v = VEL;
+  if (faseDaIdade(p.idade) === FASE.CRIANCA) v *= 0.8;
+  else if (faseDaIdade(p.idade) === FASE.IDOSO) v *= 0.72;
+  if (p.veiculo) v *= VEICULO[p.veiculo].veloc;
+  if (emEstrada(p.x, p.y)) v *= 1.55;      // estradas valem a pena (item 5)
+  return v;
+}
+
+function capacidadeDe(p) {
+  let c = CARGA;
+  if (faseDaIdade(p.idade) === FASE.IDOSO) c *= 0.7;
+  if (p.veiculo) c = VEICULO[p.veiculo].carga;
+  return c;
+}
+
+function mover(p, ax, ay, dt) {
+  let dx = ax - p.x, dy = ay - p.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 1) return 0;
+  dx /= d; dy /= d;
+  const passo = velocidadeDe(p) * dt;
+  if (dx > 0.1) p.dir = 1; else if (dx < -0.1) p.dir = -1;
+  p.passo += dt;
+
+  const nx = p.x + dx * passo, ny = p.y + dy * passo;
+  let andou = false;
+  if (!bloqueado(nx, p.y)) { p.x = nx; andou = true; }
+  if (!bloqueado(p.x, ny)) { p.y = ny; andou = true; }
+  if (!andou) {
+    for (const s of [1, -1]) {
+      const ax2 = p.x + (-dy * s) * passo, ay2 = p.y + (dx * s) * passo;
+      if (!bloqueado(ax2, ay2)) { p.x = ax2; p.y = ay2; andou = true; break; }
+    }
+  }
+  p.travado = andou ? 0 : p.travado + dt;
+  return d;
+}
+
+const alcanceDe = pr => (Math.max(pr.def.w, pr.def.h) * TILE) / 2 + 16;
+
+function entregaMaisProxima(x, y) {
+  let melhor = null, d0 = Infinity;
+  for (const pr of jogo.predios) {
+    if (!pr.def.entrega || pr.progresso < 1) continue;
+    const d = (pr.cx - x) ** 2 + (pr.cy - y) ** 2;
+    if (d < d0) { d0 = d; melhor = pr; }
+  }
+  return melhor;
+}
+
+/* ------------------------------------------------------- ordens diretas -- */
+
+function mandarColetar(ps, no) {
+  for (const p of ps) {
+    if (faseDaIdade(p.idade) === FASE.CRIANCA) continue;
+    soltarPostos(p);
+    p.oficio = no.tipo === 'madeira' ? 'lenhador' : no.tipo === 'comida' ? 'colhedor' : 'pedreiro';
+    p.ordemManual = true;
+    p.estado = 'indoColetar';
+    p.alvo = { tx:no.tx, ty:no.ty, tipo:no.tipo, x:no.x, y:no.y };
+    p.ociosoT = 0;
+  }
+}
+function mandarConstruir(ps, pr) {
+  for (const p of ps) {
+    if (faseDaIdade(p.idade) === FASE.CRIANCA) continue;
+    soltarPostos(p);
+    p.oficio = 'construtor'; p.ordemManual = true;
+    p.estado = 'indoConstruir'; p.alvo = pr; p.ociosoT = 0;
+  }
+}
+function mandarFazenda(ps, pr) {
+  const p = ps.find(x => faseDaIdade(x.idade) !== FASE.CRIANCA);
+  if (!p) { aviso('Crianças não trabalham'); return; }
+  if (pr.trabalhador && pr.trabalhador !== p.id) { aviso('Essa fazenda já tem quem cuide dela'); return; }
+  soltarPostos(p);
+  pr.trabalhador = p.id; p.fazendaId = pr.id;
+  p.oficio = 'fazendeiro'; p.ordemManual = true;
+  p.estado = 'indoFazenda'; p.alvo = pr; p.ociosoT = 0;
+}
+function mandarAndar(ps, x, y) {
+  ps.forEach((p, i) => {
+    soltarPostos(p);
+    const ang = i * 2.4, raio = i === 0 ? 0 : 12 + i * 3;
+    p.estado = 'andando';
+    p.alvo = { x: x + Math.cos(ang) * raio, y: y + Math.sin(ang) * raio };
+    p.ociosoT = 0;
+  });
+}
+function soltarPostos(p) {
+  for (const pr of jogo.predios) if (pr.trabalhador === p.id) pr.trabalhador = null;
+  p.fazendaId = null;
+}
+
+/* --------------------------------------------------------- IA da pessoa -- */
+
+function procurarTrabalho(p) {
+  const fase = faseDaIdade(p.idade);
+  if (fase === FASE.CRIANCA) { p.estado = 'brincando'; p.alvo = null; return; }
+
+  // Obra parada tem prioridade: vila sem casa não cresce. A estrada disputa
+  // parte da mão de obra, senão nunca sai do papel.
+  const obra = jogo.predios.find(pr => pr.progresso < 1);
+  const estrada = jogo.obrasEstrada[0];
+  if (estrada && (!obra || rnd() < 0.4) && (p.oficio === 'construtor' || rnd() < 0.4)) {
+    p.oficio = 'construtor'; p.estado = 'indoEstrada'; p.alvo = estrada; return;
+  }
+  if (obra && (p.oficio === 'construtor' || rnd() < 0.5)) {
+    p.oficio = 'construtor'; p.estado = 'indoConstruir'; p.alvo = obra; return;
+  }
+  // Fazenda sem cuidador
+  const fz = jogo.predios.find(pr => pr.def.fazenda && pr.progresso >= 1 && !pr.trabalhador);
+  if (fz && (p.oficio === 'fazendeiro' || rnd() < 0.35)) {
+    fz.trabalhador = p.id; p.fazendaId = fz.id;
+    p.oficio = 'fazendeiro'; p.estado = 'indoFazenda'; p.alvo = fz; return;
+  }
+  // Senão, coleta o recurso mais escasso que existir por perto.
+  const rec = OFICIO[p.oficio] && OFICIO[p.oficio].rec ? OFICIO[p.oficio].rec : recursoMaisNecessario();
+  let no = acharNo(p.x, p.y, rec, 16) || acharNo(p.x, p.y, null, 16);
+  if (no) {
+    p.oficio = no.tipo === 'madeira' ? 'lenhador' : no.tipo === 'comida' ? 'colhedor' : 'pedreiro';
+    p.estado = 'indoColetar';
+    p.alvo = { tx:no.tx, ty:no.ty, tipo:no.tipo, x:no.x, y:no.y };
+  } else {
+    p.oficio = 'nenhum'; p.estado = 'ocioso';
+  }
+}
+
+function recursoMaisNecessario() {
+  const r = jogo.recursos;
+  const consumo = popAtual() * 6;                 // comida por ano
+  if (r.comida < consumo * 0.8) return 'comida';
+  if (r.madeira < 120) return 'madeira';
+  if (r.pedra < 60) return 'pedra';
+  const menor = Math.min(r.madeira / 3, r.comida / 2, r.pedra);
+  if (menor === r.pedra) return 'pedra';
+  if (menor === r.comida / 2) return 'comida';
+  return 'madeira';
+}
+
+function atualizarPessoa(p, dt) {
+  const fase = faseDaIdade(p.idade);
+
+  switch (p.estado) {
+
+    case 'ocioso':
+      p.ociosoT += dt;
+      if (p.ociosoT > 2.2) { p.ociosoT = 0; p.ordemManual = false; procurarTrabalho(p); }
+      break;
+
+    case 'brincando': {
+      // Crianças ficam perto de casa e mudam de ideia toda hora.
+      p.ociosoT += dt;
+      if (!p.alvo || p.ociosoT > 4) {
+        p.ociosoT = 0;
+        const casa = jogo.predios.find(pr => pr.id === p.casaId) || jogo.predios[0];
+        const bx = casa ? casa.cx : p.x, by = casa ? casa.cy : p.y;
+        p.alvo = { x: bx + entre(-70, 70), y: by + entre(-70, 70) };
+      }
+      if (fase !== FASE.CRIANCA) { p.estado = 'ocioso'; p.alvo = null; break; }
+      const d = mover(p, p.alvo.x, p.alvo.y, dt);
+      if (d < 8 || p.travado > 1) { p.alvo = null; p.travado = 0; }
+      break;
+    }
+
+    case 'andando': {
+      const d = mover(p, p.alvo.x, p.alvo.y, dt);
+      if (d < 6 || p.travado > 1.2) { p.estado = 'ocioso'; p.alvo = null; p.travado = 0; }
+      break;
+    }
+
+    case 'indoColetar': {
+      const d = mover(p, p.alvo.x, p.alvo.y, dt);
+      if (d < TILE * 0.9) p.estado = 'coletando';
+      else if (p.travado > 1.5) { p.estado = 'ocioso'; p.travado = 0; }
+      break;
+    }
+
+    case 'coletando': {
+      if (p.cargaTipo && p.cargaTipo !== p.alvo.tipo) p.carga = 0;
+      p.cargaTipo = p.alvo.tipo;
+      const eficiencia = fase === FASE.IDOSO ? 0.6 : 1;
+      const tirado = gastarNo(p.alvo.tx, p.alvo.ty, TAXA * eficiencia * dt);
+      p.carga += tirado;
+      if (tirado <= 0) {
+        if (p.carga > 0.5) p.estado = 'voltando';
+        else {
+          const no = acharNo(p.x, p.y, p.alvo.tipo, 18);
+          if (no) { p.alvo = { tx:no.tx, ty:no.ty, tipo:no.tipo, x:no.x, y:no.y }; p.estado = 'indoColetar'; }
+          else p.estado = 'ocioso';
+        }
+      } else if (p.carga >= capacidadeDe(p)) p.estado = 'voltando';
+      break;
+    }
+
+    case 'voltando': {
+      const dep = entregaMaisProxima(p.x, p.y);
+      if (!dep) { p.estado = 'ocioso'; break; }
+      const d = mover(p, dep.cx, dep.cy, dt);
+      if (d < alcanceDe(dep)) {
+        jogo.recursos[p.cargaTipo] += Math.round(p.carga);
+        flutuar(dep.cx, dep.cy - 18, '+' + Math.round(p.carga) + ' ' + RECURSO[p.cargaTipo].icone);
+        p.carga = 0;
+        const no = (p.alvo && noEm(p.alvo.tx, p.alvo.ty)) || acharNo(p.x, p.y, p.cargaTipo, 20);
+        if (no) { p.alvo = { tx:no.tx, ty:no.ty, tipo:no.tipo, x:no.x, y:no.y }; p.estado = 'indoColetar'; }
+        else p.estado = 'ocioso';
+      } else if (p.travado > 2) { p.estado = 'ocioso'; p.travado = 0; }
+      break;
+    }
+
+    case 'indoConstruir': {
+      const pr = p.alvo;
+      if (!pr || pr.progresso >= 1 || !jogo.predios.includes(pr)) { p.estado = 'ocioso'; p.alvo = null; break; }
+      const d = mover(p, pr.cx, pr.cy, dt);
+      if (d < alcanceDe(pr)) p.estado = 'construindo';
+      else if (p.travado > 2) { p.estado = 'ocioso'; p.travado = 0; }
+      break;
+    }
+
+    case 'construindo': {
+      const pr = p.alvo;
+      if (!pr || !jogo.predios.includes(pr)) { p.estado = 'ocioso'; p.alvo = null; break; }
+      pr.progresso += dt / pr.def.tempo;
+      if (pr.progresso >= 1) { concluirPredio(pr); p.estado = 'ocioso'; p.alvo = null; }
+      break;
+    }
+
+    case 'indoEstrada': {
+      const obra = p.alvo;
+      if (!obra || !jogo.obrasEstrada.includes(obra) || obra.feitos >= obra.tiles.length) {
+        p.estado = 'ocioso'; p.alvo = null; break;
+      }
+      const t = obra.tiles[obra.feitos];
+      const d = mover(p, (t[0] + 0.5) * TILE, (t[1] + 0.5) * TILE, dt);
+      if (d < TILE * 0.9) p.estado = 'calçando';
+      else if (p.travado > 2) { p.estado = 'ocioso'; p.travado = 0; }
+      break;
+    }
+
+    case 'calçando': {
+      const obra = p.alvo;
+      if (!obra || !jogo.obrasEstrada.includes(obra)) { p.estado = 'ocioso'; p.alvo = null; break; }
+      obra.t = (obra.t || 0) + dt;
+      if (obra.t > 0.5) {
+        obra.t = 0;
+        const t = obra.tiles[obra.feitos];
+        if (t && jogo.recursos.pedra >= 1) {
+          jogo.recursos.pedra -= 1;
+          jogo.estradas.add(nk(t[0], t[1]));
+          obra.feitos++;
+        } else { obra.feitos = obra.tiles.length; }   // sem pedra, a obra para
+        if (obra.feitos >= obra.tiles.length) {
+          jogo.obrasEstrada.splice(jogo.obrasEstrada.indexOf(obra), 1);
+          crônica('Uma estrada nova ligou a vila.');
+          p.estado = 'ocioso'; p.alvo = null;
+        } else p.estado = 'indoEstrada';
+      }
+      break;
+    }
+
+    case 'indoFazenda': {
+      const pr = p.alvo;
+      if (!pr || pr.progresso < 1 || !jogo.predios.includes(pr)) { p.estado = 'ocioso'; p.alvo = null; break; }
+      const d = mover(p, pr.cx, pr.cy, dt);
+      if (d < alcanceDe(pr)) p.estado = 'naFazenda';
+      else if (p.travado > 2) { p.estado = 'ocioso'; p.travado = 0; }
+      break;
+    }
+
+    case 'naFazenda': {
+      const pr = p.alvo;
+      if (!pr || pr.trabalhador !== p.id) { p.estado = 'ocioso'; p.alvo = null; break; }
+      p.passo += dt * 0.6;
+      jogo.recursos.comida += (fase === FASE.IDOSO ? 0.17 : 0.26) * dt;
+      break;
+    }
+  }
+}
+
+/* ------------------------------------------------------ prédios e obras -- */
+
+let proxPredioId = 1;
+
+function criarPredio(chave, tx, ty, progresso) {
+  const def = PREDIO[chave];
+  const pr = {
+    id: proxPredioId++, chave, def, tx, ty,
+    cx: (tx + def.w / 2) * TILE, cy: (ty + def.h / 2) * TILE,
+    progresso: progresso || 0, trabalhador: null, produzindo: 0, moradores: [],
+  };
+  jogo.predios.push(pr);
+  marcarOcupacao(pr, true);
+  invalidarArea(tx, ty, def.w, def.h);
+  return pr;
+}
+
+function concluirPredio(pr) {
+  pr.progresso = 1;
+  invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
+  flutuar(pr.cx, pr.cy - 20, pr.def.nome + ' pronto!');
+  crônica(pr.def.nome + ' concluído.', true);
+  if (pr.def.moradia) chegarFamilia(pr);
+  planejarEstradaAte(pr);
+  atualizarHUD();
+  salvar();
+}
+
+// Item 8 + dado de censo: 80% dos países têm domicílios de 2,3 a 5 pessoas.
+function chegarFamilia(casa) {
+  const tamanho = inteiroEntre(2, 5);
+  const sobrenome = escolher(SOBRENOMES);
+  const adultos = Math.min(2, tamanho);
+  const nomes = [];
+  for (let i = 0; i < tamanho; i++) {
+    const eAdulto = i < adultos;
+    const p = criarPessoa({
+      x: casa.cx + entre(-26, 26), y: casa.cy + (casa.def.h * TILE) / 2 + entre(8, 26),
+      idade: eAdulto ? entre(20, 44) : entre(1, 14),
+      sexo: i === 0 ? 'f' : i === 1 ? 'm' : undefined,
+      sobrenome,
+    });
+    p.casaId = casa.id;
+    casa.moradores.push(p.id);
+    if (faseDaIdade(p.idade) === FASE.CRIANCA) p.estado = 'brincando';
+    nomes.push(p.nome);
+  }
+  if (adultos === 2) {
+    const a = pessoaPorId(casa.moradores[casa.moradores.length - tamanho]);
+    const b = pessoaPorId(casa.moradores[casa.moradores.length - tamanho + 1]);
+    if (a && b) { a.conjugeId = b.id; b.conjugeId = a.id; }
+  }
+  crônica('A família ' + sobrenome + ' se mudou para a vila: ' + nomes.join(', ') + '.', true);
+}
+
+function planejarEstradaAte(pr) {
+  // Liga o prédio novo ao prédio pronto mais próximo, se valer a caminhada.
+  let alvo = null, d0 = Infinity;
+  for (const o of jogo.predios) {
+    if (o === pr || o.progresso < 1) continue;
+    const d = (o.cx - pr.cx) ** 2 + (o.cy - pr.cy) ** 2;
+    if (d < d0) { d0 = d; alvo = o; }
+  }
+  if (!alvo) return;
+  const dist = Math.sqrt(d0) / TILE;
+  if (dist < 2 || dist > 26) return;
+
+  const tiles = [];
+  let x0 = Math.floor(pr.cx / TILE), y0 = Math.floor(pr.cy / TILE);
+  const x1 = Math.floor(alvo.cx / TILE), y1 = Math.floor(alvo.cy / TILE);
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy, guarda = 0;
+  while (guarda++ < 80) {
+    const k = nk(x0, y0);
+    if (!ocupado.has(k) && !jogo.estradas.has(k) && !SOLIDO[biomaEm(x0, y0)]) tiles.push([x0, y0]);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx) { err += dx; y0 += sy; }
+  }
+  if (tiles.length >= 2) jogo.obrasEstrada.push({ tiles, feitos: 0, t: 0 });
+}
+
+function atualizarProducao(dt) {
+  for (const pr of jogo.predios) {
+    if (pr.progresso < 1 || !pr.def.produz) continue;
+    const tipo = pr.def.produz, def = VEICULO[tipo];
+    const candidato = jogo.pessoas.find(p => !p.veiculo && faseDaIdade(p.idade) === FASE.ADULTO &&
+      (p.oficio === 'lenhador' || p.oficio === 'colhedor' || p.oficio === 'pedreiro'));
+    if (!candidato) { pr.produzindo = 0; continue; }
+    let podePagar = true;
+    for (const k in def.custo) if (jogo.recursos[k] < def.custo[k]) podePagar = false;
+    if (!podePagar) { pr.produzindo = 0; continue; }
+    pr.produzindo += dt;
+    if (pr.produzindo >= def.tempo) {
+      pr.produzindo = 0;
+      for (const k in def.custo) jogo.recursos[k] -= def.custo[k];
+      candidato.veiculo = tipo;
+      flutuar(pr.cx, pr.cy - 20, tipo === 'carroca' ? 'carroça pronta' : 'cavalo pronto');
+      crônica(nomeCompleto(candidato) + ' agora trabalha com ' + (tipo === 'carroca' ? 'uma carroça' : 'um cavalo') + '.');
+    }
+  }
+}
+
+/* --------------------------------------------------- conselho e demografia */
+
+function podePagar(custo) { for (const k in custo) if (jogo.recursos[k] < custo[k]) return false; return true; }
+function pagar(custo) { for (const k in custo) jogo.recursos[k] -= custo[k]; }
+function custoTexto(custo) { return Object.keys(custo).map(k => custo[k] + RECURSO[k].icone).join(' '); }
+
+function areaValida(tx, ty, w, h) {
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!tileLivre(tx + x, ty + y)) return false;
+  return true;
+}
+
+function centroDaVila() {
+  return jogo.predios.find(p => p.chave === 'centro') || jogo.predios[0] || null;
+}
+
+// Procura um lote perto da vila, sem colar nos outros prédios.
+function escolherLote(def) {
+  const base = centroDaVila();
+  if (!base) return null;
+  const btx = Math.floor(base.cx / TILE), bty = Math.floor(base.cy / TILE);
+  // Começa longe o bastante para caber rua entre os lotes: vila colada não
+  // tem por onde passar uma estrada.
+  for (let r = 6; r < 30; r++) {
+    const tentativas = 10 + r * 2;
+    for (let i = 0; i < tentativas; i++) {
+      const ang = rnd() * 6.2832;
+      const tx = btx + Math.round(Math.cos(ang) * r) - (def.w >> 1);
+      const ty = bty + Math.round(Math.sin(ang) * r) - (def.h >> 1);
+      if (!areaValida(tx, ty, def.w, def.h)) continue;
+      let colado = false;
+      for (let y = -1; y <= def.h && !colado; y++)
+        for (let x = -1; x <= def.w && !colado; x++)
+          if (ocupado.has(nk(tx + x, ty + y))) colado = true;
+      if (!colado) return { tx, ty };
+    }
+  }
+  return null;
+}
+
+function construirAuto(chave) {
+  const def = PREDIO[chave];
+  if (!podePagar(def.custo)) return false;
+  const lote = escolherLote(def);
+  if (!lote) return false;
+  pagar(def.custo);
+  criarPredio(chave, lote.tx, lote.ty, 0);
+  crônica('O conselho decidiu erguer ' + (def.nome === 'Casa' ? 'uma casa' : 'um(a) ' + def.nome) + '.');
+  return true;
+}
+
+function temEstradaPerto(pr) {
+  for (let y = -1; y <= pr.def.h; y++)
+    for (let x = -1; x <= pr.def.w; x++)
+      if (jogo.estradas.has(nk(pr.tx + x, pr.ty + y))) return true;
+  return false;
+}
+
+// Liga o que ainda está solto na malha. Uma obra de estrada por vez.
+function planejarEstradasFaltantes() {
+  if (jogo.obrasEstrada.length || jogo.recursos.pedra < 25) return false;
+  for (const pr of jogo.predios) {
+    if (pr.progresso < 1 || temEstradaPerto(pr)) continue;
+    planejarEstradaAte(pr);
+    if (jogo.obrasEstrada.length) return true;
+  }
+  return false;
+}
+
+// As pessoas trocam de ofício conforme a vila precisa (item 9: conseguir
+// emprego). Sem isso, quem vira colhedor no primeiro ano nunca mais muda e a
+// vila fica sem pedra — logo, sem estradas e sem oficina.
+function distribuirOficios() {
+  const precisa = recursoMaisNecessario();
+  const alvo = precisa === 'madeira' ? 'lenhador' : precisa === 'comida' ? 'colhedor' : 'pedreiro';
+  for (const p of jogo.pessoas) {
+    if (faseDaIdade(p.idade) === FASE.CRIANCA) continue;
+    if (p.oficio === 'fazendeiro' || p.oficio === 'construtor') continue;
+    if (p.oficio === alvo || rnd() > 0.3) continue;
+    p.oficio = alvo;
+    p.ordemManual = false;
+    p.estado = 'ocioso'; p.ociosoT = 3; p.alvo = null;
+    if (rnd() < 0.25) crônica(nomeCompleto(p) + ' virou ' + OFICIO[alvo].nome + '.');
+  }
+}
+
+// O conselho decide sozinho o que a vila precisa (item 7).
+function conselho() {
+  distribuirOficios();
+  if (obrasAtivas() >= 2) return;
+  const pop = popAtual(), cap = popMax();
+  const casaEmObra = jogo.predios.some(p => p.def.moradia && p.progresso < 1);
+  const fazendas = jogo.predios.filter(p => p.def.fazenda && p.progresso >= 1).length;
+
+  // Uma casa por vez, e só com comida guardada para sustentar mais bocas:
+  // é o freio que impede a vila de virar uma bola de neve.
+  if (!casaEmObra && pop >= cap - 2 && jogo.recursos.comida >= pop * 12 && podePagar(PREDIO.casa.custo)) {
+    construirAuto('casa'); return;
+  }
+  // Uma fazenda a cada 8 moradores — comida que não depende de andar longe.
+  if (fazendas < Math.floor(pop / 8) && podePagar(PREDIO.fazenda.custo)) { construirAuto('fazenda'); return; }
+
+  let longe = 0;
+  for (const p of jogo.pessoas) {
+    const dep = entregaMaisProxima(p.x, p.y);
+    if (dep && Math.hypot(dep.cx - p.x, dep.cy - p.y) > 280) longe++;
+  }
+  if (longe >= 3 && podePagar(PREDIO.deposito.custo)) { construirAuto('deposito'); return; }
+
+  if (planejarEstradasFaltantes()) return;
+  // Conta obra em andamento também: senão o conselho pede uma segunda oficina
+  // enquanto a primeira ainda está de pé no andaime.
+  const jaTem = c => jogo.predios.some(p => p.chave === c);
+  if (!jaTem('oficina') && pop >= 10 && podePagar(PREDIO.oficina.custo)) { construirAuto('oficina'); return; }
+  if (!jaTem('estabulo') && pop >= 18 && podePagar(PREDIO.estabulo.custo)) { construirAuto('estabulo'); return; }
+  // Bairro novo só quando a vila está mesmo cheia e sobrando recurso.
+  if (jogo.recursos.madeira > 400 && jogo.recursos.pedra > 200 && pop >= cap - 2 && podePagar(PREDIO.centro.custo)) {
+    construirAuto('centro');
+  }
+}
+
+// Qualquer prédio que dá teto conta como moradia — inclusive o Centro da Vila.
+// Se só a casa contasse, popMax diria "tem espaço" e o berço diria "não tem".
+function casaComVaga() {
+  for (const pr of jogo.predios) {
+    if (pr.def.pop <= 0 || pr.progresso < 1) continue;
+    if (pr.moradores.length < pr.def.pop) return pr;
+  }
+  return null;
+}
+
+// Um ano inteiro de vida da vila. Roda igual online e no modo offline.
+function tickAno() {
+  jogo.ano++;
+  const mortos = [], nascidos = [];
+
+  for (const p of jogo.pessoas) {
+    const antes = faseDaIdade(p.idade);
+    p.idade += 1;
+    const depois = faseDaIdade(p.idade);
+    if (antes !== depois) {
+      if (depois === FASE.ADULTO) { crônica(nomeCompleto(p) + ' virou adulto(a) aos 15.'); p.estado = 'ocioso'; }
+      if (depois === FASE.IDOSO) crônica(nomeCompleto(p) + ' chegou aos 65 e virou o mais velho da rua.');
+    }
+  }
+
+  // Casamentos: adultos solteiros se encontram.
+  const solteiros = jogo.pessoas.filter(p => !p.conjugeId && p.idade >= 18 && p.idade < 70);
+  const homens = solteiros.filter(p => p.sexo === 'm'), mulheres = solteiros.filter(p => p.sexo === 'f');
+  const pares = Math.min(homens.length, mulheres.length);
+  for (let i = 0; i < pares; i++) {
+    if (rnd() > 0.35) continue;
+    const a = homens[i], b = mulheres[i];
+    a.conjugeId = b.id; b.conjugeId = a.id;
+    if (!a.casaId) a.casaId = b.casaId;
+    if (!b.casaId) b.casaId = a.casaId;
+    crônica(a.nome + ' ' + a.sobrenome + ' e ' + b.nome + ' ' + b.sobrenome + ' se casaram.', true);
+  }
+
+  // Nascimentos: casais com casa e comida. Taxa calibrada para ~3% ao ano,
+  // o ritmo de uma cidade em expansão acelerada.
+  if (!jogo.fome) {
+    for (const mae of jogo.pessoas) {
+      if (mae.sexo !== 'f' || !mae.conjugeId) continue;
+      if (mae.idade < 18 || mae.idade > 45) continue;
+      const casa = casaComVaga();
+      if (!casa) break;
+      if (popAtual() >= popMax()) break;
+      if (rnd() > 0.22) continue;
+      const pai = pessoaPorId(mae.conjugeId);
+      const bebe = criarPessoa({
+        x: mae.x + entre(-12, 12), y: mae.y + entre(-12, 12),
+        idade: 0, sobrenome: mae.sobrenome,
+      });
+      bebe.casaId = casa.id; casa.moradores.push(bebe.id);
+      bebe.estado = 'brincando';
+      nascidos.push(bebe);
+      crônica('Nasceu ' + bebe.nome + ', filho(a) de ' + mae.nome + (pai ? ' e ' + pai.nome : '') + '.', true);
+    }
+  }
+
+  // Mortes: velhice, e mais duras se faltar comida.
+  for (let i = jogo.pessoas.length - 1; i >= 0; i--) {
+    const p = jogo.pessoas[i];
+    let chance = 0;
+    if (p.idade > p.vidaMax) chance = 0.35 + (p.idade - p.vidaMax) * 0.06;
+    else if (p.idade > p.vidaMax - 10) chance = 0.05;
+    if (jogo.fome) chance += faseDaIdade(p.idade) === FASE.ADULTO ? 0.05 : 0.14;
+    if (rnd() < chance) {
+      mortos.push(p);
+      crônica(nomeCompleto(p) + ' morreu aos ' + Math.floor(p.idade) + '.', true);
+      removerPessoa(p);
+    }
+  }
+
+  conselho();
+  atualizarHUD();
+  return { mortos: mortos.length, nascidos: nascidos.length };
+}
+
+function removerPessoa(p) {
+  const i = jogo.pessoas.indexOf(p);
+  if (i >= 0) jogo.pessoas.splice(i, 1);
+  soltarPostos(p);
+  const c = pessoaPorId(p.conjugeId);
+  if (c) c.conjugeId = null;
+  for (const pr of jogo.predios) {
+    const j = pr.moradores.indexOf(p.id);
+    if (j >= 0) pr.moradores.splice(j, 1);
+  }
+  selecao = selecao.filter(s => s.id !== p.id);
+}
+
+/* ------------------------------------------------- recuperação offline --- */
+/* Item 4: a vila continua trabalhando com o jogo fechado. Em vez de rodar a
+   física por horas, calculamos a renda do trabalho e rodamos os anos de vida. */
+
+// O estoque cabe no que a vila construiu para guardar. Amarrar o teto aos
+// depósitos (e não à população) evita o laço que se retroalimenta: mais gente
+// → mais estoque → mais casas → mais gente.
+function tetoEstoque() {
+  let armazens = 0;
+  for (const p of jogo.predios) if (p.def.entrega && p.progresso >= 1) armazens++;
+  return 300 + armazens * 700;
+}
+
+function recuperarOffline(segundos) {
+  const s = Math.min(segundos, OFFLINE_MAX);
+  if (s < 60) return null;
+  const rel = { segundos: s, madeira:0, comida:0, pedra:0, nascidos:0, mortos:0, obras:0, anos:0 };
+  const EFIC = 0.55;   // sem o jogador por perto, rende pouco mais da metade
+  const inicio = { madeira: jogo.recursos.madeira, comida: jogo.recursos.comida, pedra: jogo.recursos.pedra };
+
+  // Produz e consome no mesmo passo. Se o consumo fosse descontado de uma vez
+  // no fim, qualquer ausência longa viraria fome e a vila parava de nascer.
+  function render(seg) {
+    if (seg <= 0) return;
+    const por = { madeira:0, comida:0, pedra:0 };
+    for (const p of jogo.pessoas) {
+      const fase = faseDaIdade(p.idade);
+      if (fase === FASE.CRIANCA) continue;
+      const ef = (fase === FASE.IDOSO ? 0.6 : 1) * EFIC;
+      const of = OFICIO[p.oficio];
+      if (of && of.rec) por[of.rec] += TAXA * ef * 0.45;    // desconto de ida e volta
+      else if (p.oficio === 'fazendeiro') por.comida += (fase === FASE.IDOSO ? 0.17 : 0.26) * EFIC;
+    }
+    const teto = tetoEstoque();
+    for (const k in por) jogo.recursos[k] = Math.min(Math.max(teto, jogo.recursos[k]), jogo.recursos[k] + por[k] * seg);
+    jogo.recursos.comida -= popAtual() * 6 * (seg / ANO);
+    if (jogo.recursos.comida <= 0) { jogo.recursos.comida = 0; jogo.fome = true; }
+    else if (jogo.fome && jogo.recursos.comida > popAtual() * 2) jogo.fome = false;
+  }
+
+  // As obras que o conselho enfileira durante a ausência também precisam sair
+  // do papel — senão a vila para de crescer justamente enquanto você dorme.
+  function avancarObras() {
+    const braços = jogo.pessoas.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA).length;
+    if (!braços) return;
+    for (const pr of jogo.predios) {
+      if (pr.progresso >= 1) continue;
+      pr.progresso += (ANO * 0.25 * EFIC) / pr.def.tempo;
+      if (pr.progresso >= 1) { concluirPredio(pr); rel.obras++; }
+    }
+    for (const obra of jogo.obrasEstrada.slice()) {
+      while (obra.feitos < obra.tiles.length && jogo.recursos.pedra >= 1) {
+        const t = obra.tiles[obra.feitos];
+        jogo.recursos.pedra -= 1;
+        jogo.estradas.add(nk(t[0], t[1]));
+        obra.feitos++;
+      }
+      if (obra.feitos >= obra.tiles.length) jogo.obrasEstrada.splice(jogo.obrasEstrada.indexOf(obra), 1);
+    }
+    // A oficina e o estábulo também não param: um veículo por ano, por prédio.
+    for (const pr of jogo.predios) {
+      if (pr.progresso < 1 || !pr.def.produz) continue;
+      const def = VEICULO[pr.def.produz];
+      if (!podePagar(def.custo)) continue;
+      const dono = jogo.pessoas.find(p => !p.veiculo && faseDaIdade(p.idade) === FASE.ADULTO &&
+        OFICIO[p.oficio] && OFICIO[p.oficio].rec);
+      if (!dono) continue;
+      pagar(def.custo);
+      dono.veiculo = pr.def.produz;
+      crônica(nomeCompleto(dono) + ' passou a trabalhar com ' + (pr.def.produz === 'carroca' ? 'uma carroça' : 'um cavalo') + '.');
+    }
+  }
+
+  const anos = Math.floor(s / ANO);
+  rel.anos = anos;
+  for (let i = 0; i < anos; i++) {
+    render(ANO);
+    avancarObras();
+    const r = tickAno();
+    rel.nascidos += r.nascidos; rel.mortos += r.mortos;
+  }
+  render(s - anos * ANO);
+  avancarObras();
+
+  for (const k in inicio) rel[k] = Math.round(jogo.recursos[k] - inicio[k]);
+  rel.predios = jogo.predios.length;
+  return rel;
+}
+
+/* ------------------------------------------------------- câmera/entrada -- */
+
+const cv = document.getElementById('game');
+const ctx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+const cam = { x:0, y:0, z:1 };
+let selecao = [];
+
+function redimensionar() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  cv.style.width = W + 'px'; cv.style.height = H + 'px';
+  vigCache = null;
+}
+addEventListener('resize', redimensionar);
+addEventListener('orientationchange', () => setTimeout(redimensionar, 150));
+
+const telaParaMundo = (sx, sy) => ({ x: cam.x + (sx - W / 2) / cam.z, y: cam.y + (sy - H / 2) / cam.z });
+
+const toques = new Map();
+let arraste = null, pinca = null;
+
+cv.addEventListener('touchstart', e => {
+  for (const t of e.changedTouches) toques.set(t.identifier, { x:t.clientX, y:t.clientY });
+  if (toques.size === 1) {
+    const t = e.changedTouches[0];
+    arraste = { x0:t.clientX, y0:t.clientY, x:t.clientX, y:t.clientY, dist:0, t0:performance.now(), id:t.identifier };
+  } else if (toques.size === 2) {
+    const [a, b] = [...toques.values()];
+    pinca = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: cam.z };
+    arraste = null;
+  }
+}, { passive:true });
+
+cv.addEventListener('touchmove', e => {
+  for (const t of e.changedTouches) if (toques.has(t.identifier)) toques.set(t.identifier, { x:t.clientX, y:t.clientY });
+  if (pinca && toques.size >= 2) {
+    const [a, b] = [...toques.values()];
+    cam.z = Math.max(0.55, Math.min(1.8, pinca.z0 * (Math.hypot(a.x - b.x, a.y - b.y) / pinca.d0)));
+  } else if (arraste) {
+    const t = [...e.changedTouches].find(t => t.identifier === arraste.id);
+    if (t) {
+      cam.x -= (t.clientX - arraste.x) / cam.z; cam.y -= (t.clientY - arraste.y) / cam.z;
+      arraste.dist += Math.hypot(t.clientX - arraste.x, t.clientY - arraste.y);
+      arraste.x = t.clientX; arraste.y = t.clientY;
+    }
+  }
+}, { passive:true });
+
+cv.addEventListener('touchend', e => {
+  for (const t of e.changedTouches) toques.delete(t.identifier);
+  if (toques.size < 2) pinca = null;
+  if (arraste && [...e.changedTouches].some(t => t.identifier === arraste.id)) {
+    if (arraste.dist < 12 && performance.now() - arraste.t0 < 450) toque(arraste.x0, arraste.y0);
+    arraste = null;
+  }
+}, { passive:true });
+cv.addEventListener('touchcancel', () => { toques.clear(); arraste = null; pinca = null; }, { passive:true });
+
+let mouseArr = null;
+cv.addEventListener('mousedown', e => { mouseArr = { x0:e.clientX, y0:e.clientY, x:e.clientX, y:e.clientY, dist:0 }; });
+addEventListener('mousemove', e => {
+  if (!mouseArr) return;
+  cam.x -= (e.clientX - mouseArr.x) / cam.z; cam.y -= (e.clientY - mouseArr.y) / cam.z;
+  mouseArr.dist += Math.hypot(e.clientX - mouseArr.x, e.clientY - mouseArr.y);
+  mouseArr.x = e.clientX; mouseArr.y = e.clientY;
+});
+addEventListener('mouseup', () => { if (mouseArr && mouseArr.dist < 6) toque(mouseArr.x0, mouseArr.y0); mouseArr = null; });
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  cam.z = Math.max(0.55, Math.min(1.8, cam.z * (e.deltaY < 0 ? 1.12 : 0.89)));
+}, { passive:false });
+
+const teclas = new Set();
+addEventListener('keydown', e => {
+  teclas.add(e.key.toLowerCase());
+  if (e.key === 'Escape') { if (colocando) cancelarColocacao(); else fecharFolhas(); }
+  if (e.key === 'Enter' && colocando) confirmarColocacao();
+});
+addEventListener('keyup', e => teclas.delete(e.key.toLowerCase()));
+
+/* ---------------------------------------------------------------- toque -- */
+
+function pessoaEm(wx, wy, r) {
+  let melhor = null, d0 = r * r;
+  for (const p of jogo.pessoas) {
+    const d = (p.x - wx) ** 2 + (p.y - wy - 6) ** 2;
+    if (d < d0) { d0 = d; melhor = p; }
+  }
+  return melhor;
+}
+const predioEm = (wx, wy) => ocupado.get(nk(Math.floor(wx / TILE), Math.floor(wy / TILE))) || null;
+
+function toque(sx, sy) {
+  if (colocando) return;
+  const w = telaParaMundo(sx, sy);
+
+  const pes = pessoaEm(w.x, w.y, 20 / cam.z + 12);
+  if (pes) {
+    if (selecao.length === 1 && selecao[0] === pes) { abrirFicha(pes); return; }
+    selecao = [pes];
+    aviso(nomeCompleto(pes) + ' · ' + Math.floor(pes.idade) + ' anos · ' + OFICIO[pes.oficio].nome + ' — toque de novo para a ficha');
+    return;
+  }
+
+  const pr = predioEm(w.x, w.y);
+  if (pr) {
+    if (selecao.length && pr.progresso < 1) { mandarConstruir(selecao, pr); aviso('Ajudando na obra'); return; }
+    if (selecao.length && pr.def.fazenda && pr.progresso >= 1) { mandarFazenda(selecao, pr); aviso('Cuidando da fazenda'); return; }
+    aviso(pr.def.nome + (pr.progresso < 1 ? ' — ' + Math.round(pr.progresso * 100) + '%'
+      : pr.def.moradia ? ' — ' + pr.moradores.length + '/' + pr.def.pop + ' moradores' : ''));
+    return;
+  }
+
+  const tx = Math.floor(w.x / TILE), ty = Math.floor(w.y / TILE);
+  const no = noEm(tx, ty);
+  if (no && selecao.length) { mandarColetar(selecao, no); aviso('Coletando ' + RECURSO[no.tipo].nome); return; }
+  if (selecao.length) { mandarAndar(selecao, w.x, w.y); return; }
+  selecao = [];
+}
+
+/* ----------------------------------------------------------- colocação --- */
+
+let colocando = null;
+
+function tileAlvoDaCamera(def) {
+  return { tx: Math.round(cam.x / TILE - def.w / 2), ty: Math.round(cam.y / TILE - def.h / 2) };
+}
+
+function iniciarColocacao(chave) {
+  const def = PREDIO[chave];
+  if (!podePagar(def.custo)) { aviso('Falta recurso: ' + custoTexto(def.custo)); return; }
+  colocando = chave;
+  placeEl.classList.add('on');
+  barEl.classList.add('escondido');           // item 6: nunca sobrepostos
+  placeNome.textContent = def.icone + ' ' + def.nome + ' · ' + custoTexto(def.custo);
+}
+
+function cancelarColocacao() {
+  colocando = null;
+  placeEl.classList.remove('on');
+  barEl.classList.remove('escondido');
+  desenharBarra();
+}
+
+function confirmarColocacao() {
+  const def = PREDIO[colocando];
+  const { tx, ty } = tileAlvoDaCamera(def);
+  if (!areaValida(tx, ty, def.w, def.h)) { aviso('Não dá para construir aqui'); return; }
+  if (!podePagar(def.custo)) { aviso('Falta recurso'); cancelarColocacao(); return; }
+  pagar(def.custo);
+  const pr = criarPredio(colocando, tx, ty, 0);
+  cancelarColocacao();
+  atualizarHUD();
+
+  let equipe = selecao.length ? selecao.slice()
+    : jogo.pessoas.filter(p => p.estado === 'ocioso' && faseDaIdade(p.idade) !== FASE.CRIANCA);
+  if (!equipe.length) {
+    const dist = p => (p.x - pr.cx) ** 2 + (p.y - pr.cy) ** 2;
+    equipe = jogo.pessoas.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA)
+      .sort((a, b) => dist(a) - dist(b)).slice(0, 2);
+  }
+  if (equipe.length) mandarConstruir(equipe, pr);
+  salvar();
+}
+
+/* ------------------------------------------------------------ interface -- */
+
+const el = id => document.getElementById(id);
+const elRes = { madeira: el('r-madeira'), comida: el('r-comida'), pedra: el('r-pedra'), pop: el('r-pop') };
+const elPovo = { ano: el('p-ano'), criancas: el('p-criancas'), adultos: el('p-adultos'), idosos: el('p-idosos'), sem: el('p-sem') };
+const barEl = el('bar'), placeEl = el('place'), placeNome = el('placenome');
+
+function atualizarHUD() {
+  elRes.madeira.textContent = Math.floor(jogo.recursos.madeira);
+  elRes.comida.textContent  = Math.floor(jogo.recursos.comida);
+  elRes.pedra.textContent   = Math.floor(jogo.recursos.pedra);
+  elRes.pop.textContent     = popAtual() + '/' + popMax();
+  const c = contarFases();
+  elPovo.ano.textContent = jogo.ano;
+  elPovo.criancas.textContent = c.crianca;
+  elPovo.adultos.textContent = c.adulto;
+  elPovo.idosos.textContent = c.idoso;
+  elPovo.sem.textContent = c.semOficio;
+  if (!colocando) desenharBarra();
+}
+
+function desenharBarra() {
+  barEl.innerHTML = '';
+  for (const chave in PREDIO) {
+    const def = PREDIO[chave];
+    const b = document.createElement('div');
+    b.className = 'btn' + (podePagar(def.custo) ? '' : ' off');
+    b.innerHTML = '<span class="ic">' + def.icone + '</span><span>' + def.nome.split(' ')[0] +
+                  '</span><span class="cost">' + custoTexto(def.custo) + '</span>';
+    b.onclick = () => iniciarColocacao(chave);
+    barEl.appendChild(b);
+  }
+}
+
+const toastEl = el('toast');
+let toastT = 0;
+function aviso(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('on');
+  clearTimeout(toastT);
+  toastT = setTimeout(() => toastEl.classList.remove('on'), 2200);
+}
+
+const flutuantes = [];
+let avisouTeto = -999;
+function flutuar(x, y, texto) { flutuantes.push({ x, y, texto, t:0 }); }
+
+function fecharFolhas() {
+  for (const f of document.querySelectorAll('.folha')) f.classList.remove('on');
+}
+const folhaAberta = () => !!document.querySelector('.folha.on');
+
+el('btn-menu').onclick = () => { fecharFolhas(); el('seedin').value = SEED; el('menu').classList.add('on'); };
+el('btn-voltar').onclick = fecharFolhas;
+el('btn-novo').onclick = () => {
+  const v = parseInt(el('seedin').value, 10);
+  novaVila(Number.isFinite(v) ? v : 0);
+  fecharFolhas(); aviso('Nova vila — semente ' + SEED);
+};
+el('btn-apagar').onclick = () => {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+  novaVila(0); fecharFolhas(); aviso('Progresso apagado');
+};
+
+el('btn-cronica').onclick = () => {
+  const lista = el('cronica-lista');
+  lista.innerHTML = '';
+  const evs = jogo.cronica.slice(-80).reverse();
+  if (!evs.length) lista.innerHTML = '<div class="ev">A vila ainda não tem história para contar.</div>';
+  for (const e of evs) {
+    const d = document.createElement('div');
+    d.className = 'ev';
+    d.style.borderLeftColor = e.destaque ? 'rgba(220,190,120,.8)' : 'rgba(150,200,140,.4)';
+    d.innerHTML = '<span class="ano">ano ' + e.ano + '</span>' + e.texto;
+    lista.appendChild(d);
+  }
+  fecharFolhas(); el('cronica').classList.add('on');
+};
+el('cronica-fechar').onclick = fecharFolhas;
+el('relatorio-fechar').onclick = fecharFolhas;
+el('ficha-fechar').onclick = fecharFolhas;
+el('place-ok').onclick = confirmarColocacao;
+el('place-no').onclick = cancelarColocacao;
+
+function abrirFicha(p) {
+  const conj = pessoaPorId(p.conjugeId);
+  const casa = jogo.predios.find(pr => pr.id === p.casaId);
+  const fase = faseDaIdade(p.idade);
+  const rotulo = fase === FASE.CRIANCA ? (p.sexo === 'm' ? 'menino' : 'menina')
+               : fase === FASE.IDOSO ? (p.sexo === 'm' ? 'idoso' : 'idosa')
+               : (p.sexo === 'm' ? 'homem' : 'mulher');
+  el('ficha-corpo').innerHTML =
+    '<div style="font-size:17px;font-weight:600;margin-bottom:6px">' + nomeCompleto(p) + '</div>' +
+    '<div>' + Math.floor(p.idade) + ' anos · ' + rotulo + '</div>' +
+    '<div>ofício: ' + OFICIO[p.oficio].icone + ' ' + OFICIO[p.oficio].nome + '</div>' +
+    '<div>jeito: ' + p.traco + '</div>' +
+    (p.veiculo ? '<div>anda com: ' + (p.veiculo === 'carroca' ? '🛞 carroça' : '🐴 cavalo') + '</div>' : '') +
+    (conj ? '<div>casado(a) com ' + nomeCompleto(conj) + '</div>' : '<div style="opacity:.6">sem par</div>') +
+    (casa ? '<div>mora numa casa com ' + casa.moradores.length + ' pessoa(s)</div>' : '<div style="opacity:.6">sem casa</div>');
+  fecharFolhas(); el('ficha').classList.add('on');
+}
+
+function mostrarRelatorio(rel) {
+  const h = Math.floor(rel.segundos / 3600), m = Math.round((rel.segundos % 3600) / 60);
+  el('relatorio-tempo').textContent = 'A vila viveu ' + (h ? h + 'h ' : '') + m + 'min sem você — ' + rel.anos + ' ano(s).';
+  const linhas = [
+    '🌳 +' + rel.madeira + '   🍖 +' + rel.comida + '   ⛏ +' + rel.pedra,
+    '👶 ' + rel.nascidos + ' nasceram · 🕯️ ' + rel.mortos + ' morreram',
+    '🏗️ ' + rel.obras + ' obra(s) concluída(s) · ' + rel.predios + ' prédios no total',
+    '👥 população agora: ' + popAtual(),
+  ];
+  el('relatorio-linhas').innerHTML = linhas.map(l => '<div>' + l + '</div>').join('');
+  fecharFolhas(); el('relatorio').classList.add('on');
+}
+
+/* ------------------------------------------------------------ minimapa --- */
+
+const mm = el('minimap'), mmx = mm.getContext('2d');
+const MMS = 92, MMP = 4;
+let mmT = 0;
+
+function desenharMinimapa() {
+  const ptx = Math.floor(cam.x / TILE), pty = Math.floor(cam.y / TILE);
+  const img = mmx.createImageData(MMS, MMS), d = img.data;
+  for (let y = 0; y < MMS; y++)
+    for (let x = 0; x < MMS; x++) {
+      const c = corTerreno(ptx + (x - MMS / 2) * MMP, pty + (y - MMS / 2) * MMP);
+      const i = (y * MMS + x) * 4;
+      d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+    }
+  mmx.putImageData(img, 0, 0);
+  mmx.fillStyle = '#e8d9a8';
+  for (const k of jogo.estradas) {
+    const [tx, ty] = k.split(',').map(Number);
+    const x = MMS / 2 + (tx - ptx) / MMP, y = MMS / 2 + (ty - pty) / MMP;
+    if (x >= 0 && x < MMS && y >= 0 && y < MMS) mmx.fillRect(x, y, 1, 1);
+  }
+  mmx.fillStyle = '#ffd76a';
+  for (const p of jogo.predios) {
+    const x = MMS / 2 + (p.tx - ptx) / MMP, y = MMS / 2 + (p.ty - pty) / MMP;
+    if (x >= 0 && x < MMS && y >= 0 && y < MMS) mmx.fillRect(x - 1, y - 1, 3, 3);
+  }
+  mmx.fillStyle = '#fff';
+  for (const p of jogo.pessoas) {
+    const x = MMS / 2 + (p.x / TILE - ptx) / MMP, y = MMS / 2 + (p.y / TILE - pty) / MMP;
+    if (x >= 0 && x < MMS && y >= 0 && y < MMS) mmx.fillRect(x, y, 1.5, 1.5);
+  }
+  mmx.strokeStyle = 'rgba(255,255,255,.5)';
+  const vw = (W / cam.z / TILE) / MMP, vh = (H / cam.z / TILE) / MMP;
+  mmx.strokeRect(MMS / 2 - vw / 2, MMS / 2 - vh / 2, vw, vh);
+}
+
+/* -------------------------------------------------------------- desenho -- */
+
+function rrect(g, x, y, w, h, r) {
+  if (g.roundRect) { g.beginPath(); g.roundRect(x, y, w, h, r); return; }
+  g.beginPath(); g.rect(x, y, w, h);
+}
+
+function desenharEstrada(g, tx, ty) {
+  const x = tx * TILE, y = ty * TILE;
+  g.fillStyle = 'rgba(198,178,138,.92)';
+  const n = jogo.estradas.has(nk(tx, ty - 1)), s = jogo.estradas.has(nk(tx, ty + 1));
+  const o = jogo.estradas.has(nk(tx - 1, ty)), l = jogo.estradas.has(nk(tx + 1, ty));
+  const m = 5;
+  g.fillRect(x + m, y + m, TILE - m * 2, TILE - m * 2);
+  if (n) g.fillRect(x + m, y, TILE - m * 2, m + 1);
+  if (s) g.fillRect(x + m, y + TILE - m - 1, TILE - m * 2, m + 1);
+  if (o) g.fillRect(x, y + m, m + 1, TILE - m * 2);
+  if (l) g.fillRect(x + TILE - m - 1, y + m, m + 1, TILE - m * 2);
+  g.fillStyle = 'rgba(120,96,64,.16)';
+  g.fillRect(x + m + 2, y + m + 2, 3, 2);
+  g.fillRect(x + TILE - m - 6, y + TILE - m - 5, 3, 2);
+}
+
+function desenharNo(g, n) {
+  const s = n.s || 1;
+  g.fillStyle = 'rgba(0,0,0,.20)';
+  g.beginPath(); g.ellipse(n.x, n.y + 5 * s, 9 * s, 4 * s, 0, 0, 6.2832); g.fill();
+
+  if (n.tipo === 'madeira') {
+    g.fillStyle = '#5b432c';
+    g.fillRect(n.x - 2.5 * s, n.y - 7 * s, 5 * s, 12 * s);
+    const t = 18 * (n.semente || 0.5) | 0;
+    g.fillStyle = 'rgb(' + (44 + t) + ',' + (100 + t) + ',' + (46 + t) + ')';
+    g.beginPath();
+    g.arc(n.x - 6 * s, n.y - 11 * s, 8 * s, 0, 6.2832);
+    g.arc(n.x + 6 * s, n.y - 11 * s, 8 * s, 0, 6.2832);
+    g.arc(n.x,         n.y - 18 * s, 9.5 * s, 0, 6.2832);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,.09)';
+    g.beginPath(); g.arc(n.x - 3 * s, n.y - 20 * s, 4.5 * s, 0, 6.2832); g.fill();
+  } else if (n.tipo === 'pedra') {
+    g.fillStyle = '#8c8c88';
+    g.beginPath();
+    g.arc(n.x - 4 * s, n.y - 1 * s, 6.5 * s, 0, 6.2832);
+    g.arc(n.x + 5 * s, n.y - 3 * s, 5.5 * s, 0, 6.2832);
+    g.arc(n.x + 1 * s, n.y - 7 * s, 6 * s, 0, 6.2832);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,.16)';
+    g.beginPath(); g.arc(n.x - 1 * s, n.y - 8 * s, 2.6 * s, 0, 6.2832); g.fill();
+  } else {
+    g.fillStyle = '#4d8746';
+    g.beginPath();
+    g.arc(n.x - 5 * s, n.y - 1 * s, 5 * s, 0, 6.2832);
+    g.arc(n.x + 5 * s, n.y - 1 * s, 5 * s, 0, 6.2832);
+    g.arc(n.x,         n.y - 6 * s, 6 * s, 0, 6.2832);
+    g.fill();
+    g.fillStyle = '#c8484a';
+    g.beginPath(); g.arc(n.x + 2 * s, n.y - 6 * s, 2 * s, 0, 6.2832); g.fill();
+    g.beginPath(); g.arc(n.x - 4 * s, n.y - 2 * s, 2 * s, 0, 6.2832); g.fill();
+  }
+}
+
+function desenharPredio(g, pr) {
+  const w = pr.def.w * TILE, h = pr.def.h * TILE;
+  const x = pr.tx * TILE, y = pr.ty * TILE;
+
+  g.fillStyle = 'rgba(0,0,0,.22)';
+  rrect(g, x + 4, y + h - 9, w - 8, 11, 5); g.fill();
+
+  if (pr.progresso < 1) {
+    g.fillStyle = 'rgba(190,160,110,.20)';
+    rrect(g, x + 2, y + 2, w - 4, h - 4, 6); g.fill();
+    g.strokeStyle = 'rgba(255,225,160,.75)'; g.lineWidth = 2; g.setLineDash([6, 5]);
+    rrect(g, x + 2, y + 2, w - 4, h - 4, 6); g.stroke(); g.setLineDash([]);
+    g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(x + 8, y + h - 16, w - 16, 6);
+    g.fillStyle = '#8fd07a'; g.fillRect(x + 8, y + h - 16, (w - 16) * pr.progresso, 6);
+    g.font = '600 ' + Math.round(TILE * 0.5) + 'px system-ui, sans-serif';
+    g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.8)';
+    g.fillText(pr.def.icone, x + w / 2, y + h / 2);
+    return;
+  }
+
+  g.fillStyle = pr.def.cor;
+  rrect(g, x + 3, y + h * 0.34, w - 6, h * 0.62, 5); g.fill();
+  g.fillStyle = pr.def.teto;
+  g.beginPath();
+  g.moveTo(x + 1, y + h * 0.40); g.lineTo(x + w / 2, y + 2); g.lineTo(x + w - 1, y + h * 0.40);
+  g.closePath(); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.10)';
+  g.beginPath();
+  g.moveTo(x + 1, y + h * 0.40); g.lineTo(x + w / 2, y + 2); g.lineTo(x + w / 2, y + h * 0.40);
+  g.closePath(); g.fill();
+  g.fillStyle = 'rgba(50,34,22,.85)';
+  g.fillRect(x + w / 2 - 4, y + h - 13, 8, 11);
+
+  if (pr.def.fazenda) {
+    g.strokeStyle = 'rgba(255,255,255,.13)'; g.lineWidth = 1;
+    for (let i = 1; i < 4; i++) {
+      g.beginPath(); g.moveTo(x + 4, y + h * 0.34 + i * 6); g.lineTo(x + w - 4, y + h * 0.34 + i * 6); g.stroke();
+    }
+  }
+  if (pr.def.moradia && pr.moradores.length) {
+    g.fillStyle = 'rgba(255,214,140,.9)';
+    g.fillRect(x + w - 11, y + h * 0.52, 5, 5);
+  }
+  if (pr.def.produz && pr.produzindo > 0) {
+    const f = pr.produzindo / VEICULO[pr.def.produz].tempo;
+    g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(x + 7, y - 9, w - 14, 5);
+    g.fillStyle = '#79c2e8'; g.fillRect(x + 7, y - 9, (w - 14) * f, 5);
+  }
+}
+
+/* --- As seis figuras: criança, adulto e idoso, em masculino e feminino --- */
+
+const PELE = ['#e8c39a', '#d9a877', '#b9835a', '#8d5f42'];
+const ROUPA_M = ['#5b8fc9', '#5f7f52', '#8a6a4a', '#6b6f86'];
+const ROUPA_F = ['#c46f8e', '#7d6bb0', '#c98a3e', '#4f8f86'];
+
+function desenharPessoa(g, p, selecionado) {
+  const fase = faseDaIdade(p.idade);
+  const andando = p.estado.startsWith('indo') || p.estado === 'andando' || p.estado === 'voltando' || p.estado === 'brincando';
+  const esc = fase === FASE.CRIANCA ? 0.62 : fase === FASE.IDOSO ? 0.9 : 1;
+  const bob = andando ? Math.sin(p.passo * 12) * 1.4 * esc : 0;
+  const x = p.x, y = p.y + bob;
+  const idx = p.id % 4;
+  const pele = PELE[idx];
+  const roupa = (p.sexo === 'm' ? ROUPA_M : ROUPA_F)[idx];
+
+  if (selecionado) {
+    g.strokeStyle = 'rgba(150,235,140,.9)'; g.lineWidth = 1.6;
+    g.beginPath(); g.ellipse(p.x, p.y + 7, 12, 5.5, 0, 0, 6.2832); g.stroke();
+  }
+  if (p.veiculo === 'cavalo') desenharCavalo(g, p, esc);
+
+  g.fillStyle = 'rgba(0,0,0,.24)';
+  g.beginPath(); g.ellipse(p.x, p.y + 7 * esc, 7 * esc, 3.2 * esc, 0, 0, 6.2832); g.fill();
+
+  const balanco = andando ? Math.sin(p.passo * 12) * 2.4 * esc : 0;
+  const curva = fase === FASE.IDOSO ? 1.6 : 0;   // idosos andam levemente curvados
+
+  // Pernas (ou saia)
+  if (p.sexo === 'f') {
+    g.fillStyle = roupa;
+    g.beginPath();
+    g.moveTo(x - 3 * esc, y - 2 * esc + curva);
+    g.lineTo(x + 3 * esc, y - 2 * esc + curva);
+    g.lineTo(x + 6 * esc, y + 7 * esc);
+    g.lineTo(x - 6 * esc, y + 7 * esc);
+    g.closePath(); g.fill();
+    g.fillStyle = '#6a5a4a';
+    g.fillRect(x - 3.4 * esc, y + 6 * esc, 2.6 * esc, 2 * esc);
+    g.fillRect(x + 0.8 * esc, y + 6 * esc, 2.6 * esc, 2 * esc);
+  } else {
+    g.fillStyle = '#3d4a5e';
+    g.fillRect(x - 4 * esc, y + 1 * esc + curva, 3 * esc, (6 + balanco * 0.2) * esc);
+    g.fillRect(x + 1 * esc, y + 1 * esc + curva, 3 * esc, (6 - balanco * 0.2) * esc);
+  }
+
+  // Tronco
+  g.fillStyle = p.estado === 'construindo' || p.estado === 'calçando' ? '#c98a3e' : roupa;
+  rrect(g, x - 5.5 * esc, y - 6 * esc + curva, 11 * esc, (8.5 - curva * 0.3) * esc, 3 * esc); g.fill();
+
+  // Cabeça
+  const cy = y - 10.5 * esc + curva + (fase === FASE.CRIANCA ? 0.6 : 0);
+  const rc = (fase === FASE.CRIANCA ? 5.2 : 4.6) * esc;
+  g.fillStyle = pele;
+  g.beginPath(); g.arc(x, cy, rc, 0, 6.2832); g.fill();
+
+  // Cabelo: curto no masculino, longo no feminino, branco no idoso
+  const cabelo = fase === FASE.IDOSO ? '#d8d8d2' : ['#4a3524', '#2f2a26', '#6b4a2a', '#a8763f'][idx];
+  g.fillStyle = cabelo;
+  if (p.sexo === 'f') {
+    g.beginPath(); g.arc(x, cy - 1.1 * esc, rc, Math.PI, 0); g.fill();
+    g.fillRect(x - rc, cy - 1 * esc, rc * 2, 4.4 * esc);       // cabelo até os ombros
+    if (fase !== FASE.IDOSO) {
+      g.fillStyle = ['#e8d264', '#dc7fb6', '#e0e6ef', '#9fd6a0'][idx];
+      g.beginPath(); g.arc(x + rc * 0.75, cy - 1.6 * esc, 1.5 * esc, 0, 6.2832); g.fill();  // florzinha
+    }
+  } else {
+    g.beginPath(); g.arc(x, cy - 1.3 * esc, rc, Math.PI, 0); g.fill();
+    if (fase === FASE.IDOSO) {   // barba grisalha
+      g.fillStyle = '#dcdcd6';
+      g.beginPath(); g.arc(x, cy + 2.6 * esc, 2.6 * esc, 0, Math.PI); g.fill();
+    }
+  }
+
+  // Olhos
+  g.fillStyle = '#20232b';
+  const ex = p.dir * 1.3 * esc;
+  g.fillRect(x - 2.4 * esc + ex, cy - 0.4 * esc, 1.4 * esc, 1.6 * esc);
+  g.fillRect(x + 1 * esc + ex, cy - 0.4 * esc, 1.4 * esc, 1.6 * esc);
+
+  // Bengala do idoso
+  if (fase === FASE.IDOSO) {
+    g.strokeStyle = '#6b4a2a'; g.lineWidth = 1.6 * esc;
+    g.beginPath();
+    g.moveTo(x + p.dir * 7 * esc, y - 4 * esc);
+    g.lineTo(x + p.dir * 8.5 * esc, y + 7 * esc);
+    g.stroke();
+  }
+
+  // Ferramenta do ofício
+  const of = p.oficio;
+  if (fase !== FASE.CRIANCA && (of === 'lenhador' || of === 'pedreiro' || of === 'construtor')) {
+    g.strokeStyle = '#7a5a3a'; g.lineWidth = 1.5 * esc;
+    g.beginPath();
+    g.moveTo(x + p.dir * 6 * esc, y - 6 * esc);
+    g.lineTo(x + p.dir * 8 * esc, y + 1 * esc);
+    g.stroke();
+    g.fillStyle = of === 'construtor' ? '#c0c4c8' : '#9aa0a6';
+    g.fillRect(x + p.dir * 5 * esc, y - 8 * esc, 4 * esc, 2.6 * esc);
+  } else if (of === 'fazendeiro' && fase !== FASE.CRIANCA) {
+    g.fillStyle = '#d8bd6a';   // chapéu de palha
+    g.beginPath(); g.ellipse(x, cy - 3 * esc, 7 * esc, 2.4 * esc, 0, 0, 6.2832); g.fill();
+  }
+
+  // Carga nas costas
+  if (p.carga > 0.5 && !p.veiculo) {
+    g.fillStyle = p.cargaTipo === 'madeira' ? '#7b5a34' : p.cargaTipo === 'pedra' ? '#8c8c88' : '#c8484a';
+    g.fillRect(x - p.dir * 8 * esc, y - 5 * esc, 5 * esc, 5 * esc);
+  }
+  if (p.veiculo === 'carroca') desenharCarroca(g, p, esc);
+
+  if (p.estado === 'coletando' || p.estado === 'construindo' || p.estado === 'naFazenda' || p.estado === 'calçando') {
+    const a = (Math.sin(agora / 90) + 1) / 2;
+    g.fillStyle = 'rgba(255,235,150,' + (0.3 + a * 0.5) + ')';
+    g.fillRect(x + p.dir * 7 * esc, y - 8 * esc, 2.4, 2.4);
+  }
+}
+
+function desenharCarroca(g, p, esc) {
+  const x = p.x - p.dir * 13 * esc, y = p.y + 1;
+  g.fillStyle = 'rgba(0,0,0,.2)';
+  g.beginPath(); g.ellipse(x, y + 6 * esc, 8 * esc, 3 * esc, 0, 0, 6.2832); g.fill();
+  g.fillStyle = '#8a6742';
+  rrect(g, x - 7 * esc, y - 5 * esc, 14 * esc, 8 * esc, 2); g.fill();
+  if (p.carga > 0.5) {
+    g.fillStyle = p.cargaTipo === 'madeira' ? '#7b5a34' : p.cargaTipo === 'pedra' ? '#8c8c88' : '#c8484a';
+    g.fillRect(x - 5 * esc, y - 8 * esc, 10 * esc, 4 * esc);
+  }
+  g.fillStyle = '#4a3524';
+  g.beginPath(); g.arc(x - 4.5 * esc, y + 4 * esc, 3 * esc, 0, 6.2832); g.fill();
+  g.beginPath(); g.arc(x + 4.5 * esc, y + 4 * esc, 3 * esc, 0, 6.2832); g.fill();
+  g.strokeStyle = '#6b4a2a'; g.lineWidth = 1.2 * esc;
+  g.beginPath();
+  g.moveTo(x + p.dir * 7 * esc, y - 2 * esc);
+  g.lineTo(p.x - p.dir * 4 * esc, p.y + 1 * esc);
+  g.stroke();
+}
+
+function desenharCavalo(g, p, esc) {
+  const x = p.x, y = p.y + 5 * esc;
+  g.fillStyle = 'rgba(0,0,0,.22)';
+  g.beginPath(); g.ellipse(x, y + 4 * esc, 12 * esc, 4 * esc, 0, 0, 6.2832); g.fill();
+  g.fillStyle = '#7b5233';
+  rrect(g, x - 11 * esc, y - 6 * esc, 22 * esc, 9 * esc, 4 * esc); g.fill();
+  g.fillRect(x + p.dir * 9 * esc, y - 13 * esc, 5 * esc, 8 * esc);          // pescoço
+  g.beginPath(); g.arc(x + p.dir * 11.5 * esc, y - 13 * esc, 3.4 * esc, 0, 6.2832); g.fill();
+  g.fillStyle = '#5c3c25';
+  g.fillRect(x - 9 * esc, y + 2 * esc, 3 * esc, 7 * esc);
+  g.fillRect(x + 6 * esc, y + 2 * esc, 3 * esc, 7 * esc);
+  g.fillStyle = '#3b2a1e';
+  g.fillRect(x - p.dir * 12 * esc, y - 8 * esc, 2.5 * esc, 9 * esc);        // cauda
+}
+
+/* ---------------------------------------------------------------- loop --- */
+
+let ultimo = performance.now();
+
+function quadro(t) {
+  requestAnimationFrame(quadro);
+  agora = t;
+  let dt = (t - ultimo) / 1000;
+  ultimo = t;
+  if (dt > 0.05) dt = 0.05;
+  if (!folhaAberta()) passo(dt);
+  desenhar();
+}
+
+function passo(dt) {
+  jogo.tempo += dt;
+
+  const v = 420 / cam.z * dt;
+  if (teclas.has('a') || teclas.has('arrowleft'))  cam.x -= v;
+  if (teclas.has('d') || teclas.has('arrowright')) cam.x += v;
+  if (teclas.has('w') || teclas.has('arrowup'))    cam.y -= v;
+  if (teclas.has('s') || teclas.has('arrowdown'))  cam.y += v;
+
+  for (const p of jogo.pessoas) atualizarPessoa(p, dt);
+  atualizarProducao(dt);
+
+  // O que passa da capacidade dos galpões se perde — é o que dá função ao
+  // Depósito e segura a economia num tamanho plausível.
+  const teto = tetoEstoque();
+  for (const k in jogo.recursos) {
+    if (jogo.recursos[k] > teto) {
+      jogo.recursos[k] = teto;
+      if (jogo.tempo - avisouTeto > 90) {
+        avisouTeto = jogo.tempo;
+        aviso('Galpões cheios (' + teto + ') — construa um Depósito para guardar mais');
+      }
+    }
+  }
+
+  // Consumo de comida: 6 por pessoa por ano (item 9).
+  jogo.recursos.comida -= popAtual() * (6 / ANO) * dt;
+  if (jogo.recursos.comida <= 0) {
+    jogo.recursos.comida = 0;
+    if (!jogo.fome) { jogo.fome = true; crônica('A vila passou a sentir fome.', true); aviso('⚠️ Sem comida — a vila está passando fome'); }
+  } else if (jogo.fome && jogo.recursos.comida > popAtual() * 2) {
+    jogo.fome = false; crônica('A fome passou.');
+  }
+
+  jogo.anoFrac += dt / ANO;
+  while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; tickAno(); }
+
+  for (let i = flutuantes.length - 1; i >= 0; i--) {
+    flutuantes[i].t += dt;
+    if (flutuantes[i].t > 1.2) flutuantes.splice(i, 1);
+  }
+
+  mmT -= dt;
+  if (mmT <= 0) { mmT = 0.6; desenharMinimapa(); atualizarHUD(); salvar(); }
+}
+
+function desenhar() {
+  const z = cam.z, vw = W / z, vh = H / z;
+  const camX = cam.x - vw / 2, camY = cam.y - vh / 2;
+
+  ctx.setTransform(DPR * z, 0, 0, DPR * z, -camX * DPR * z, -camY * DPR * z);
+  ctx.imageSmoothingEnabled = true;   // item 2: nada de serrilhado
+
+  const c0x = Math.floor(camX / CPX), c0y = Math.floor(camY / CPX);
+  const c1x = Math.floor((camX + vw) / CPX), c1y = Math.floor((camY + vh) / CPX);
+  const visiveis = [];
+  for (let cy = c0y; cy <= c1y; cy++)
+    for (let cx = c0x; cx <= c1x; cx++) {
+      const ch = pegarChunk(cx, cy);
+      ctx.drawImage(ch.cv, cx * CPX, cy * CPX);
+      visiveis.push(ch);
+    }
+
+  // Estradas por cima do terreno, antes de tudo que tem altura.
+  const tx0 = Math.floor(camX / TILE), ty0 = Math.floor(camY / TILE);
+  const tx1 = Math.ceil((camX + vw) / TILE), ty1 = Math.ceil((camY + vh) / TILE);
+  if (jogo.estradas.size) {
+    for (let ty = ty0; ty <= ty1; ty++)
+      for (let tx = tx0; tx <= tx1; tx++)
+        if (jogo.estradas.has(nk(tx, ty))) desenharEstrada(ctx, tx, ty);
+  }
+  // Obras de estrada aparecem como marcação no chão.
+  for (const obra of jogo.obrasEstrada) {
+    ctx.fillStyle = 'rgba(230,210,150,.25)';
+    for (let i = obra.feitos; i < obra.tiles.length; i++) {
+      const t = obra.tiles[i];
+      ctx.fillRect(t[0] * TILE + 9, t[1] * TILE + 9, TILE - 18, TILE - 18);
+    }
+  }
+
+  const lista = [];
+  for (const ch of visiveis)
+    for (const n of ch.nos) {
+      if (n.x < camX - 40 || n.x > camX + vw + 40 || n.y < camY - 60 || n.y > camY + vh + 60) continue;
+      lista.push({ y:n.y, k:0, o:n });
+    }
+  for (const pr of jogo.predios) {
+    if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
+    lista.push({ y:(pr.ty + pr.def.h) * TILE, k:1, o:pr });
+  }
+  for (const p of jogo.pessoas) {
+    if (p.x < camX - 50 || p.x > camX + vw + 50 || p.y < camY - 50 || p.y > camY + vh + 50) continue;
+    lista.push({ y:p.y, k:2, o:p });
+  }
+  lista.sort((a, b) => a.y - b.y);
+
+  const sel = new Set(selecao.map(p => p.id));
+  for (const it of lista) {
+    if (it.k === 0) desenharNo(ctx, it.o);
+    else if (it.k === 1) desenharPredio(ctx, it.o);
+    else desenharPessoa(ctx, it.o, sel.has(it.o.id));
+  }
+
+  if (colocando) {
+    const def = PREDIO[colocando];
+    const { tx, ty } = tileAlvoDaCamera(def);
+    const ok = areaValida(tx, ty, def.w, def.h);
+    ctx.fillStyle = ok ? 'rgba(130,220,120,.32)' : 'rgba(230,90,80,.32)';
+    ctx.fillRect(tx * TILE, ty * TILE, def.w * TILE, def.h * TILE);
+    ctx.strokeStyle = ok ? 'rgba(170,255,160,.95)' : 'rgba(255,130,120,.95)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(tx * TILE + 1, ty * TILE + 1, def.w * TILE - 2, def.h * TILE - 2);
+  }
+
+  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  for (const f of flutuantes) {
+    const a = 1 - f.t / 1.2;
+    ctx.fillStyle = 'rgba(0,0,0,' + (a * 0.5) + ')';
+    ctx.fillText(f.texto, f.x + 1, f.y - 14 - f.t * 20 + 1);
+    ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
+    ctx.fillText(f.texto, f.x, f.y - 14 - f.t * 20);
+  }
+
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.fillStyle = vinheta();
+  ctx.fillRect(0, 0, W, H);
+
+  if (chunks.size > 60) for (const [k, ch] of chunks) if (agora - ch.visto > 5000) chunks.delete(k);
+}
+
+let vigCache = null;
+function vinheta() {
+  if (vigCache) return vigCache;
+  const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.4, W / 2, H / 2, Math.max(W, H) * 0.8);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,.24)');
+  vigCache = g;
+  return g;
+}
+
+/* ---------------------------------------------------------- persistência - */
+
+const SAVE_KEY = 'reinoInfinito.v2';
+let saveT = 0;
+
+function salvar() {
+  clearTimeout(saveT);
+  saveT = setTimeout(gravar, 600);
+}
+
+function gravar() {
+  try {
+    jogo.salvoEm = Date.now();
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v: 2, seed: SEED, salvoEm: jogo.salvoEm,
+      cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
+      recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
+      predios: jogo.predios.map(p => ({ id:p.id, c:p.chave, tx:p.tx, ty:p.ty, pr:p.progresso,
+        mor:p.moradores, prod:p.produzindo, trab:p.trabalhador })),
+      proxPredioId, proxId: jogo.proxId,
+      pessoas: jogo.pessoas.map(p => ({ id:p.id, n:p.nome, s:p.sobrenome, sx:p.sexo,
+        i:+p.idade.toFixed(2), vm:+p.vidaMax.toFixed(1), tr:p.traco,
+        x:Math.round(p.x), y:Math.round(p.y), of:p.oficio, ca:p.casaId, co:p.conjugeId, ve:p.veiculo })),
+      estradas: [...jogo.estradas],
+      obrasEstrada: jogo.obrasEstrada.map(o => ({ t:o.tiles, f:o.feitos })),
+      nos: [...restante.entries()].slice(-4000),
+      cronica: jogo.cronica.slice(-120),
+    }));
+  } catch (e) { /* armazenamento bloqueado: o jogo continua, só não salva */ }
+}
+
+function carregar() {
+  let s;
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    s = JSON.parse(raw);
+  } catch (e) { return null; }
+  try {
+    SEED = s.seed;
+    cam.x = s.cam.x; cam.y = s.cam.y; cam.z = s.cam.z || 1;
+    Object.assign(jogo.recursos, s.recursos || {});
+    jogo.ano = s.ano || 1; jogo.anoFrac = s.anoFrac || 0; jogo.fome = !!s.fome;
+    jogo.proxId = s.proxId || 1;
+    proxPredioId = s.proxPredioId || 1;
+    jogo.cronica = s.cronica || [];
+
+    restante.clear();
+    for (const [k, v] of (s.nos || [])) restante.set(k, v);
+    jogo.estradas = new Set(s.estradas || []);
+    jogo.obrasEstrada = (s.obrasEstrada || []).map(o => ({ tiles:o.t, feitos:o.f, t:0 }));
+
+    jogo.predios = []; ocupado.clear();
+    for (const d of (s.predios || [])) {
+      const def = PREDIO[d.c];
+      if (!def) continue;
+      const pr = criarPredio(d.c, d.tx, d.ty, d.pr);
+      pr.id = d.id; pr.moradores = d.mor || []; pr.produzindo = d.prod || 0; pr.trabalhador = d.trab || null;
+    }
+
+    jogo.pessoas = [];
+    for (const d of (s.pessoas || [])) {
+      const p = criarPessoa({ x:d.x, y:d.y, idade:d.i, sexo:d.sx, nome:d.n, sobrenome:d.s });
+      p.id = d.id; p.vidaMax = d.vm; p.traco = d.tr; p.oficio = d.of || 'nenhum';
+      p.casaId = d.ca; p.conjugeId = d.co; p.veiculo = d.ve || null;
+      p.estado = faseDaIdade(p.idade) === FASE.CRIANCA ? 'brincando' : 'ocioso';
+    }
+    // Reatribui os postos de fazenda pelos ids salvos.
+    for (const pr of jogo.predios) if (pr.trabalhador && !pessoaPorId(pr.trabalhador)) pr.trabalhador = null;
+
+    return s.salvoEm || Date.now();
+  } catch (e) { return null; }
+}
+
+/* -------------------------------------------------------------- nova vila */
+
+function acharInicio() {
+  for (const estrito of [true, false]) {
+    for (let r = 0; r < 600; r += 3) {
+      for (let a = 0; a < 20; a++) {
+        const ang = a / 20 * 6.2832;
+        const tx = Math.round(Math.cos(ang) * r), ty = Math.round(Math.sin(ang) * r);
+        let ok = true;
+        for (let y = -2; y <= 2 && ok; y++)
+          for (let x = -2; x <= 2 && ok; x++) {
+            const b = biomaEm(tx + x, ty + y);
+            if (estrito) { if (b !== B.CAMPO && b !== B.FLORESTA) ok = false; }
+            else if (SOLIDO[b]) ok = false;
+          }
+        if (!ok) continue;
+        if (!estrito) return { tx, ty };
+        let madeira = 0, comida = 0;
+        for (let y = -12; y <= 12; y++)
+          for (let x = -12; x <= 12; x++) {
+            const n = noEm(tx + x, ty + y);
+            if (!n) continue;
+            if (n.tipo === 'madeira') madeira++; else if (n.tipo === 'comida') comida++;
+          }
+        if (madeira >= 10 && comida >= 2) return { tx, ty };
+      }
+    }
+  }
+  return { tx:0, ty:0 };
+}
+
+function novaVila(seed) {
+  SEED = (seed | 0) || (Math.random() * 1e9 | 0);
+  sorteio = (SEED ^ 0x9e3779b9) >>> 0;
+  chunks.clear(); restante.clear(); ocupado.clear();
+  jogo.predios = []; jogo.pessoas = []; jogo.estradas = new Set(); jogo.obrasEstrada = [];
+  jogo.cronica = []; jogo.proxId = 1; proxPredioId = 1;
+  jogo.recursos = { madeira:220, comida:200, pedra:80 };
+  jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
+  colocando = null; placeEl.classList.remove('on'); barEl.classList.remove('escondido'); selecao = [];
+
+  const ini = acharInicio();
+  const centro = criarPredio('centro', ini.tx - 1, ini.ty - 1, 1);
+  cam.x = centro.cx; cam.y = centro.cy;
+  cam.z = Math.max(0.9, Math.min(1.6, Math.min(W, H) / 480));
+
+  // Os fundadores: dois casais e uma criança.
+  const base = { x: centro.cx, y: centro.cy + (centro.def.h * TILE) / 2 + 20 };
+  const sn1 = escolher(SOBRENOMES);
+  let sn2 = escolher(SOBRENOMES);
+  if (sn2 === sn1) sn2 = escolher(SOBRENOMES);
+  const a = criarPessoa({ x:base.x - 26, y:base.y, sexo:'m', idade:entre(24, 34), sobrenome:sn1 });
+  const b = criarPessoa({ x:base.x - 8,  y:base.y, sexo:'f', idade:entre(23, 33), sobrenome:sn1 });
+  const c = criarPessoa({ x:base.x + 12, y:base.y, sexo:'f', idade:entre(26, 38), sobrenome:sn2 });
+  const d = criarPessoa({ x:base.x + 30, y:base.y, sexo:'m', idade:entre(27, 40), sobrenome:sn2 });
+  const e = criarPessoa({ x:base.x + 2, y:base.y + 22, sexo:rnd() < 0.5 ? 'm' : 'f', idade:entre(5, 12), sobrenome:sn1 });
+  a.conjugeId = b.id; b.conjugeId = a.id;
+  c.conjugeId = d.id; d.conjugeId = c.id;
+  e.estado = 'brincando';
+  for (const f of [a, b, c, d, e]) { f.casaId = centro.id; centro.moradores.push(f.id); }
+  crônica('As famílias ' + sn1 + ' e ' + sn2 + ' fundaram a vila.', true);
+
+  atualizarHUD(); desenharMinimapa(); gravar();
+}
+
+/* ------------------------------------------------------------- arranque -- */
+
+redimensionar();
+const salvoEm = carregar();
+if (!salvoEm || !jogo.predios.length) {
+  novaVila(0);
+} else {
+  sorteio = (SEED ^ 0x9e3779b9) >>> 0;
+  const fora = (Date.now() - salvoEm) / 1000;
+  const rel = recuperarOffline(fora);
+  if (rel) setTimeout(() => mostrarRelatorio(rel), 260);
+}
+atualizarHUD();
+desenharMinimapa();
+requestAnimationFrame(quadro);
+addEventListener('beforeunload', () => { clearTimeout(saveT); gravar(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) gravar(); });
+</script>
+</body>
+</html>

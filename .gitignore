@@ -1,0 +1,5 @@
+# nada de build aqui: o jogo é um arquivo só
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
