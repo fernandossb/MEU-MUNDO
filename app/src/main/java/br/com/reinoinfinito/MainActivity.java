@@ -14,10 +14,13 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
 import androidx.core.content.FileProvider;
+import androidx.webkit.WebViewAssetLoader;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -40,7 +43,12 @@ import java.util.concurrent.Executors;
  */
 public class MainActivity extends Activity {
 
-    private static final String URL_DO_JOGO = "file:///android_asset/www/index.html";
+    // O jogo NÃO pode ser servido de file:// — nessa origem o Android descarta
+    // o localStorage, e cada abertura começava um mundo novo. O AssetLoader
+    // entrega os mesmos arquivos por uma origem https estável, e aí o save
+    // sobrevive ao fechar o app.
+    private static final String ORIGEM = "https://appassets.androidplatform.net";
+    private static final String URL_DO_JOGO = ORIGEM + "/assets/www/index.html";
     private static final String API_ULTIMA_VERSAO =
             "https://api.github.com/repos/fernandossb/MEU-MUNDO/releases/latest";
 
@@ -65,7 +73,15 @@ public class MainActivity extends Activity {
         cfg.setBuiltInZoomControls(false);
         cfg.setMediaPlaybackRequiresUserGesture(false);
 
-        tela.setWebViewClient(new WebViewClient());
+        final WebViewAssetLoader carregador = new WebViewAssetLoader.Builder()
+                .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+                .build();
+        tela.setWebViewClient(new WebViewClient() {
+            @Override
+            public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest pedido) {
+                return carregador.shouldInterceptRequest(pedido.getUrl());
+            }
+        });
         tela.setBackgroundColor(0xFF0D1410);
         tela.setOverScrollMode(View.OVER_SCROLL_NEVER);
         tela.loadUrl(URL_DO_JOGO);

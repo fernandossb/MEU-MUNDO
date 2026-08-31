@@ -52,4 +52,7 @@ dependencies {
   // Só para o FileProvider, que entrega o APK baixado ao instalador do Android
   // (desde o Android 7 não se pode mais passar um caminho de arquivo cru).
   implementation 'androidx.core:core:1.13.1'
+  // Serve os assets por uma origem https estável: é o que faz o localStorage
+  // (onde mora o save do jogo) sobreviver ao fechar o app.
+  implementation 'androidx.webkit:webkit:1.11.0'
 }

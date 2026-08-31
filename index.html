@@ -41,6 +41,13 @@
   #res b { font-weight:600; }
   #povo { padding:6px 12px; font-size:12px; display:flex; gap:9px; opacity:.92; flex-wrap:wrap; }
   #povo i { font-style:normal; opacity:.65; }
+  #calendario {
+    display:flex; gap:9px; padding:6px 12px; font-size:12.5px; align-items:center;
+    font-variant-numeric:tabular-nums; flex-wrap:wrap;
+  }
+  #c-relogio { font-weight:600; font-size:14px; }
+  #c-data { opacity:.8; }
+  #c-clima { font-size:14px; }
 
   #mapwrap { position:absolute; top:calc(env(safe-area-inset-top) + 8px); right:8px; padding:4px; line-height:0; }
   #minimap { width:92px; height:92px; border-radius:8px; }
@@ -66,6 +73,15 @@
   #bar .ic { font-size:18px; }
   #bar.escondido { display:none; }
   #place { display:none; flex-direction:column; align-items:center; gap:8px; }
+  #pedido, #ruamodo {
+    display:none; flex-direction:column; align-items:center; gap:8px;
+    padding:11px 14px; font-size:13px; max-width:min(420px,94vw); text-align:center;
+  }
+  #pedido.on, #ruamodo.on { display:flex; }
+  #pedido .linha, #ruamodo .linha { display:flex; gap:8px; }
+  #pedido b { color:#ffd98a; }
+  #pedido-auto { pointer-events:auto; font-size:11.5px; opacity:.7; display:flex; gap:6px; align-items:center; }
+  #pedido-auto input { width:auto; }
   #place.on { display:flex; }
   #placenome {
     pointer-events:none; padding:7px 13px; font-size:13px; border-radius:11px; text-align:center;
@@ -115,12 +131,18 @@
       <span>⛏<b id="r-pedra">0</b></span>
       <span>🏠<b id="r-pop">0</b></span>
     </div>
+    <div id="calendario" class="panel">
+      <span id="c-relogio">06:00</span>
+      <span id="c-data">Janeiro, ano 1</span>
+      <span id="c-estacao">☀️ Verão</span>
+      <span id="c-clima">🌤️</span>
+    </div>
     <div id="povo" class="panel">
-      <span><i>ano</i> <b id="p-ano">1</b></span>
       <span>🧒<b id="p-criancas">0</b></span>
       <span>🧑<b id="p-adultos">0</b></span>
       <span>🧓<b id="p-idosos">0</b></span>
       <span><i>sem trabalho</i> <b id="p-sem">0</b></span>
+      <span id="p-dormindo" style="display:none">😴<b>0</b></span>
     </div>
   </div>
 
@@ -132,6 +154,21 @@
   <div id="toast" class="panel"></div>
 
   <div id="rodape">
+    <div id="pedido" class="panel">
+      <div id="pedido-texto"></div>
+      <div class="linha">
+        <div class="btn" id="pedido-sim">✓ Permitir</div>
+        <div class="btn" id="pedido-nao">✕ Recusar</div>
+        <div class="btn" id="pedido-ver">👁 Onde</div>
+      </div>
+      <label id="pedido-auto"><input type="checkbox" id="pedido-check"> não perguntar mais</label>
+    </div>
+
+    <div id="ruamodo" class="panel">
+      <div>🛣️ Toque no mapa onde a rua deve chegar</div>
+      <div class="btn" id="rua-sair">Sair do modo rua</div>
+    </div>
+
     <div id="place">
       <div id="placenome"></div>
       <div id="placebotoes">
@@ -196,6 +233,72 @@ const CPX   = CHUNK * TILE;
 const SUB   = 2;            // amostras de terreno por tile (suavização)
 const ANO   = 300;          // segundos de jogo por ano
 const OFFLINE_MAX = 6 * 3600;   // teto de recuperação com o jogo fechado
+
+// Se não houver save, o mundo nasce SEMPRE desta semente. Sorteio aqui faria
+// o mapa mudar a cada abertura em qualquer aparelho que bloqueie armazenamento.
+const SEMENTE_PADRAO = 20260831;
+
+/* --------------------------------------------------- calendário e clima --- */
+
+// O ano continua em 5 minutos, como estava. Para o dia e a noite serem
+// assistíveis, o ciclo do sol precisa de uns 25 segundos — o que dá
+// exatamente 12 ciclos por ano. Então cada mês passa como um dia completo:
+// o relógio marca a hora, a data anda de mês em mês.
+const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
+               'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+const ESTACAO = {
+  verao:     { nome:'Verão',     icone:'☀️', lavoura:1.00, luz:[255, 246, 214], tinta:'rgba(255,214,120,.05)' },
+  outono:    { nome:'Outono',    icone:'🍂', lavoura:0.85, luz:[255, 226, 180], tinta:'rgba(214,138, 54,.13)' },
+  inverno:   { nome:'Inverno',   icone:'❄️', lavoura:0.40, luz:[214, 232, 255], tinta:'rgba(150,180,220,.14)' },
+  primavera: { nome:'Primavera', icone:'🌸', lavoura:1.25, luz:[248, 255, 226], tinta:'rgba(120,220,140,.06)' },
+};
+
+// Hemisfério sul.
+const ESTACAO_DO_MES = ['verao','verao','outono','outono','outono','inverno',
+                        'inverno','inverno','primavera','primavera','primavera','verao'];
+
+const CLIMA = {
+  limpo:    { nome:'limpo',    icone:'🌤️', lavoura:1.00, passo:1.00 },
+  chuva:    { nome:'chuva',    icone:'🌧️', lavoura:1.35, passo:0.90 },
+  neve:     { nome:'neve',     icone:'🌨️', lavoura:0.25, passo:0.78 },
+  neblina:  { nome:'neblina',  icone:'🌫️', lavoura:0.95, passo:0.95 },
+  tempestade:{nome:'tempestade',icone:'⛈️', lavoura:1.10, passo:0.72 },
+};
+
+const mesAtual  = () => Math.min(11, Math.floor(jogo.anoFrac * 12));
+const horaDoDia = () => (jogo.anoFrac * 12) % 1;          // 0 = meia-noite
+const estacaoAtual = () => ESTACAO[ESTACAO_DO_MES[mesAtual()]];
+const climaAtual = () => CLIMA[jogo.clima] || CLIMA.limpo;
+
+function relogio() {
+  const h = horaDoDia() * 24;
+  const hh = Math.floor(h), mm = Math.floor((h - hh) * 60);
+  return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+}
+
+// Quanto o sol ilumina: 0 na madrugada fechada, 1 ao meio-dia.
+function luzDoDia() {
+  const h = horaDoDia();
+  if (h < 0.22 || h > 0.90) return 0;
+  if (h < 0.30) return (h - 0.22) / 0.08;      // amanhecer
+  if (h > 0.80) return (0.90 - h) / 0.10;      // anoitecer
+  return 1;
+}
+const eNoite = () => luzDoDia() < 0.12;
+
+function sortearClima() {
+  const est = ESTACAO_DO_MES[mesAtual()];
+  const r = rnd();
+  if (est === 'inverno')        jogo.clima = r < 0.34 ? 'neve'  : r < 0.52 ? 'chuva' : r < 0.64 ? 'neblina' : 'limpo';
+  else if (est === 'primavera') jogo.clima = r < 0.34 ? 'chuva' : r < 0.42 ? 'tempestade' : r < 0.52 ? 'neblina' : 'limpo';
+  else if (est === 'verao')     jogo.clima = r < 0.16 ? 'tempestade' : r < 0.26 ? 'chuva' : 'limpo';
+  else                          jogo.clima = r < 0.26 ? 'chuva' : r < 0.38 ? 'neblina' : 'limpo';
+}
+
+// Rendimento da lavoura junta estação e clima: inverno com neve é quase nada,
+// primavera com chuva é o dobro.
+const fatorLavoura = () => estacaoAtual().lavoura * climaAtual().lavoura;
 
 /* ---------------------------------------------------------------- ruído --- */
 
@@ -463,6 +566,14 @@ const PREDIO = {
     nome:'Estábulo', icone:'🐴', w:3, h:2, tempo:15, custo:{ madeira:110, comida:60 },
     pop:0, produz:'cavalo', cor:'#a8865c', teto:'#74532f',
   },
+  cais: {
+    nome:'Cais', icone:'🎣', w:2, h:2, tempo:13, custo:{ madeira:70 },
+    pop:0, fazenda:true, pesca:true, beiraDagua:true, cor:'#9a8a72', teto:'#5d6b74',
+  },
+  mercado: {
+    nome:'Mercado', icone:'🏪', w:3, h:2, tempo:16, custo:{ madeira:120, pedra:40 },
+    pop:0, entrega:true, comercio:true, cor:'#c4a06a', teto:'#8c3f3a',
+  },
 };
 
 const VEICULO = {
@@ -485,6 +596,7 @@ const OFICIO = {
   colhedor:   { nome:'colhedor',   rec:'comida',  icone:'🧺' },
   pedreiro:   { nome:'pedreiro',   rec:'pedra',   icone:'⛏' },
   fazendeiro: { nome:'fazendeiro', rec:null,      icone:'🌾' },
+  pescador:   { nome:'pescador',   rec:null,      icone:'🎣' },
   construtor: { nome:'construtor', rec:null,      icone:'🔨' },
   nenhum:     { nome:'sem ofício', rec:null,      icone:'·' },
 };
@@ -523,6 +635,8 @@ const jogo = {
   recursos: { madeira:220, comida:200, pedra:80 },
   predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
   cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
+  clima: 'limpo', mesAnterior: -1,
+  pedido: null, autoAprovar: false,
   fome: false, salvoEm: Date.now(),
 };
 
@@ -666,7 +780,7 @@ function invalidarArea(tx, ty, w, h) {
 
 const VEL = 78;
 const CARGA = 12;
-const TAXA = 0.85;
+const TAXA = 1.2;    // maior que antes porque agora ninguem trabalha de noite
 
 // Lote valido: terra firme, sem predio e sem rua em cima (a rua e o corredor).
 function tileLivre(tx, ty) {
@@ -685,6 +799,7 @@ function velocidadeDe(p) {
   else if (faseDaIdade(p.idade) === FASE.IDOSO) v *= 0.72;
   if (p.veiculo) v *= VEICULO[p.veiculo].veloc;
   if (emEstrada(p.x, p.y)) v *= 1.55;      // estradas valem a pena (item 5)
+  v *= climaAtual().passo;                 // chuva e neve atrasam todo mundo
   return v;
 }
 
@@ -757,7 +872,7 @@ function mandarFazenda(ps, pr) {
   if (pr.trabalhador && pr.trabalhador !== p.id) { aviso('Essa fazenda já tem quem cuide dela'); return; }
   soltarPostos(p);
   pr.trabalhador = p.id; p.fazendaId = pr.id;
-  p.oficio = 'fazendeiro'; p.ordemManual = true;
+  p.oficio = pr.def.pesca ? 'pescador' : 'fazendeiro'; p.ordemManual = true;
   p.estado = 'indoFazenda'; p.alvo = pr; p.ociosoT = 0;
 }
 function mandarAndar(ps, x, y) {
@@ -780,21 +895,35 @@ function procurarTrabalho(p) {
   const fase = faseDaIdade(p.idade);
   if (fase === FASE.CRIANCA) { p.estado = 'brincando'; p.alvo = null; return; }
 
+  // Quem já tem posto volta para ele. De manhã todo mundo acorda "ocioso", e
+  // sem esta linha o lavrador não reconhecia a própria lavoura como vaga
+  // (ela estava ocupada por ele mesmo) e ia colher fruta — deixando a fazenda
+  // marcada como ocupada e parada.
+  const meuPosto = jogo.predios.find(pr => pr.trabalhador === p.id && pr.progresso >= 1);
+  if (meuPosto) {
+    p.oficio = meuPosto.def.pesca ? 'pescador' : 'fazendeiro';
+    p.estado = 'indoFazenda'; p.alvo = meuPosto;
+    return;
+  }
+
   // Obra parada tem prioridade: vila sem casa não cresce. A estrada disputa
   // parte da mão de obra, senão nunca sai do papel.
   const obra = jogo.predios.find(pr => pr.progresso < 1);
   const estrada = jogo.obrasEstrada[0];
   if (estrada && (!obra || rnd() < 0.4) && (p.oficio === 'construtor' || rnd() < 0.4)) {
+    soltarPostos(p);
     p.oficio = 'construtor'; p.estado = 'indoEstrada'; p.alvo = estrada; return;
   }
   if (obra && (p.oficio === 'construtor' || rnd() < 0.5)) {
+    soltarPostos(p);
     p.oficio = 'construtor'; p.estado = 'indoConstruir'; p.alvo = obra; return;
   }
   // Fazenda sem cuidador
   const fz = jogo.predios.find(pr => pr.def.fazenda && pr.progresso >= 1 && !pr.trabalhador);
   if (fz && (p.oficio === 'fazendeiro' || rnd() < 0.35)) {
     fz.trabalhador = p.id; p.fazendaId = fz.id;
-    p.oficio = 'fazendeiro'; p.estado = 'indoFazenda'; p.alvo = fz; return;
+    p.oficio = fz.def.pesca ? 'pescador' : 'fazendeiro';
+    p.estado = 'indoFazenda'; p.alvo = fz; return;
   }
   // Senão, coleta o recurso mais escasso que existir por perto.
   const rec = OFICIO[p.oficio] && OFICIO[p.oficio].rec ? OFICIO[p.oficio].rec : recursoMaisNecessario();
@@ -803,9 +932,17 @@ function procurarTrabalho(p) {
     p.oficio = no.tipo === 'madeira' ? 'lenhador' : no.tipo === 'comida' ? 'colhedor' : 'pedreiro';
     p.estado = 'indoColetar';
     p.alvo = { tx:no.tx, ty:no.ty, tipo:no.tipo, x:no.x, y:no.y };
-  } else {
-    p.oficio = 'nenhum'; p.estado = 'ocioso';
+    return;
   }
+  // Acabou o que havia por perto. Em vez de cruzar os braços para sempre, ele
+  // caminha para fora da vila e procura de novo lá — varrer o mapa inteiro a
+  // cada tentativa custaria caro demais com dezenas de gente parada.
+  const base = centroDaVila();
+  const ang = base ? Math.atan2(p.y - base.cy, p.x - base.cx) + entre(-0.9, 0.9) : rnd() * 6.2832;
+  const dist = entre(190, 340);
+  p.estado = 'andando';
+  p.alvo = { x: p.x + Math.cos(ang) * dist, y: p.y + Math.sin(ang) * dist };
+  p.ociosoT = 0;
 }
 
 function recursoMaisNecessario() {
@@ -823,7 +960,29 @@ function recursoMaisNecessario() {
 function atualizarPessoa(p, dt) {
   const fase = faseDaIdade(p.idade);
 
+  // Anoiteceu: todo mundo larga o serviço e vai para casa. É o que dá ritmo
+  // ao dia — de manhã a vila esvazia para o trabalho, à noite as janelas acendem.
+  if (eNoite()) {
+    if (p.estado !== 'dormindo' && p.estado !== 'indoDormir') {
+      p.estado = 'indoDormir'; p.travado = 0;
+    }
+  } else if (p.estado === 'dormindo' || p.estado === 'indoDormir') {
+    p.estado = 'ocioso'; p.ociosoT = 2.2; p.alvo = null;
+  }
+
   switch (p.estado) {
+
+    case 'indoDormir': {
+      const casa = jogo.predios.find(pr => pr.id === p.casaId) || centroDaVila();
+      // Longe demais para voltar: dorme onde está, como quem pega a estrada.
+      if (!casa || Math.hypot(casa.cx - p.x, casa.cy - p.y) > 430) { p.estado = 'dormindo'; break; }
+      const d = mover(p, casa.cx, casa.cy, dt);
+      if (d < alcanceDe(casa) + 6 || p.travado > 2) { p.estado = 'dormindo'; p.travado = 0; }
+      break;
+    }
+
+    case 'dormindo':
+      break;
 
     case 'ocioso':
       p.ociosoT += dt;
@@ -889,10 +1048,12 @@ function atualizarPessoa(p, dt) {
         // para pensar, obra nenhuma sairia do papel.
         const obra = jogo.predios.find(pr => pr.progresso < 1);
         if (obra && !p.ordemManual && rnd() < 0.55) {
+          soltarPostos(p);
           p.oficio = 'construtor'; p.estado = 'indoConstruir'; p.alvo = obra; break;
         }
         const obraRua = jogo.obrasEstrada[0];
         if (obraRua && !p.ordemManual && rnd() < 0.3) {
+          soltarPostos(p);
           p.oficio = 'construtor'; p.estado = 'indoEstrada'; p.alvo = obraRua; break;
         }
 
@@ -915,6 +1076,10 @@ function atualizarPessoa(p, dt) {
     case 'construindo': {
       const pr = p.alvo;
       if (!pr || !jogo.predios.includes(pr)) { p.estado = 'ocioso'; p.alvo = null; break; }
+      // Confere ANTES de somar: com dois pedreiros na mesma obra, os dois
+      // passavam de 100% no mesmo quadro e os dois chamavam a conclusão —
+      // era isso que fazia chegar duas famílias na mesma casa.
+      if (pr.progresso >= 1) { p.estado = 'ocioso'; p.alvo = null; break; }
       pr.progresso += dt / pr.def.tempo;
       if (pr.progresso >= 1) { concluirPredio(pr); p.estado = 'ocioso'; p.alvo = null; }
       break;
@@ -967,7 +1132,13 @@ function atualizarPessoa(p, dt) {
       const pr = p.alvo;
       if (!pr || pr.trabalhador !== p.id) { p.estado = 'ocioso'; p.alvo = null; break; }
       p.passo += dt * 0.6;
-      jogo.recursos.comida += (fase === FASE.IDOSO ? 0.30 : 0.45) * dt;
+      if (pr.def.pesca) {
+        // Peixe não tem estação: só a tempestade tira o barco da água.
+        const mar = jogo.clima === 'tempestade' ? 0.25 : 1;
+        jogo.recursos.comida += (fase === FASE.IDOSO ? 0.40 : 0.58) * mar * dt;
+      } else {
+        jogo.recursos.comida += (fase === FASE.IDOSO ? 0.42 : 0.62) * fatorLavoura() * dt;
+      }
       break;
     }
   }
@@ -982,7 +1153,8 @@ function criarPredio(chave, tx, ty, progresso) {
   const pr = {
     id: proxPredioId++, chave, def, tx, ty,
     cx: (tx + def.w / 2) * TILE, cy: (ty + def.h / 2) * TILE,
-    progresso: progresso || 0, trabalhador: null, produzindo: 0, moradores: [],
+    progresso: progresso || 0, concluido: (progresso || 0) >= 1,
+    trabalhador: null, produzindo: 0, moradores: [],
   };
   jogo.predios.push(pr);
   marcarOcupacao(pr, true);
@@ -991,6 +1163,8 @@ function criarPredio(chave, tx, ty, progresso) {
 }
 
 function concluirPredio(pr) {
+  if (pr.concluido) return;    // trava de segurança: concluir duas vezes duplicava a família
+  pr.concluido = true;
   pr.progresso = 1;
   invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
   flutuar(pr.cx, pr.cy - 20, pr.def.nome + ' pronto!');
@@ -1002,7 +1176,10 @@ function concluirPredio(pr) {
 
 // Item 8 + dado de censo: 80% dos países têm domicílios de 2,3 a 5 pessoas.
 function chegarFamilia(casa) {
-  const tamanho = inteiroEntre(2, 5);
+  // Nunca mais gente do que cabe: a casa é o teto, não uma sugestão.
+  const vagas = Math.max(0, casa.def.pop - casa.moradores.length);
+  const tamanho = Math.min(inteiroEntre(2, 5), vagas);
+  if (tamanho <= 0) return;
   const sobrenome = escolher(SOBRENOMES);
   const adultos = Math.min(2, tamanho);
   const nomes = [];
@@ -1109,6 +1286,17 @@ function encostaNaRua(tx, ty, w, h) {
   return false;
 }
 
+// O cais só faz sentido com água encostada — é a única construção que exige
+// o vizinho molhado em vez de seco.
+function temAguaPerto(tx, ty, w, h) {
+  for (let y = -1; y <= h; y++)
+    for (let x = -1; x <= w; x++) {
+      const b = biomaEm(tx + x, ty + y);
+      if (b === B.AGUA || b === B.RASO) return true;
+    }
+  return false;
+}
+
 function escolherLote(def) {
   const base = centroDaVila();
   if (!base || !jogo.estradas.size) return null;
@@ -1131,6 +1319,7 @@ function escolherLote(def) {
         const tx = dx !== 0 ? (dx > 0 ? rx + 1 : rx - def.w) : rx - off;
         const ty = dy !== 0 ? (dy > 0 ? ry + 1 : ry - def.h) : ry - off;
         if (!areaValida(tx, ty, def.w, def.h)) continue;
+        if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
         return { tx, ty };
       }
     }
@@ -1144,6 +1333,9 @@ function escolherLote(def) {
 // ângulo reto, o que produz quarteirões em vez de teia de aranha.
 function crescerRua() {
   if (jogo.obrasEstrada.length || jogo.recursos.pedra < 12) return false;
+  // Malha grande demais para o tamanho da vila: rua a mais só come o terreno
+  // onde caberia o lote — e aí a falta de lote pedia outra rua, sem fim.
+  if (jogo.estradas.size > 34 + jogo.predios.length * 18) return false;
   const base = centroDaVila();
   if (!base) return false;
   const btx = Math.floor(base.cx / TILE), bty = Math.floor(base.cy / TILE);
@@ -1183,6 +1375,53 @@ function crescerRua() {
   return true;
 }
 
+// Rua com destino: usada quando a vila quer chegar a algum lugar específico
+// (a beira d'água, por exemplo) em vez de só espalhar a malha.
+function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
+  if (jogo.obrasEstrada.length || jogo.recursos.pedra < 10) return false;
+  let origem = null, melhor = Infinity;
+  for (const k of jogo.estradas) {
+    const [rx, ry] = k.split(',').map(Number);
+    const d = (rx - alvoTx) ** 2 + (ry - alvoTy) ** 2;
+    if (d < melhor) { melhor = d; origem = [rx, ry]; }
+  }
+  if (!origem) return false;
+
+  const tiles = [];
+  let x0 = origem[0], y0 = origem[1];
+  const dx = Math.abs(alvoTx - x0), dy = Math.abs(alvoTy - y0);
+  const sx = x0 < alvoTx ? 1 : -1, sy = y0 < alvoTy ? 1 : -1;
+  let err = dx - dy, guarda = 0;
+  const limite = maxTiles || 8;
+  while (guarda++ < 60 && tiles.length < limite) {
+    if (x0 === alvoTx && y0 === alvoTy) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx) { err += dx; y0 += sy; }
+    if (!podeVirarRua(x0, y0)) break;
+    tiles.push([x0, y0]);
+  }
+  if (tiles.length < 2) return false;
+  jogo.obrasEstrada.push({ tiles, feitos: 0, t: 0 });
+  return true;
+}
+
+// Beira d'água mais próxima do centro, para saber para onde puxar a rua.
+function aguaMaisProxima() {
+  const base = centroDaVila();
+  if (!base) return null;
+  const btx = Math.floor(base.cx / TILE), bty = Math.floor(base.cy / TILE);
+  for (let r = 3; r < 34; r++) {
+    for (let a = 0; a < r * 6; a++) {
+      const ang = a / (r * 6) * 6.2832;
+      const tx = btx + Math.round(Math.cos(ang) * r), ty = bty + Math.round(Math.sin(ang) * r);
+      const b = biomaEm(tx, ty);
+      if (b === B.AGUA || b === B.RASO) return { tx, ty };
+    }
+  }
+  return null;
+}
+
 function podeVirarRua(tx, ty) {
   const k = nk(tx, ty);
   return !SOLIDO[biomaEm(tx, ty)] && !ocupado.has(k) && !jogo.estradas.has(k);
@@ -1207,15 +1446,57 @@ function ruaFundadora(centro) {
   }
 }
 
+function erguerPredio(chave, tx, ty) {
+  const def = PREDIO[chave];
+  if (!podePagar(def.custo)) return false;
+  pagar(def.custo);
+  criarPredio(chave, tx, ty, 0);
+  atualizarHUD();
+  return true;
+}
+
+// Item 4: os aldeões não constroem mais por conta própria — eles pedem. O
+// conselho escolhe o lote e manda o pedido; quem decide é você.
 function construirAuto(chave) {
   const def = PREDIO[chave];
   if (!podePagar(def.custo)) return false;
   const lote = escolherLote(def);
   if (!lote) return false;
-  pagar(def.custo);
-  criarPredio(chave, lote.tx, lote.ty, 0);
-  crônica('O conselho decidiu erguer ' + (def.nome === 'Casa' ? 'uma casa' : 'um(a) ' + def.nome) + '.');
+
+  // Com o jogo fechado não há a quem perguntar: a vila decide sozinha, senão
+  // uma noite de sono viraria uma cidade parada esperando resposta.
+  if (jogo.autoAprovar || emRecuperacao) {
+    if (!erguerPredio(chave, lote.tx, lote.ty)) return false;
+    crônica('O conselho ergueu ' + (def.nome === 'Casa' ? 'uma casa' : 'um(a) ' + def.nome) + '.');
+    return true;
+  }
+
+  const adultos = jogo.pessoas.filter(p => faseDaIdade(p.idade) === FASE.ADULTO);
+  const quem = adultos.length ? adultos[Math.floor(rnd() * adultos.length)] : null;
+  jogo.pedido = {
+    chave, tx: lote.tx, ty: lote.ty,
+    quem: quem ? nomeCompleto(quem) : 'O conselho',
+    anoPedido: jogo.ano,
+  };
+  if (!emRecuperacao) mostrarPedido();
+  crônica((quem ? quem.nome : 'O conselho') + ' pediu para construir ' + def.nome + '.');
   return true;
+}
+
+function responderPedido(sim) {
+  const ped = jogo.pedido;
+  if (!ped) return;
+  jogo.pedido = null;
+  esconderPedido();
+  const def = PREDIO[ped.chave];
+  if (!sim) { crônica('Você recusou a obra de ' + def.nome + '.'); aviso('Pedido recusado'); return; }
+  if (!areaValida(ped.tx, ped.ty, def.w, def.h) || !encostaNaRua(ped.tx, ped.ty, def.w, def.h)) {
+    aviso('O terreno já não serve — eles vão procurar outro');
+    return;
+  }
+  if (!erguerPredio(ped.chave, ped.tx, ped.ty)) { aviso('Faltou recurso para começar'); return; }
+  crônica('Você autorizou ' + def.nome + '.', true);
+  aviso('Obra autorizada');
 }
 
 function temEstradaPerto(pr) {
@@ -1228,17 +1509,75 @@ function temEstradaPerto(pr) {
 // As pessoas trocam de ofício conforme a vila precisa (item 9: conseguir
 // emprego). Sem isso, quem vira colhedor no primeiro ano nunca mais muda e a
 // vila fica sem pedra — logo, sem estradas e sem oficina.
+// A vila reparte a mão de obra por proporção, não por "qual falta mais agora".
+// A regra antiga mandava todo mundo para o mesmo recurso ao mesmo tempo e a
+// cidade virava monocultura: 15 lenhadores e nenhum pedreiro.
 function distribuirOficios() {
-  const precisa = recursoMaisNecessario();
-  const alvo = precisa === 'madeira' ? 'lenhador' : precisa === 'comida' ? 'colhedor' : 'pedreiro';
-  for (const p of jogo.pessoas) {
-    if (faseDaIdade(p.idade) === FASE.CRIANCA) continue;
-    if (p.oficio === 'fazendeiro' || p.oficio === 'construtor') continue;
-    if (p.oficio === alvo || rnd() > 0.3) continue;
-    p.oficio = alvo;
-    p.ordemManual = false;
+  // "Construtor" é papel temporário. Sem obra aberta ele volta a ser mão de
+  // obra comum — senão os construtores se acumulam e a vila para de colher.
+  const temObra = jogo.predios.some(p => p.progresso < 1) || jogo.obrasEstrada.length > 0;
+  if (!temObra) {
+    for (const p of jogo.pessoas) if (p.oficio === 'construtor') p.oficio = 'nenhum';
+  }
+
+  // Solta o posto de lavoura de quem já mudou de ofício. Sem esta varredura a
+  // fazenda ficava marcada como ocupada por um lenhador: ninguém plantava, e o
+  // conselho ainda achava que a vaga estava preenchida.
+  for (const pr of jogo.predios) {
+    if (!pr.def.fazenda || !pr.trabalhador) continue;
+    const t = pessoaPorId(pr.trabalhador);
+    if (!t || (t.oficio !== 'fazendeiro' && t.oficio !== 'pescador')) pr.trabalhador = null;
+  }
+
+  const disponiveis = jogo.pessoas.filter(p =>
+    faseDaIdade(p.idade) !== FASE.CRIANCA && p.oficio !== 'construtor'
+    && p.oficio !== 'fazendeiro' && p.oficio !== 'pescador' && !p.ordemManual);
+
+  // Fazenda pronta e sem ninguém é comida parada: preenche antes de tudo.
+  for (const pr of jogo.predios) {
+    if (!pr.def.fazenda || pr.progresso < 1 || pr.trabalhador) continue;
+    const i = disponiveis.findIndex(p => faseDaIdade(p.idade) === FASE.ADULTO);
+    if (i < 0) break;
+    const cand = disponiveis.splice(i, 1)[0];
+    pr.trabalhador = cand.id; cand.fazendaId = pr.id;
+    cand.oficio = pr.def.pesca ? 'pescador' : 'fazendeiro';
+    cand.estado = 'indoFazenda'; cand.alvo = pr;
+    crônica(nomeCompleto(cand) + (pr.def.pesca ? ' virou pescador.' : ' assumiu a lavoura.'));
+  }
+
+  const trabalhadores = disponiveis;
+  if (!trabalhadores.length) return;
+
+  // Peso de cada frente: começa numa divisão razoável e dobra para o que está
+  // em falta. Assim sempre há alguém em cada ofício, mas a vila reage ao aperto.
+  const r = jogo.recursos, pop = popAtual();
+  const peso = {
+    colhedor: 1.0 * (r.comida < pop * 8 ? 2.4 : r.comida > pop * 30 ? 0.5 : 1),
+    lenhador: 1.0 * (r.madeira < 120 ? 2.0 : r.madeira > 700 ? 0.5 : 1),
+    pedreiro: 0.8 * (r.pedra < 80 ? 2.4 : r.pedra > 600 ? 0.4 : 1),
+  };
+  const soma = peso.colhedor + peso.lenhador + peso.pedreiro;
+
+  const alvo = {};
+  for (const of in peso) alvo[of] = Math.round(trabalhadores.length * peso[of] / soma);
+  const atual = { colhedor:0, lenhador:0, pedreiro:0 };
+  for (const p of trabalhadores) if (atual[p.oficio] !== undefined) atual[p.oficio]++;
+
+  // Move quem está sobrando para onde falta, um punhado por ano.
+  const faltando = Object.keys(alvo).filter(o => atual[o] < alvo[o]);
+  const sobrando = trabalhadores.filter(p => atual[p.oficio] > alvo[p.oficio] || p.oficio === 'nenhum');
+  let trocas = Math.max(1, Math.ceil(trabalhadores.length * 0.25));
+  for (const p of sobrando) {
+    if (trocas <= 0 || !faltando.length) break;
+    const destino = faltando[Math.floor(rnd() * faltando.length)];
+    if (p.oficio === destino) continue;
+    if (atual[p.oficio] !== undefined) atual[p.oficio]--;
+    atual[destino]++;
+    if (atual[destino] >= alvo[destino]) faltando.splice(faltando.indexOf(destino), 1);
+    p.oficio = destino;
     p.estado = 'ocioso'; p.ociosoT = 3; p.alvo = null;
-    if (rnd() < 0.25) crônica(nomeCompleto(p) + ' virou ' + OFICIO[alvo].nome + '.');
+    trocas--;
+    if (rnd() < 0.2) crônica(nomeCompleto(p) + ' virou ' + OFICIO[destino].nome + '.');
   }
 }
 
@@ -1247,6 +1586,7 @@ function distribuirOficios() {
 // lote com testada, a vila abre rua antes de mais nada.
 function conselho() {
   distribuirOficios();
+  if (jogo.pedido) return;        // já há um pedido esperando resposta sua
   if (obrasAtivas() >= 2) return;
   const pop = popAtual(), cap = popMax();
   const casaEmObra = jogo.predios.some(p => p.def.moradia && p.progresso < 1);
@@ -1263,10 +1603,18 @@ function conselho() {
 
   // O que a vila quer erguer agora, em ordem de urgência. Comida na frente de
   // tudo: com árvore e arbusto rendendo pouco, é a lavoura que sustenta cidade.
+  // Fazenda pronta e vazia não resolve fome nenhuma: antes de erguer outra,
+  // a vila precisa ter gente em todas as que já tem.
+  const fazendaVazia = jogo.predios.some(p => p.def.fazenda && p.progresso >= 1 && !p.trabalhador);
+
   let querConstruir = null;
-  if (jogo.recursos.comida < pop * 8) querConstruir = 'fazenda';
+  if (jogo.recursos.comida < pop * 8 && !fazendaVazia) querConstruir = 'fazenda';
+  // Cais e mercado são obras únicas: se ficarem atrás da casa na fila, a casa
+  // é pedida todo ano e eles nunca chegam a existir.
+  else if (!jaTem('cais') && pop >= 8) querConstruir = 'cais';
+  else if (!jaTem('mercado') && pop >= 16) querConstruir = 'mercado';
   else if (!casaEmObra && pop >= cap - 2 && jogo.recursos.comida >= pop * 12) querConstruir = 'casa';
-  else if (fazendas < Math.ceil(pop / 7)) querConstruir = 'fazenda';
+  else if (fazendas < Math.ceil(pop / 7) && !fazendaVazia) querConstruir = 'fazenda';
   else if (!jaTem('oficina') && pop >= 10) querConstruir = 'oficina';
   else if (!jaTem('estabulo') && pop >= 18) querConstruir = 'estabulo';
   else {
@@ -1281,7 +1629,15 @@ function conselho() {
 
   if (querConstruir && podePagar(PREDIO[querConstruir].custo)) {
     if (construirAuto(querConstruir)) return;
-    // Sem lote com testada: abre rua agora e constrói no ano que vem.
+    // Sem lote com testada. Se o que falta é beira d'água, a rua vai para lá;
+    // senão, abre mais malha e tenta de novo no ano que vem.
+    if (PREDIO[querConstruir].beiraDagua) {
+      const agua = aguaMaisProxima();
+      if (agua && crescerRuaRumo(agua.tx, agua.ty, 9)) {
+        crônica('A vila começou a abrir uma rua até a beira d\'água.');
+        return;
+      }
+    }
     if (crescerRua()) crônica('Faltou terreno com frente para a rua — a vila abriu mais uma.');
   }
 }
@@ -1296,9 +1652,69 @@ function casaComVaga() {
   return null;
 }
 
+// Virada de mês: sorteia o tempo e, na primavera, a mata volta.
+function virouMes() {
+  const climaAntes = jogo.clima;
+  sortearClima();
+  if (jogo.clima !== climaAntes && !emRecuperacao) {
+    const c = climaAtual();
+    if (jogo.clima !== 'limpo') aviso(c.icone + ' ' + MESES[mesAtual()] + ' — ' + c.nome);
+  }
+  if (ESTACAO_DO_MES[mesAtual()] === 'primavera') rebrotarMata();
+  feiraDoMes();
+}
+
+// O mercado troca o que sobra pelo que falta, a três por um. É o que faz a
+// vila deixar de morrer de fome com o galpão cheio de madeira.
+function feiraDoMes() {
+  const mercados = jogo.predios.filter(p => p.def.comercio && p.progresso >= 1).length;
+  if (!mercados) return;
+  const r = jogo.recursos;
+  const nomes = ['madeira', 'comida', 'pedra'];
+  const peso = { madeira: r.madeira / 3, comida: r.comida / 2, pedra: r.pedra };
+  let maior = nomes[0], menor = nomes[0];
+  for (const n of nomes) { if (peso[n] > peso[maior]) maior = n; if (peso[n] < peso[menor]) menor = n; }
+  if (maior === menor) return;
+  const vende = Math.min(r[maior] * 0.10 * mercados, 220 * mercados);
+  if (vende < 12) return;
+  r[maior] -= vende;
+  r[menor] += vende / 3;
+  if (!emRecuperacao) flutuarNoMercado(maior, menor, Math.round(vende / 3));
+}
+
+function flutuarNoMercado(de, para, quanto) {
+  const m = jogo.predios.find(p => p.def.comercio && p.progresso >= 1);
+  if (m) flutuar(m.cx, m.cy - 22, RECURSO[de].icone + '→' + quanto + RECURSO[para].icone);
+}
+
+// A floresta se recupera na primavera. Sem isso o mapa em volta da vila fica
+// pelado para sempre e a cidade vira um deserto cercado de tocos.
+function rebrotarMata() {
+  if (!restante.size) return;
+  let voltaram = 0;
+  for (const [k, q] of [...restante.entries()]) {
+    if (q > 0) continue;
+    const [tx, ty] = k.split(',').map(Number);
+    if (ocupado.has(k) || jogo.estradas.has(k)) continue;
+    const tipo = noNatural(tx, ty);
+    if (!tipo || tipo === 'pedra') continue;      // pedra não rebrota
+    if (rnd() > 0.28) continue;
+    restante.delete(k);                            // volta a existir, cheio
+    invalidarChunkDoTile(tx, ty);
+    voltaram++;
+  }
+  if (voltaram > 6) crônica('A primavera trouxe de volta ' + voltaram + ' pontos de mata.');
+}
+
 // Um ano inteiro de vida da vila. Roda igual online e no modo offline.
 function tickAno() {
   jogo.ano++;
+  // Pedido sem resposta por um ano: eles desistem e tocam a vida.
+  if (jogo.pedido && jogo.ano - jogo.pedido.anoPedido >= 1) {
+    crônica('Cansados de esperar, desistiram da obra de ' + PREDIO[jogo.pedido.chave].nome + '.');
+    jogo.pedido = null;
+    if (!emRecuperacao) esconderPedido();
+  }
   const mortos = [], nascidos = [];
 
   for (const p of jogo.pessoas) {
@@ -1410,7 +1826,7 @@ function recuperarOffline(segundos) {
       const ef = (fase === FASE.IDOSO ? 0.6 : 1) * EFIC;
       const of = OFICIO[p.oficio];
       if (of && of.rec) por[of.rec] += TAXA * ef * 0.45;    // desconto de ida e volta
-      else if (p.oficio === 'fazendeiro') por.comida += (fase === FASE.IDOSO ? 0.30 : 0.45) * EFIC;
+      else if (p.oficio === 'fazendeiro') por.comida += (fase === FASE.IDOSO ? 0.42 : 0.62) * EFIC;
     }
     const teto = tetoEstoque();
     for (const k in por) jogo.recursos[k] = Math.min(Math.max(teto, jogo.recursos[k]), jogo.recursos[k] + por[k] * seg);
@@ -1567,6 +1983,7 @@ const predioEm = (wx, wy) => ocupado.get(nk(Math.floor(wx / TILE), Math.floor(wy
 function toque(sx, sy) {
   if (colocando) return;
   const w = telaParaMundo(sx, sy);
+  if (modoRua) { pedirRuaAte(Math.floor(w.x / TILE), Math.floor(w.y / TILE)); return; }
 
   const pes = pessoaEm(w.x, w.y, 20 / cam.z + 12);
   if (pes) {
@@ -1646,7 +2063,8 @@ function confirmarColocacao() {
 
 const el = id => document.getElementById(id);
 const elRes = { madeira: el('r-madeira'), comida: el('r-comida'), pedra: el('r-pedra'), pop: el('r-pop') };
-const elPovo = { ano: el('p-ano'), criancas: el('p-criancas'), adultos: el('p-adultos'), idosos: el('p-idosos'), sem: el('p-sem') };
+const elPovo = { criancas: el('p-criancas'), adultos: el('p-adultos'), idosos: el('p-idosos'), sem: el('p-sem'), dormindo: el('p-dormindo') };
+const elCal = { relogio: el('c-relogio'), data: el('c-data'), estacao: el('c-estacao'), clima: el('c-clima') };
 const barEl = el('bar'), placeEl = el('place'), placeNome = el('placenome');
 
 function atualizarHUD() {
@@ -1655,11 +2073,20 @@ function atualizarHUD() {
   elRes.pedra.textContent   = Math.floor(jogo.recursos.pedra);
   elRes.pop.textContent     = popAtual() + '/' + popMax();
   const c = contarFases();
-  elPovo.ano.textContent = jogo.ano;
+
   elPovo.criancas.textContent = c.crianca;
   elPovo.adultos.textContent = c.adulto;
   elPovo.idosos.textContent = c.idoso;
   elPovo.sem.textContent = c.semOficio;
+  const dormindo = jogo.pessoas.filter(p => p.estado === 'dormindo' || p.estado === 'indoDormir').length;
+  elPovo.dormindo.style.display = dormindo ? '' : 'none';
+  if (dormindo) elPovo.dormindo.querySelector('b').textContent = dormindo;
+  const est = estacaoAtual(), cli = climaAtual();
+  elCal.relogio.textContent = relogio();
+  elCal.data.textContent = MESES[mesAtual()] + ', ano ' + jogo.ano;
+  elCal.estacao.textContent = est.icone + ' ' + est.nome;
+  elCal.clima.textContent = cli.icone;
+  elCal.clima.title = cli.nome;
   if (!colocando) desenharBarra();
 }
 
@@ -1674,6 +2101,100 @@ function desenharBarra() {
     b.onclick = () => iniciarColocacao(chave);
     barEl.appendChild(b);
   }
+  const rua = document.createElement('div');
+  rua.className = 'btn' + (jogo.estradas.size ? '' : ' off');
+  rua.innerHTML = '<span class="ic">🛣️</span><span>Rua</span><span class="cost">1⛏/trecho</span>';
+  rua.onclick = entrarModoRua;
+  barEl.appendChild(rua);
+}
+
+/* ------------------------------------------- pedidos e traçado de ruas --- */
+
+const pedidoEl = el('pedido');
+const ruaModoEl = el('ruamodo');
+let modoRua = false;
+
+function mostrarPedido() {
+  const ped = jogo.pedido;
+  if (!ped) return;
+  const def = PREDIO[ped.chave];
+  el('pedido-texto').innerHTML =
+    '<b>' + ped.quem + '</b> quer construir ' + def.icone + ' <b>' + def.nome + '</b><br>' +
+    '<span style="opacity:.7;font-size:11.5px">custo ' + custoTexto(def.custo) + '</span>';
+  pedidoEl.classList.add('on');
+}
+function esconderPedido() { pedidoEl.classList.remove('on'); }
+
+el('pedido-sim').onclick = () => responderPedido(true);
+el('pedido-nao').onclick = () => responderPedido(false);
+el('pedido-ver').onclick = () => {
+  if (!jogo.pedido) return;
+  cam.x = (jogo.pedido.tx + 1) * TILE;
+  cam.y = (jogo.pedido.ty + 1) * TILE;
+  aviso('Terreno que eles escolheram');
+};
+el('pedido-check').onchange = e => {
+  jogo.autoAprovar = e.target.checked;
+  if (jogo.autoAprovar) {
+    aviso('A vila vai construir sem perguntar');
+    if (jogo.pedido) responderPedido(true);
+  }
+};
+
+function entrarModoRua() {
+  cancelarColocacao();
+  modoRua = true;
+  ruaModoEl.classList.add('on');
+  barEl.classList.add('escondido');
+  aviso('Toque no mapa: a equipe abre a rua a partir da rede atual');
+}
+function sairModoRua() {
+  modoRua = false;
+  ruaModoEl.classList.remove('on');
+  barEl.classList.remove('escondido');
+  desenharBarra();
+}
+el('rua-sair').onclick = sairModoRua;
+
+// Traça uma via da rede existente até onde você tocou. Quem constrói são os
+// aldeões, tile a tile, pagando pedra — igual às ruas que eles mesmos abrem.
+function pedirRuaAte(tx, ty) {
+  // Aceita até três frentes de obra: recusar porque os aldeões já estão
+  // abrindo uma rua deixava o botão parecendo quebrado.
+  if (jogo.obrasEstrada.length >= 3) { aviso('Já há três ruas em obras — espere terminar'); return; }
+  if (!jogo.estradas.size) { aviso('Não há rede de ruas para partir'); return; }
+  if (SOLIDO[biomaEm(tx, ty)]) { aviso('Não dá para passar rua na água'); return; }
+
+  let origem = null, melhor = Infinity;
+  for (const k of jogo.estradas) {
+    const [rx, ry] = k.split(',').map(Number);
+    const d = (rx - tx) ** 2 + (ry - ty) ** 2;
+    if (d < melhor) { melhor = d; origem = [rx, ry]; }
+  }
+  const dist = Math.sqrt(melhor);
+  if (dist < 1) { aviso('Já é rua'); return; }
+  if (dist > 40) { aviso('Longe demais — abra a rua por partes'); return; }
+
+  const tiles = [];
+  let x0 = origem[0], y0 = origem[1];
+  const dx = Math.abs(tx - x0), dy = Math.abs(ty - y0);
+  const sx = x0 < tx ? 1 : -1, sy = y0 < ty ? 1 : -1;
+  let err = dx - dy, guarda = 0;
+  while (guarda++ < 90) {
+    if (podeVirarRua(x0, y0)) tiles.push([x0, y0]);
+    if (x0 === tx && y0 === ty) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx) { err += dx; y0 += sy; }
+  }
+  if (!tiles.length) { aviso('Não há por onde passar'); return; }
+  if (jogo.recursos.pedra < tiles.length) {
+    aviso('Falta pedra: precisa de ' + tiles.length + '⛏ e você tem ' + Math.floor(jogo.recursos.pedra));
+    return;
+  }
+  jogo.obrasEstrada.push({ tiles, feitos: 0, t: 0 });
+  crônica('Você mandou abrir uma rua de ' + tiles.length + ' trechos.');
+  aviso('Rua encomendada: ' + tiles.length + ' trechos, ' + tiles.length + '⛏');
 }
 
 const toastEl = el('toast');
@@ -1865,193 +2386,650 @@ function desenharEstrada(g, tx, ty) {
 }
 
 /* -------------------------------------------------- árvores, pedras, mato - */
+/*
+   Árvore e pedra são desenhadas UMA vez, em canvas próprio, e depois só
+   copiadas na tela. É o que permite uma copa feita de 90 tufos de folha e uma
+   rocha facetada com veios: desenhar isso a cada quadro, para cada árvore
+   visível, seria impossível — copiar uma imagem pronta é praticamente de graça.
+*/
 
-function desenharArvoreRedonda(g, n) {
-  const s = n.s, x = n.x, y = n.y;
-  const v = n.semente;
-  sombraNoChao(g, x + 2.5 * s, y + 4.5 * s, 10 * s, 4.2 * s, 0.24);
+const SPRITES = new Map();
+const SP_ESC = 3;                 // resolução extra, para aguentar o zoom
+const VARIANTES = 6;
 
-  // Tronco com leve conicidade e casca do lado sombreado.
-  g.fillStyle = '#6b4f34';
-  g.beginPath();
-  g.moveTo(x - 2.9 * s, y + 5 * s);
-  g.lineTo(x - 1.9 * s, y - 8 * s);
-  g.lineTo(x + 1.9 * s, y - 8 * s);
-  g.lineTo(x + 2.9 * s, y + 5 * s);
-  g.closePath(); g.fill();
-  g.fillStyle = 'rgba(0,0,0,.22)';
-  g.fillRect(x + 0.6 * s, y - 8 * s, 2.2 * s, 13 * s);
-
-  // Copa em três massas: base escura, corpo, e luz no alto à esquerda.
-  const base = 34 + v * 16;
-  const folha = '#' + [(38 + base * 0.3) | 0, (92 + base) | 0, (44 + base * 0.35) | 0]
-    .map(c => Math.min(255, c).toString(16).padStart(2, '0')).join('');
-
-  g.fillStyle = tom(folha, -26);
-  g.beginPath();
-  g.arc(x - 6.5 * s, y - 10 * s, 8.2 * s, 0, 6.2832);
-  g.arc(x + 6.5 * s, y - 10.5 * s, 7.8 * s, 0, 6.2832);
-  g.arc(x + 0.5 * s, y - 15 * s, 9.6 * s, 0, 6.2832);
-  g.fill();
-
-  g.fillStyle = folha;
-  g.beginPath();
-  g.arc(x - 4.5 * s, y - 13 * s, 6.8 * s, 0, 6.2832);
-  g.arc(x + 4.5 * s, y - 13.5 * s, 6.2 * s, 0, 6.2832);
-  g.arc(x - 0.5 * s, y - 18 * s, 7.4 * s, 0, 6.2832);
-  g.fill();
-
-  g.fillStyle = tom(folha, 30);
-  g.beginPath();
-  g.arc(x - 4 * s, y - 18 * s, 4.4 * s, 0, 6.2832);
-  g.arc(x - 0.5 * s, y - 21 * s, 3.4 * s, 0, 6.2832);
-  g.fill();
-
-  if (v > 0.72) {   // frutinhas
-    g.fillStyle = '#c0453f';
-    g.beginPath(); g.arc(x + 3 * s, y - 15 * s, 1.5 * s, 0, 6.2832); g.fill();
-    g.beginPath(); g.arc(x - 6 * s, y - 11 * s, 1.4 * s, 0, 6.2832); g.fill();
-  }
+function sprite(chave, larg, alt, ancoraX, ancoraY, desenhar) {
+  const achado = SPRITES.get(chave);
+  if (achado) return achado;
+  const cv2 = document.createElement('canvas');
+  cv2.width = Math.ceil(larg * SP_ESC);
+  cv2.height = Math.ceil(alt * SP_ESC);
+  const g = cv2.getContext('2d');
+  g.scale(SP_ESC, SP_ESC);
+  desenhar(g);
+  const sp = { cv: cv2, larg, alt, ax: ancoraX, ay: ancoraY };
+  SPRITES.set(chave, sp);
+  return sp;
 }
 
-function desenharConifera(g, n) {
-  const s = n.s, x = n.x, y = n.y;
-  sombraNoChao(g, x + 2 * s, y + 4 * s, 8 * s, 3.4 * s, 0.24);
+// Gerador determinístico por variante, para as seis árvores serem sempre iguais.
+function dado(v, i) { return hash2(v * 977 + i, i * 31 + 7, 12345); }
 
-  g.fillStyle = '#5b4229';
-  g.fillRect(x - 1.8 * s, y - 3 * s, 3.6 * s, 8 * s);
+/* ---- folhagem: tufos pequenos com quatro tons, dentro de um contorno
+   irregular. O contorno é o que tira a cara de bola verde. ---- */
 
-  const escuro = '#20452e', claro = '#356b41';
-  // Quatro saias de galhos, cada uma com metade iluminada.
-  for (let i = 0; i < 4; i++) {
-    const larg = (12 - i * 2.3) * s;
-    const base = y - 2 * s - i * 6.4 * s;
-    const topo = base - 10 * s;
-    g.fillStyle = escuro;
-    g.beginPath();
-    g.moveTo(x, topo); g.lineTo(x - larg, base); g.lineTo(x + larg, base);
-    g.closePath(); g.fill();
-    g.fillStyle = claro;
-    g.beginPath();
-    g.moveTo(x, topo); g.lineTo(x - larg, base); g.lineTo(x, base);
-    g.closePath(); g.fill();
+function copa(g, cx, cy, raio, v, paleta) {
+  const tufos = [];
+  const N = 92;
+  for (let i = 0; i < N; i++) {
+    const ang = dado(v, i * 3) * 6.2832;
+    // Raio com ruído: recorta a silhueta em vez de deixar círculo perfeito.
+    const ondulado = 0.62 + dado(v, i * 3 + 1) * 0.38
+                   + Math.sin(ang * (3 + v % 3) + v) * 0.13;
+    const r = raio * ondulado * Math.sqrt(dado(v, i * 3 + 2) * 0.55 + 0.45);
+    const x = cx + Math.cos(ang) * r;
+    const y = cy + Math.sin(ang) * r * 0.80;      // copa mais larga que alta
+    tufos.push({ x, y, r: raio * (0.17 + dado(v, i * 5) * 0.13) });
   }
-  if (n.neve) {   // neve acumulada nos galhos
-    g.fillStyle = 'rgba(255,255,255,.85)';
+  // Pinta de baixo para cima: o que está atrás fica escuro, o de cima recebe luz.
+  tufos.sort((a, b) => (b.y - a.y) || (b.x - a.x));
+  for (let i = 0; i < tufos.length; i++) {
+    const t = tufos[i];
+    const alto = 1 - (t.y - (cy - raio)) / (raio * 1.8);       // 0 embaixo, 1 no topo
+    const esq = 1 - (t.x - (cx - raio)) / (raio * 2);          // 1 na esquerda
+    const luz = Math.max(0, Math.min(1, alto * 0.65 + esq * 0.35));
+    const nivel = luz < 0.3 ? 0 : luz < 0.55 ? 1 : luz < 0.8 ? 2 : 3;
+    g.fillStyle = paleta[nivel];
+    g.beginPath();
+    g.ellipse(t.x, t.y, t.r * 1.25, t.r, dado(v, i * 7) * 3, 0, 6.2832);
+    g.fill();
+  }
+  // Buracos de céu: sem eles a massa fica sólida demais para parecer folha.
+  g.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 7; i++) {
+    const ang = dado(v, 700 + i) * 6.2832;
+    const r = raio * (0.25 + dado(v, 720 + i) * 0.5);
+    g.beginPath();
+    g.ellipse(cx + Math.cos(ang) * r, cy + Math.sin(ang) * r * 0.8,
+              raio * 0.07, raio * 0.05, ang, 0, 6.2832);
+    g.fill();
+  }
+  g.globalCompositeOperation = 'source-over';
+}
+
+const PALETAS_FOLHA = [
+  ['#1d3d20', '#2f5c2c', '#4a8138', '#79b04a'],
+  ['#1b3a26', '#2b5734', '#468045', '#71a95c'],
+  ['#243d1c', '#395c26', '#568a34', '#8cbb4c'],
+  ['#1a3524', '#2d5535', '#437b45', '#6da45e'],
+];
+
+function spriteArvore(v) {
+  const L = 46, A = 58;
+  return sprite('arv' + v, L, A, L / 2, A - 3, g => {
+    const cx = L / 2, base = A - 4;
+    const paleta = PALETAS_FOLHA[v % PALETAS_FOLHA.length];
+
+    // Sombra no chão, alongada para o lado oposto à luz.
+    g.fillStyle = 'rgba(22,30,18,.26)';
+    g.beginPath(); g.ellipse(cx + 3, base, 12, 4.6, 0, 0, 6.2832); g.fill();
+
+    // Tronco: dois lados, um na sombra, com raízes alargando na base.
+    const altTronco = 20 + dado(v, 1) * 6;
+    g.fillStyle = '#5c4630';
+    g.beginPath();
+    g.moveTo(cx - 4.2, base);
+    g.quadraticCurveTo(cx - 2.4, base - altTronco * 0.6, cx - 1.9, base - altTronco);
+    g.lineTo(cx + 1.9, base - altTronco);
+    g.quadraticCurveTo(cx + 2.4, base - altTronco * 0.6, cx + 4.2, base);
+    g.closePath(); g.fill();
+    g.fillStyle = 'rgba(0,0,0,.24)';
+    g.beginPath();
+    g.moveTo(cx + 0.6, base); g.lineTo(cx + 0.6, base - altTronco);
+    g.lineTo(cx + 1.9, base - altTronco); g.quadraticCurveTo(cx + 2.4, base - altTronco * 0.6, cx + 4.2, base);
+    g.closePath(); g.fill();
+    // Casca
+    g.strokeStyle = 'rgba(30,20,12,.30)'; g.lineWidth = 0.5;
+    for (let i = 0; i < 5; i++) {
+      const y = base - 3 - i * (altTronco / 6);
+      g.beginPath(); g.moveTo(cx - 3 + dado(v, 30 + i), y); g.lineTo(cx - 1 + dado(v, 40 + i) * 2, y - 2.5); g.stroke();
+    }
+
+    // Galhos entrando na copa: aparecem nos buracos e dão estrutura.
+    g.strokeStyle = '#4a3726'; g.lineCap = 'round';
     for (let i = 0; i < 4; i++) {
-      const larg = (12 - i * 2.3) * s, base = y - 2 * s - i * 6.4 * s;
+      const ang = -1.9 + i * 0.62 + dado(v, 50 + i) * 0.3;
+      g.lineWidth = 1.8 - i * 0.15;
       g.beginPath();
-      g.moveTo(x, base - 10 * s);
-      g.lineTo(x - larg * 0.55, base - 1.5 * s);
-      g.lineTo(x + larg * 0.2, base - 2.5 * s);
+      g.moveTo(cx, base - altTronco + 2);
+      g.quadraticCurveTo(cx + Math.cos(ang) * 7, base - altTronco - 4,
+                         cx + Math.cos(ang) * 14, base - altTronco - 10 - dado(v, 60 + i) * 5);
+      g.stroke();
+    }
+    g.lineCap = 'butt';
+
+    const raio = 17.5 + dado(v, 2) * 3.5;
+    copa(g, cx, base - altTronco - 9, raio, v, paleta);
+
+    // Frutinhas em uma variante ou outra.
+    if (v % 3 === 0) {
+      g.fillStyle = '#b8433c';
+      for (let i = 0; i < 7; i++) {
+        const ang = dado(v, 900 + i) * 6.2832, r = raio * (0.35 + dado(v, 920 + i) * 0.5);
+        g.beginPath();
+        g.arc(cx + Math.cos(ang) * r, base - altTronco - 9 + Math.sin(ang) * r * 0.8, 1.1, 0, 6.2832);
+        g.fill();
+      }
+    }
+  });
+}
+
+function spriteConifera(v, comNeve) {
+  const L = 34, A = 62;
+  return sprite('con' + v + (comNeve ? 'n' : ''), L, A, L / 2, A - 3, g => {
+    const cx = L / 2, base = A - 4;
+    g.fillStyle = 'rgba(22,30,18,.26)';
+    g.beginPath(); g.ellipse(cx + 2, base, 9, 3.6, 0, 0, 6.2832); g.fill();
+
+    g.fillStyle = '#4a3524';
+    g.fillRect(cx - 2, base - 12, 4, 12);
+    g.fillStyle = 'rgba(0,0,0,.25)';
+    g.fillRect(cx + 0.4, base - 12, 1.6, 12);
+
+    // Saias de galho com dentes irregulares. Cada variante tem número e
+    // largura próprios, senão as seis coníferas saem iguais.
+    const camadas = 5 + (v % 3);
+    const largBase = 14 + dado(v, 90) * 4;
+    const passo = (A - 22) / camadas;
+    const escuro = '#1b3826', medio = '#27543a', claro = '#356e46';
+
+    for (let i = 0; i < camadas; i++) {
+      const t = i / (camadas - 1);
+      const larg = largBase * (1 - t * 0.74);
+      const yBase = base - 9 - i * passo;
+      const ponta = yBase - passo * 1.75;
+
+      // Contorno da saia, guardado para reaproveitar no recorte de luz e neve.
+      const contorno = g2 => {
+        g2.beginPath();
+        g2.moveTo(cx, ponta);
+        for (let k = 0; k <= 8; k++) {
+          const f = k / 8;
+          const x = cx - larg + f * larg * 2;
+          const dente = (k % 2 ? 2.2 : 0) + dado(v, i * 11 + k) * 1.8;
+          g2.lineTo(x, yBase + dente);
+        }
+        g2.closePath();
+      };
+
+      g.fillStyle = medio; contorno(g); g.fill();
+
+      // Meia-luz na esquerda e sombra na direita: é o que dá volume ao cone.
+      g.save(); contorno(g); g.clip();
+      g.fillStyle = claro;
+      g.fillRect(cx - larg - 1, ponta - 1, larg * 0.92, passo * 3);
+      g.fillStyle = escuro;
+      g.fillRect(cx + larg * 0.38, ponta - 1, larg, passo * 3);
+      g.restore();
+
+      if (comNeve) {
+        // Neve só na crista dos galhos, acompanhando a inclinação.
+        g.save(); contorno(g); g.clip();
+        g.fillStyle = 'rgba(248,251,255,.9)';
+        g.beginPath();
+        g.moveTo(cx, ponta);
+        g.lineTo(cx - larg, yBase);
+        g.lineTo(cx - larg * 0.5, yBase - passo * 0.28);
+        g.lineTo(cx, yBase - passo * 0.1);
+        g.lineTo(cx + larg * 0.55, yBase - passo * 0.3);
+        g.lineTo(cx + larg, yBase);
+        g.lineTo(cx + larg * 0.2, ponta + passo * 0.5);
+        g.closePath(); g.fill();
+        g.restore();
+      }
+    }
+  });
+}
+
+const PALETAS_PEDRA = [
+  ['#4e535a', '#6f757d', '#9aa1a9', '#c3cad2'],
+  ['#4f4d46', '#726f66', '#9b978c', '#c2beb2'],
+  ['#4a4f52', '#6b7175', '#949a9f', '#bcc3c8'],
+];
+
+function spritePedra(v, comNeve) {
+  const L = 40, A = 34;
+  return sprite('ped' + v + (comNeve ? 'n' : ''), L, A, L / 2, A - 4, g => {
+    const cx = L / 2, base = A - 5;
+    const pal = PALETAS_PEDRA[v % PALETAS_PEDRA.length];
+
+    g.fillStyle = 'rgba(22,30,18,.30)';
+    g.beginPath(); g.ellipse(cx + 3, base + 1, 14, 4.4, 0, 0, 6.2832); g.fill();
+
+    // Contorno do bloco: polígono irregular, sempre o mesmo por variante.
+    const pontos = [];
+    const N = 9;
+    for (let i = 0; i < N; i++) {
+      const ang = (i / N) * 6.2832 - 1.57;
+      const r = 12 + dado(v, i) * 6;
+      pontos.push([cx + Math.cos(ang) * r, base - 9 + Math.sin(ang) * r * 0.72]);
+    }
+    // Face frontal
+    g.fillStyle = pal[1];
+    g.beginPath();
+    g.moveTo(pontos[0][0], pontos[0][1]);
+    for (const p of pontos) g.lineTo(p[0], p[1]);
+    g.closePath(); g.fill();
+
+    // Face de cima, virada para a luz: recorta os pontos superiores.
+    const topo = pontos.filter(p => p[1] < base - 9);
+    if (topo.length > 2) {
+      g.fillStyle = pal[2];
+      g.beginPath();
+      g.moveTo(cx, base - 9);
+      for (const p of topo) g.lineTo(p[0], p[1] + 1);
+      g.closePath(); g.fill();
+      g.fillStyle = pal[3];
+      g.beginPath();
+      g.moveTo(cx - 2, base - 12);
+      for (const p of topo.slice(0, Math.ceil(topo.length / 2))) g.lineTo(p[0], p[1] + 2.5);
       g.closePath(); g.fill();
     }
-  }
-}
-
-function desenharPedra(g, n) {
-  const s = n.s, x = n.x, y = n.y, v = n.semente;
-  sombraNoChao(g, x + 2 * s, y + 3.5 * s, 9.5 * s, 3.6 * s, 0.26);
-
-  const corpo = v > 0.5 ? '#8e8b85' : '#7f8a90';
-
-  // Bloco facetado: topo claro, frente média, lateral escura. Três polígonos
-  // bastam para a pedra parar de parecer uma bolha cinza.
-  g.fillStyle = tom(corpo, -34);
-  g.beginPath();
-  g.moveTo(x - 9 * s, y + 1 * s);
-  g.lineTo(x - 5 * s, y - 7 * s);
-  g.lineTo(x + 2 * s, y - 8 * s);
-  g.lineTo(x + 4 * s, y + 3 * s);
-  g.lineTo(x - 4 * s, y + 4.5 * s);
-  g.closePath(); g.fill();
-
-  g.fillStyle = corpo;
-  g.beginPath();
-  g.moveTo(x - 5 * s, y - 7 * s);
-  g.lineTo(x + 2 * s, y - 8 * s);
-  g.lineTo(x + 8 * s, y - 3 * s);
-  g.lineTo(x + 4 * s, y + 3 * s);
-  g.closePath(); g.fill();
-
-  g.fillStyle = tom(corpo, 26);
-  g.beginPath();
-  g.moveTo(x - 5 * s, y - 7 * s);
-  g.lineTo(x - 1 * s, y - 11.5 * s);
-  g.lineTo(x + 5 * s, y - 10 * s);
-  g.lineTo(x + 2 * s, y - 8 * s);
-  g.closePath(); g.fill();
-
-  // Segundo bloco menor encostado, e rachaduras.
-  g.fillStyle = tom(corpo, -12);
-  g.beginPath();
-  g.moveTo(x + 4 * s, y + 1 * s);
-  g.lineTo(x + 7 * s, y - 4 * s);
-  g.lineTo(x + 11 * s, y - 1 * s);
-  g.lineTo(x + 9 * s, y + 3.5 * s);
-  g.closePath(); g.fill();
-
-  g.strokeStyle = 'rgba(30,32,34,.32)'; g.lineWidth = 0.9 * s;
-  g.beginPath();
-  g.moveTo(x - 3 * s, y - 6 * s); g.lineTo(x - 1 * s, y - 1 * s); g.lineTo(x + 2.5 * s, y + 1 * s);
-  g.stroke();
-
-  if (n.neve) {
-    g.fillStyle = 'rgba(255,255,255,.8)';
+    // Face direita, na sombra
+    g.fillStyle = pal[0];
     g.beginPath();
-    g.moveTo(x - 5 * s, y - 7 * s);
-    g.lineTo(x - 1 * s, y - 11.5 * s);
-    g.lineTo(x + 5 * s, y - 10 * s);
-    g.lineTo(x + 2 * s, y - 8.6 * s);
+    g.moveTo(cx + 2, base - 12);
+    for (const p of pontos.filter(p => p[0] > cx)) g.lineTo(p[0], p[1]);
+    g.lineTo(cx + 3, base);
     g.closePath(); g.fill();
-  }
+
+    // Veios e trincas
+    g.strokeStyle = 'rgba(20,22,24,.34)';
+    for (let i = 0; i < 3; i++) {
+      g.lineWidth = 0.6 + dado(v, 200 + i) * 0.5;
+      g.beginPath();
+      let x = cx - 8 + dado(v, 210 + i) * 16, y = base - 18 + dado(v, 220 + i) * 6;
+      g.moveTo(x, y);
+      for (let k = 0; k < 3; k++) {
+        x += (dado(v, 230 + i * 4 + k) - 0.4) * 7;
+        y += 2.4 + dado(v, 240 + i * 4 + k) * 2.4;
+        g.lineTo(x, y);
+      }
+      g.stroke();
+    }
+    // Granulado do granito
+    for (let i = 0; i < 60; i++) {
+      const px = cx - 15 + dado(v, 300 + i * 2) * 30;
+      const py = base - 22 + dado(v, 301 + i * 2) * 22;
+      g.fillStyle = i % 3 === 0 ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.13)';
+      g.fillRect(px, py, 1, 1);
+    }
+    // Musgo na base, do lado sombreado
+    g.fillStyle = 'rgba(74,110,52,.42)';
+    for (let i = 0; i < 6; i++) {
+      const px = cx - 12 + dado(v, 400 + i) * 22;
+      g.beginPath(); g.ellipse(px, base - 2 + dado(v, 410 + i) * 2, 2.6, 1.4, 0, 0, 6.2832); g.fill();
+    }
+    if (comNeve) {
+      g.fillStyle = 'rgba(255,255,255,.82)';
+      g.beginPath();
+      g.moveTo(cx - 10, base - 13);
+      g.quadraticCurveTo(cx, base - 20, cx + 10, base - 12);
+      g.quadraticCurveTo(cx, base - 15, cx - 10, base - 13);
+      g.closePath(); g.fill();
+    }
+  });
 }
 
-function desenharMoita(g, n) {
-  const s = n.s, x = n.x, y = n.y;
-  sombraNoChao(g, x + 1.5 * s, y + 3.5 * s, 7.5 * s, 3 * s, 0.2);
-  g.fillStyle = '#33612f';
-  g.beginPath();
-  g.arc(x - 5 * s, y - 0.5 * s, 5.2 * s, 0, 6.2832);
-  g.arc(x + 5 * s, y - 0.5 * s, 5 * s, 0, 6.2832);
-  g.arc(x, y - 5 * s, 6 * s, 0, 6.2832);
-  g.fill();
-  g.fillStyle = '#4a8a41';
-  g.beginPath();
-  g.arc(x - 3.5 * s, y - 3.5 * s, 4 * s, 0, 6.2832);
-  g.arc(x + 1.5 * s, y - 6 * s, 3.6 * s, 0, 6.2832);
-  g.fill();
-  g.fillStyle = '#d1494a';
-  const bagas = [[2.5, -6.5], [-4.5, -2], [4.5, -2.5], [-1, -3.5]];
-  for (const [bx, by] of bagas) {
-    g.beginPath(); g.arc(x + bx * s, y + by * s, 1.7 * s, 0, 6.2832); g.fill();
-  }
-  g.fillStyle = 'rgba(255,255,255,.5)';
-  g.beginPath(); g.arc(x + 2 * s, y - 7 * s, 0.6 * s, 0, 6.2832); g.fill();
+function spriteMoita(v) {
+  const L = 30, A = 26;
+  return sprite('moi' + v, L, A, L / 2, A - 3, g => {
+    const cx = L / 2, base = A - 4;
+    g.fillStyle = 'rgba(22,30,18,.22)';
+    g.beginPath(); g.ellipse(cx + 2, base, 9, 3.2, 0, 0, 6.2832); g.fill();
+    copa(g, cx, base - 7, 9.5, v + 40, ['#1d3d20', '#2f5c2c', '#4a8138', '#79b04a']);
+    g.fillStyle = '#c0403c';
+    for (let i = 0; i < 9; i++) {
+      const ang = dado(v, 500 + i) * 6.2832, r = 8 * (0.3 + dado(v, 520 + i) * 0.7);
+      g.beginPath();
+      g.arc(cx + Math.cos(ang) * r, base - 7 + Math.sin(ang) * r * 0.75, 1.3, 0, 6.2832);
+      g.fill();
+      g.fillStyle = i % 3 ? '#c0403c' : '#d9635c';
+    }
+  });
 }
 
 function desenharNo(g, n) {
-  if (n.tipo === 'madeira') { n.conifera ? desenharConifera(g, n) : desenharArvoreRedonda(g, n); }
-  else if (n.tipo === 'pedra') desenharPedra(g, n);
-  else desenharMoita(g, n);
+  const v = Math.floor((n.semente || 0) * VARIANTES) % VARIANTES;
+  const s = (n.s || 1) * 0.78;
+  let sp;
+  if (n.tipo === 'madeira') sp = n.conifera ? spriteConifera(v, n.neve) : spriteArvore(v);
+  else if (n.tipo === 'pedra') sp = spritePedra(v, n.neve);
+  else sp = spriteMoita(v);
+  g.drawImage(sp.cv, n.x - sp.ax * s, n.y - sp.ay * s, sp.larg * s, sp.alt * s);
 }
 
 /* ------------------------------------------------------------- prédios ---- */
+/*
+   Mesma ideia das árvores: a carcaça do prédio (telhado com fiadas de telha,
+   parede de enxaimel, alicerce de pedra, portas e janelas) é desenhada uma vez
+   por tipo e variante. Só o que muda — obra em andamento, luz acesa, fumaça,
+   barra de produção — é pintado por cima a cada quadro.
+*/
+
+/* Cada prédio sorteia forma de telhado, cores, proporção e puxadinhos a partir
+   do próprio id. Antes só o tom mudava e a rua inteira parecia o mesmo molde
+   repetido — que é o que mata a impressão de cidade. */
+
+const TETOS_TELHA = ['#a8453a', '#8e4438', '#7d3f36', '#b5563f'];
+const TETOS_FRIOS = ['#4e5a63', '#5b6a63', '#46525c'];
+const TETOS_PALHA = ['#b99a5c', '#a98a4e', '#c4a869'];
+const PAREDES_CASA = ['#e4dbc8', '#d8c9a6', '#c9ab7e', '#bfb4a1', '#cdb894', '#b39a74'];
+
+function estiloPredio(chave, v) {
+  const semente = chave.length * 131 + v * 977;
+  const d = i => hash2(semente, i * 37 + 11, 20260831);
+  const casa = chave === 'casa';
+
+  const formas = ['duasAguas', 'quatroAguas', 'mansarda', 'duasAguas', 'quatroAguas', 'palha'];
+  const forma = formas[Math.floor(d(1) * formas.length)];
+
+  let teto;
+  if (forma === 'palha') teto = TETOS_PALHA[Math.floor(d(2) * TETOS_PALHA.length)];
+  else if (d(3) > 0.62) teto = TETOS_FRIOS[Math.floor(d(4) * TETOS_FRIOS.length)];
+  else teto = TETOS_TELHA[Math.floor(d(5) * TETOS_TELHA.length)];
+
+  return {
+    forma,
+    teto: casa ? teto : tom(PREDIO[chave].teto, Math.round((d(6) - 0.5) * 26)),
+    parede: casa ? PAREDES_CASA[Math.floor(d(7) * PAREDES_CASA.length)]
+                 : tom(PREDIO[chave].cor, Math.round((d(8) - 0.5) * 24)),
+    larg: 0.82 + d(9) * 0.18,         // quanto do lote a casa ocupa
+    altura: 0.90 + d(10) * 0.18,      // pé-direito
+    inclina: 0.32 + d(11) * 0.16,     // altura do telhado
+    anexo: casa && d(12) > 0.50,      // puxadinho lateral
+    ladoAnexo: d(13) > 0.5 ? 1 : -1,
+    trama: Math.floor(d(14) * 4),     // desenho do enxaimel
+    lenha: d(15) > 0.55,
+    pedraBaixa: d(16) > 0.60,         // térreo de pedra
+    ladoChamine: d(17) > 0.5 ? 1 : -1,
+    agua: d(18) > 0.70,               // barril de água
+  };
+}
+
+function spritePredio(chave, vari) {
+  const def = PREDIO[chave];
+  const MARG = 12;                                   // folga para puxadinho e beiral
+  const L = def.w * TILE + MARG * 2, A = def.h * TILE + 16 + MARG;
+  return sprite('pr_' + chave + '_' + vari, L, A, MARG, 16, g => {
+    const e = estiloPredio(chave, vari);
+    const larguraLote = def.w * TILE, alturaLote = def.h * TILE;
+    const cw = larguraLote * e.larg;                 // largura do corpo
+    const x0 = MARG + (larguraLote - cw) / 2;
+    const pe = 16 + alturaLote - 3;                  // linha do chão
+    const corpoAlt = Math.max(16, alturaLote * 0.56 * e.altura);
+    const cumeeira = pe - corpoAlt;                  // topo da parede
+    const topoTeto = cumeeira - alturaLote * e.inclina;
+
+    /* --- sombra projetada --- */
+    g.fillStyle = 'rgba(20,26,16,.26)';
+    g.beginPath();
+    g.moveTo(x0 + cw * 0.14, pe + 2);
+    g.lineTo(x0 + cw + 8, pe + 2);
+    g.lineTo(x0 + cw + 8, cumeeira + 5);
+    g.lineTo(x0 + cw - 3, cumeeira - 1);
+    g.closePath(); g.fill();
+
+    /* --- puxadinho: um telheiro baixo colado na lateral --- */
+    if (e.anexo) {
+      const aw = cw * 0.32, ax = e.ladoAnexo > 0 ? x0 + cw - 2 : x0 - aw + 2;
+      const ay = pe - corpoAlt * 0.62;
+      g.fillStyle = tom(e.parede, -16);
+      g.fillRect(ax, ay, aw, pe - ay);
+      g.fillStyle = tom(e.teto, -16);
+      g.beginPath();
+      g.moveTo(ax - 3, ay + 4);
+      g.lineTo(ax + aw / 2, ay - 6);
+      g.lineTo(ax + aw + 3, ay + 4);
+      g.lineTo(ax + aw + 3, ay + 7);
+      g.lineTo(ax - 3, ay + 7);
+      g.closePath(); g.fill();
+    }
+
+    /* --- alicerce --- */
+    const alic = e.pedraBaixa ? Math.min(14, corpoAlt * 0.42) : 7;
+    g.fillStyle = '#6f6a61';
+    g.fillRect(x0, pe - alic, cw, alic);
+    for (let i = 0, x = x0 + 1; x < x0 + cw - 1; i++) {
+      const larg = 5 + ((i * 37 + vari * 13) % 6);
+      g.fillStyle = i % 2 ? '#807b72' : '#635f57';
+      g.fillRect(x, pe - alic + 1, Math.min(larg - 1, x0 + cw - 1 - x), alic - 2);
+      x += larg;
+    }
+    g.strokeStyle = 'rgba(0,0,0,.22)'; g.lineWidth = 0.7;
+    g.strokeRect(x0, pe - alic, cw, alic);
+
+    /* --- parede --- */
+    const py = cumeeira, ph = (pe - alic) - py;
+    if (ph > 3) {
+      g.fillStyle = e.parede;
+      g.fillRect(x0, py, cw, ph);
+      g.fillStyle = 'rgba(0,0,0,.15)';
+      g.fillRect(x0 + cw - 7, py, 7, ph);
+
+      // Enxaimel: quatro desenhos possíveis de viga.
+      const viga = 'rgba(84,58,38,.72)';
+      g.strokeStyle = viga; g.lineWidth = 2.2;
+      g.beginPath();
+      g.moveTo(x0 + 1, py + 1); g.lineTo(x0 + cw - 1, py + 1);
+      g.moveTo(x0 + 1, pe - alic - 1); g.lineTo(x0 + cw - 1, pe - alic - 1);
+      g.moveTo(x0 + 2, py); g.lineTo(x0 + 2, pe - alic);
+      g.moveTo(x0 + cw - 2, py); g.lineTo(x0 + cw - 2, pe - alic);
+      g.stroke();
+      g.lineWidth = 1.6;
+      const vaos = Math.max(1, Math.round(cw / 24));
+      if (e.trama !== 3) {
+        for (let i = 1; i < vaos; i++) {
+          const x = x0 + cw * i / vaos;
+          g.beginPath(); g.moveTo(x, py); g.lineTo(x, pe - alic); g.stroke();
+        }
+      }
+      if (e.trama === 0 || e.trama === 2) {
+        for (let i = 0; i < vaos; i++) {
+          const x1 = x0 + cw * i / vaos, x2 = x0 + cw * (i + 1) / vaos;
+          g.beginPath();
+          g.moveTo(x1 + 1, pe - alic - 1); g.lineTo(x2 - 1, py + ph * 0.42);
+          if (e.trama === 2) { g.moveTo(x2 - 1, pe - alic - 1); g.lineTo(x1 + 1, py + ph * 0.42); }
+          g.stroke();
+        }
+      }
+      if (e.trama === 1) {
+        const ym = py + ph * 0.5;
+        g.beginPath(); g.moveTo(x0 + 2, ym); g.lineTo(x0 + cw - 2, ym); g.stroke();
+      }
+    }
+
+    /* --- telhado --- */
+    const beiral = 4 + (vari % 3);
+    const bx0 = x0 - beiral, bx1 = x0 + cw + beiral;
+    const espessura = 3.5;
+
+    function aguaDoTelhado(desenho, corEsq, corDir) {
+      // Metade esquerda recebe luz; a direita fica na sombra.
+      for (const lado of [1, -1]) {
+        g.save();
+        desenho(lado);
+        g.clip();
+        g.fillStyle = lado === -1 ? corEsq : corDir;
+        g.fillRect(bx0 - 2, topoTeto - 4, (bx1 - bx0) + 4, cumeeira - topoTeto + 12);
+        // fiadas de telha
+        const fiadas = Math.max(4, Math.round((cumeeira - topoTeto) / 4.5));
+        for (let i = 0; i <= fiadas; i++) {
+          const yy = topoTeto + (cumeeira + espessura - topoTeto) * (i / fiadas);
+          g.fillStyle = i % 2 ? 'rgba(0,0,0,.11)' : 'rgba(255,255,255,.07)';
+          g.fillRect(bx0 - 2, yy, (bx1 - bx0) + 4, 2);
+          if (e.forma !== 'palha') {
+            g.fillStyle = 'rgba(0,0,0,.13)';
+            for (let x = bx0 + (i % 2 ? 3 : 0); x < bx1; x += 6) g.fillRect(x, yy, 1, 2.6);
+          }
+        }
+        g.restore();
+      }
+    }
+
+    const meio = x0 + cw / 2;
+    if (e.forma === 'quatroAguas') {
+      // Telhado de quatro águas: a cumeeira é menor que a base.
+      const cume = cw * 0.34;
+      aguaDoTelhado(lado => {
+        g.beginPath();
+        g.moveTo(meio + lado * cume / 2, topoTeto);
+        g.lineTo(lado > 0 ? bx1 : bx0, cumeeira + espessura);
+        g.lineTo(meio, cumeeira + espessura);
+        g.lineTo(meio, topoTeto);
+        g.closePath();
+      }, tom(e.teto, 22), tom(e.teto, -14));
+      g.fillStyle = tom(e.teto, 32);
+      g.fillRect(meio - cume / 2, topoTeto, cume, 2.6);
+    } else if (e.forma === 'mansarda') {
+      // Duas inclinações: quebra na metade da altura.
+      const quebra = topoTeto + (cumeeira - topoTeto) * 0.45;
+      aguaDoTelhado(lado => {
+        g.beginPath();
+        g.moveTo(meio, topoTeto);
+        g.lineTo(meio + lado * cw * 0.34, quebra);
+        g.lineTo(lado > 0 ? bx1 : bx0, cumeeira + espessura);
+        g.lineTo(meio, cumeeira + espessura);
+        g.closePath();
+      }, tom(e.teto, 22), tom(e.teto, -14));
+      g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 1.4;
+      g.beginPath();
+      g.moveTo(meio - cw * 0.34, quebra); g.lineTo(meio + cw * 0.34, quebra); g.stroke();
+    } else {
+      // Duas águas — e a palha usa a mesma forma, só que sem escama e com borda mole.
+      aguaDoTelhado(lado => {
+        g.beginPath();
+        g.moveTo(meio, topoTeto);
+        g.lineTo(lado > 0 ? bx1 : bx0, cumeeira + espessura);
+        g.lineTo(meio, cumeeira + espessura);
+        g.closePath();
+      }, tom(e.teto, e.forma === 'palha' ? 16 : 22), tom(e.teto, -14));
+      if (e.forma === 'palha') {
+        // Palha: franja irregular na beirada.
+        g.fillStyle = tom(e.teto, -22);
+        for (let x = bx0; x < bx1; x += 3) {
+          const h = 2 + hash2(x | 0, vari, 77) * 3.5;
+          g.fillRect(x, cumeeira + espessura - 1, 2.4, h);
+        }
+      }
+    }
+
+    if (e.forma !== 'palha') {
+      g.fillStyle = tom(e.teto, 34);
+      g.beginPath();
+      g.moveTo(meio - 3, topoTeto + 1); g.lineTo(meio + 3, topoTeto + 1);
+      g.lineTo(meio + 1.5, cumeeira + espessura); g.lineTo(meio - 1.5, cumeeira + espessura);
+      g.closePath(); g.fill();
+    }
+    g.fillStyle = 'rgba(0,0,0,.22)';
+    g.fillRect(bx0, cumeeira + espessura, bx1 - bx0, 2.5);
+
+    /* --- porta --- */
+    const portaAlt = Math.min(17, ph + alic - 2);
+    const dx = meio - 6, dy = pe - portaAlt;
+    g.fillStyle = '#4a3423';
+    rrect(g, dx, dy, 12, portaAlt, 5); g.fill();
+    g.strokeStyle = 'rgba(20,14,8,.5)'; g.lineWidth = 0.8;
+    for (let i = 1; i < 3; i++) {
+      g.beginPath(); g.moveTo(dx + i * 4, dy + 3); g.lineTo(dx + i * 4, pe - 1); g.stroke();
+    }
+    g.fillStyle = '#8b8b8b';
+    g.fillRect(dx + 0.5, dy + 4, 3.5, 1.6);
+    g.fillRect(dx + 0.5, dy + Math.min(11, portaAlt - 4), 3.5, 1.6);
+    g.fillStyle = '#d9b26a';
+    g.fillRect(dx + 9, dy + portaAlt * 0.5, 1.8, 1.8);
+
+    /* --- chaminé (a fumaça é desenhada ao vivo) --- */
+    const chx = meio + e.ladoChamine * cw * 0.30;
+    g.fillStyle = tom(e.parede, -52);
+    g.fillRect(chx - 3.5, topoTeto + (cumeeira - topoTeto) * 0.30, 7, cumeeira - topoTeto);
+    g.fillStyle = tom(e.parede, -26);
+    g.fillRect(chx - 4.5, topoTeto + (cumeeira - topoTeto) * 0.30 - 2.5, 9, 3);
+
+    /* --- tralha do quintal: é o que faz duas casas iguais parecerem diferentes --- */
+    if (e.lenha) {
+      const lx = x0 + (e.ladoAnexo > 0 ? 2 : cw - 14);
+      g.fillStyle = '#7a5a3a';
+      for (let i = 0; i < 3; i++)
+        for (let j = 0; j < 2; j++) {
+          g.beginPath();
+          g.arc(lx + j * 5 + (i % 2) * 2.5, pe - 3 - i * 4, 2.2, 0, 6.2832);
+          g.fill();
+        }
+      g.fillStyle = 'rgba(255,240,210,.3)';
+      g.beginPath(); g.arc(lx + 1, pe - 3, 0.8, 0, 6.2832); g.fill();
+    }
+    if (e.agua) {
+      const bx = meio - e.ladoChamine * cw * 0.38;
+      g.fillStyle = '#6b4a2a';
+      rrect(g, bx - 4, pe - 11, 8, 10, 1.5); g.fill();
+      g.fillStyle = 'rgba(30,20,12,.5)';
+      g.fillRect(bx - 4, pe - 8.5, 8, 1.2);
+      g.fillRect(bx - 4, pe - 4.5, 8, 1.2);
+      g.fillStyle = '#3f5f72';
+      g.beginPath(); g.ellipse(bx, pe - 11, 4, 1.4, 0, 0, 6.2832); g.fill();
+    }
+  });
+}
+const VARIANTES_PREDIO = 6;
+const varianteDe = pr => pr.id % VARIANTES_PREDIO;
+
+// Repete a mesma conta do sprite para saber onde ficou a parede. Janela e
+// fumaça são desenhadas ao vivo (acendem com a hora, a fumaça se move), então
+// precisam pousar exatamente sobre a casa que o sprite desenhou.
+function geometriaPredio(pr) {
+  const e = estiloPredio(pr.chave, varianteDe(pr));
+  const larguraLote = pr.def.w * TILE, alturaLote = pr.def.h * TILE;
+  const cw = larguraLote * e.larg;
+  const x0 = pr.tx * TILE + (larguraLote - cw) / 2;
+  const pe = pr.ty * TILE + alturaLote - 3;
+  const corpoAlt = Math.max(16, alturaLote * 0.56 * e.altura);
+  const cumeeira = pe - corpoAlt;
+  return {
+    e, cw, x0, pe, cumeeira,
+    meio: x0 + cw / 2,
+    topoTeto: cumeeira - alturaLote * e.inclina,
+    alic: e.pedraBaixa ? Math.min(14, corpoAlt * 0.42) : 7,
+  };
+}
+
+function janelasDe(pr) {
+  const G = geometriaPredio(pr);
+  const wy = G.cumeeira + 4;
+  if (wy + 9 > G.pe - G.alic - 1) return [];
+  const quantas = G.cw >= TILE * 2.6 ? 2 : 1;
+  const lista = [];
+  for (let i = 0; i < quantas; i++) {
+    const cx = G.x0 + G.cw * (quantas === 1 ? 0.26 : (i === 0 ? 0.19 : 0.81));
+    lista.push([cx - 4.5, wy]);
+  }
+  return lista;
+}
 
 function desenharPredio(g, pr) {
   const w = pr.def.w * TILE, h = pr.def.h * TILE;
   const x = pr.tx * TILE, y = pr.ty * TILE;
 
   if (pr.progresso < 1) {
-    // Canteiro de obras: fundação marcada, andaime de madeira e barra.
-    g.fillStyle = 'rgba(150,128,92,.35)';
+    // Canteiro: fundação marcada, andaime e barra de progresso.
+    g.fillStyle = 'rgba(150,128,92,.32)';
     g.fillRect(x + 3, y + 3, w - 6, h - 6);
     g.strokeStyle = 'rgba(232,206,150,.85)'; g.lineWidth = 2; g.setLineDash([7, 5]);
     g.strokeRect(x + 3, y + 3, w - 6, h - 6);
     g.setLineDash([]);
     g.strokeStyle = 'rgba(150,116,70,.9)'; g.lineWidth = 2.2;
     for (let i = 1; i < 3; i++) {
-      g.beginPath(); g.moveTo(x + 6, y + 6 + (h - 12) * i / 3); g.lineTo(x + w - 6, y + 6 + (h - 12) * i / 3); g.stroke();
+      const yy = y + 6 + (h - 12) * i / 3;
+      g.beginPath(); g.moveTo(x + 6, yy); g.lineTo(x + w - 6, yy); g.stroke();
     }
     g.beginPath(); g.moveTo(x + 6, y + h - 6); g.lineTo(x + w - 6, y + 6); g.stroke();
     g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(x + 8, y + h - 15, w - 16, 6);
@@ -2062,163 +3040,128 @@ function desenharPredio(g, pr) {
     return;
   }
 
-  // Cada prédio puxa um pouco para o claro ou para o escuro: fileira inteira
-  // na mesma cor entrega que é tudo o mesmo molde.
-  const vari = ((pr.id * 37) % 23) - 11;
-  const corpoTopo = y + h * 0.42;          // onde a parede começa
-  const beiral = 3;
+  const vari = varianteDe(pr);
+  const sp = spritePredio(pr.chave, vari);
+  g.drawImage(sp.cv, x - sp.ax, y - sp.ay, sp.larg, sp.alt);
 
-  // Sombra projetada para o lado oposto à luz (luz vem do noroeste).
-  g.fillStyle = 'rgba(24,30,20,.28)';
-  g.beginPath();
-  g.moveTo(x + w * 0.12, y + h - 2);
-  g.lineTo(x + w + 7, y + h - 2);
-  g.lineTo(x + w + 7, y + h * 0.55);
-  g.lineTo(x + w - 2, y + h * 0.42);
-  g.closePath(); g.fill();
-
-  // --- paredes ---
-  const parede = tom(pr.def.cor, vari);
-  g.fillStyle = parede;
-  g.fillRect(x + 4, corpoTopo, w - 8, h - 6 - (corpoTopo - y));
-  g.fillStyle = tom(parede, -30);                       // face direita na sombra
-  g.fillRect(x + w - 12, corpoTopo, 8, h - 6 - (corpoTopo - y));
-  g.fillStyle = 'rgba(0,0,0,.13)';                      // rodapé de pedra
-  g.fillRect(x + 4, y + h - 12, w - 8, 6);
-  for (let i = 0; i < 6; i++) {                         // pedras do alicerce
-    g.fillStyle = i % 2 ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.10)';
-    g.fillRect(x + 6 + i * (w - 12) / 6, y + h - 11, (w - 14) / 6 - 1, 4);
-  }
-
-  // Vigas de enxaimel nas paredes maiores.
-  if (w >= TILE * 2) {
-    g.strokeStyle = 'rgba(92,66,44,.5)'; g.lineWidth = 2;
+  /* --- janelas: acesas de noite ou quando há gente dentro --- */
+  const acesa = eNoite() ? (pr.def.pop <= 0 || pr.moradores.length > 0)
+                         : (pr.def.moradia ? pr.moradores.length > 0 : true);
+  for (const [wx, wy] of janelasDe(pr)) {
+    g.fillStyle = acesa ? '#f6ce74' : '#3b4650';
+    rrect(g, wx, wy, 9, 9, 1.5); g.fill();
+    if (acesa) {
+      g.fillStyle = 'rgba(255,244,196,.55)';
+      g.fillRect(wx + 1, wy + 1, 7, 3.5);
+    }
+    g.strokeStyle = 'rgba(70,48,30,.95)'; g.lineWidth = 1.5;
+    g.strokeRect(wx, wy, 9, 9);
+    g.lineWidth = 1;
     g.beginPath();
-    g.moveTo(x + 8, corpoTopo + 3); g.lineTo(x + 8, y + h - 12);
-    g.moveTo(x + w - 8, corpoTopo + 3); g.lineTo(x + w - 8, y + h - 12);
-    g.moveTo(x + 8, corpoTopo + 3); g.lineTo(x + w - 8, corpoTopo + 3);
+    g.moveTo(wx + 4.5, wy); g.lineTo(wx + 4.5, wy + 9);
+    g.moveTo(wx, wy + 4.5); g.lineTo(wx + 9, wy + 4.5);
     g.stroke();
+    g.fillStyle = 'rgba(96,64,40,.9)';                 // postigos
+    g.fillRect(wx - 2.6, wy, 2.4, 9);
+    g.fillRect(wx + 9.2, wy, 2.4, 9);
   }
 
-  // --- telhado: duas águas, com beiral e cumeeira ---
-  const teto = tom(pr.def.teto, vari);
-  g.fillStyle = tom(teto, -34);
-  g.beginPath();
-  g.moveTo(x - beiral, corpoTopo + 2);
-  g.lineTo(x + w / 2, y + 1);
-  g.lineTo(x + w + beiral, corpoTopo + 2);
-  g.lineTo(x + w + beiral, corpoTopo + 6);
-  g.lineTo(x - beiral, corpoTopo + 6);
-  g.closePath(); g.fill();
-
-  g.fillStyle = teto;
-  g.beginPath();
-  g.moveTo(x - beiral, corpoTopo + 2);
-  g.lineTo(x + w / 2, y + 1);
-  g.lineTo(x + w + beiral, corpoTopo + 2);
-  g.closePath(); g.fill();
-
-  g.fillStyle = tom(teto, 26);                          // água voltada à luz
-  g.beginPath();
-  g.moveTo(x - beiral, corpoTopo + 2);
-  g.lineTo(x + w / 2, y + 1);
-  g.lineTo(x + w / 2, corpoTopo + 2);
-  g.closePath(); g.fill();
-
-  // Fiadas de telha
-  g.strokeStyle = 'rgba(0,0,0,.13)'; g.lineWidth = 1;
-  for (let i = 1; i <= 3; i++) {
-    const t = i / 4;
-    const yy = corpoTopo + 2 - (corpoTopo + 1 - y) * t;
-    const meia = (w / 2 + beiral) * (1 - t);
-    g.beginPath(); g.moveTo(x + w / 2 - meia, yy); g.lineTo(x + w / 2 + meia, yy); g.stroke();
-  }
-  g.strokeStyle = 'rgba(255,255,255,.22)'; g.lineWidth = 1.6;
-  g.beginPath(); g.moveTo(x + w / 2, y + 1.5); g.lineTo(x + w / 2, corpoTopo + 2); g.stroke();
-
-  // --- porta e janelas ---
-  const px = x + w / 2 - 5, py = y + h - 20;
-  g.fillStyle = '#5a3f28';
-  rrect(g, px, py, 10, 14, 4); g.fill();
-  g.fillStyle = 'rgba(0,0,0,.3)';
-  rrect(g, px + 1.5, py + 1.5, 7, 11, 3); g.fill();
-  g.fillStyle = '#d9b26a';
-  g.fillRect(px + 7, py + 7, 1.6, 1.6);
-
-  const acesa = pr.def.moradia ? pr.moradores.length > 0 : true;
-  const janelas = w >= TILE * 3 ? [-w * 0.28, w * 0.28] : [-w * 0.26];
-  for (const jx of janelas) {
-    const wx = x + w / 2 + jx - 4, wy = corpoTopo + 8;
-    g.fillStyle = acesa ? '#f2c96b' : '#3d4a52';
-    rrect(g, wx, wy, 8, 8, 1.5); g.fill();
-    g.strokeStyle = 'rgba(74,52,34,.9)'; g.lineWidth = 1.4;
-    g.strokeRect(wx, wy, 8, 8);
-    g.beginPath();
-    g.moveTo(wx + 4, wy); g.lineTo(wx + 4, wy + 8);
-    g.moveTo(wx, wy + 4); g.lineTo(wx + 8, wy + 4);
-    g.stroke();
-  }
-
-  // --- marcas de cada tipo de prédio ---
-  if (pr.def.fazenda) {
-    // Canteiros arados em volta da casa.
-    g.fillStyle = 'rgba(104,76,44,.5)';
-    g.fillRect(x + 3, y + h - 5, w - 6, 4);
-    g.strokeStyle = 'rgba(150,180,80,.55)'; g.lineWidth = 1.4;
-    for (let i = 0; i < 4; i++) {
-      const yy = corpoTopo + 6 + i * 5;
+  /* --- marcas de cada tipo --- */
+  if (pr.def.fazenda && !pr.def.pesca) {
+    g.strokeStyle = 'rgba(150,180,80,.5)'; g.lineWidth = 1.4;
+    for (let i = 0; i < 3; i++) {
+      const yy = y + h - 10 + i * 3;
       g.beginPath(); g.moveTo(x + 7, yy); g.lineTo(x + w - 7, yy); g.stroke();
     }
   }
-  if (pr.chave === 'centro') {
-    // Torre com bandeira.
-    g.fillStyle = tom(parede, -14);
-    g.fillRect(x + w - 20, y + 6, 13, h * 0.5);
-    g.fillStyle = tom(teto, -10);
+  if (pr.def.pesca) {
+    // Passarela de tábuas entrando na água, com barco amarrado.
+    g.fillStyle = '#8a6a45';
+    g.fillRect(x + w * 0.2, y + h - 4, w * 0.6, 10);
+    g.fillStyle = 'rgba(60,40,24,.5)';
+    for (let i = 0; i < 4; i++) g.fillRect(x + w * 0.2 + i * (w * 0.6 / 4), y + h - 4, 1.4, 10);
+    g.fillStyle = '#6b4a2a';
     g.beginPath();
-    g.moveTo(x + w - 21, y + 8); g.lineTo(x + w - 13.5, y - 6); g.lineTo(x + w - 6, y + 8);
+    g.ellipse(x + w * 0.5, y + h + 9, 8, 3.4, 0, 0, 6.2832);
+    g.fill();
+  }
+  if (pr.chave === 'centro') {
+    const tx2 = x + w - 17;
+    g.fillStyle = tom(pr.def.cor, -10);
+    g.fillRect(tx2, y - 2, 13, h * 0.55);
+    g.fillStyle = 'rgba(0,0,0,.2)';
+    g.fillRect(tx2 + 9, y - 2, 4, h * 0.55);
+    g.fillStyle = tom(pr.def.teto, -6);
+    g.beginPath();
+    g.moveTo(tx2 - 2, y); g.lineTo(tx2 + 6.5, y - 13); g.lineTo(tx2 + 15, y);
     g.closePath(); g.fill();
     g.strokeStyle = '#6b5a44'; g.lineWidth = 1.4;
-    g.beginPath(); g.moveTo(x + w - 13.5, y - 6); g.lineTo(x + w - 13.5, y - 18); g.stroke();
+    g.beginPath(); g.moveTo(tx2 + 6.5, y - 13); g.lineTo(tx2 + 6.5, y - 25); g.stroke();
+    const onda = Math.sin(agora / 320) * 1.6;
     g.fillStyle = '#c8563f';
     g.beginPath();
-    g.moveTo(x + w - 13.5, y - 18); g.lineTo(x + w - 2, y - 14.5); g.lineTo(x + w - 13.5, y - 11);
+    g.moveTo(tx2 + 6.5, y - 25);
+    g.lineTo(tx2 + 17, y - 21.5 + onda);
+    g.lineTo(tx2 + 6.5, y - 18);
     g.closePath(); g.fill();
   }
   if (pr.chave === 'deposito') {
-    g.fillStyle = 'rgba(90,64,40,.75)';   // caixotes ao lado
-    g.fillRect(x + 5, corpoTopo + 10, 9, 9);
-    g.fillRect(x + 15, corpoTopo + 13, 7, 6);
-    g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 1;
-    g.strokeRect(x + 5, corpoTopo + 10, 9, 9);
+    g.fillStyle = '#7a5533';
+    g.fillRect(x + 5, y + h - 18, 10, 10);
+    g.fillRect(x + 16, y + h - 15, 8, 7);
+    g.strokeStyle = 'rgba(255,240,200,.28)'; g.lineWidth = 1;
+    g.strokeRect(x + 5, y + h - 18, 10, 10);
+    g.beginPath(); g.moveTo(x + 5, y + h - 13); g.lineTo(x + 15, y + h - 13); g.stroke();
+  }
+  if (pr.chave === 'mercado') {
+    // Toldo listrado e engradados: a cara de comércio.
+    const ax = x + 4, ay = y + h * 0.40 + 3, aw = w - 8;
+    for (let i = 0; i < 6; i++) {
+      g.fillStyle = i % 2 ? '#d8d2c4' : '#b8433c';
+      g.fillRect(ax + aw * i / 6, ay, aw / 6, 6);
+    }
+    g.fillStyle = 'rgba(0,0,0,.2)';
+    g.fillRect(ax, ay + 6, aw, 2);
+    g.fillStyle = '#7a5533';
+    g.fillRect(x + 6, y + h - 14, 7, 7);
+    g.fillStyle = '#c06a34';
+    g.beginPath(); g.arc(x + w - 12, y + h - 10, 3.2, 0, 6.2832); g.fill();
   }
   if (pr.chave === 'oficina') {
-    g.fillStyle = '#6b5335';               // roda encostada na parede
-    g.beginPath(); g.arc(x + 9, y + h - 14, 6, 0, 6.2832); g.fill();
-    g.fillStyle = tom(parede, 18);
-    g.beginPath(); g.arc(x + 9, y + h - 14, 2.2, 0, 6.2832); g.fill();
+    g.fillStyle = '#6b5335';
+    g.beginPath(); g.arc(x + 10, y + h - 12, 6.5, 0, 6.2832); g.fill();
+    g.fillStyle = tom(pr.def.cor, 20);
+    g.beginPath(); g.arc(x + 10, y + h - 12, 2.4, 0, 6.2832); g.fill();
+    g.strokeStyle = '#4a3524'; g.lineWidth = 1;
+    for (let i = 0; i < 6; i++) {
+      const a = i * 1.047;
+      g.beginPath();
+      g.moveTo(x + 10, y + h - 12);
+      g.lineTo(x + 10 + Math.cos(a) * 6, y + h - 12 + Math.sin(a) * 6);
+      g.stroke();
+    }
   }
   if (pr.chave === 'estabulo') {
-    g.fillStyle = 'rgba(60,42,26,.85)';    // portão largo de celeiro
-    g.fillRect(x + w / 2 - 11, y + h - 22, 22, 16);
-    g.strokeStyle = 'rgba(214,190,150,.6)'; g.lineWidth = 1.6;
+    g.fillStyle = 'rgba(52,36,22,.9)';
+    g.fillRect(x + w / 2 - 12, y + h - 20, 24, 17);
+    g.strokeStyle = 'rgba(206,182,142,.65)'; g.lineWidth = 1.6;
     g.beginPath();
-    g.moveTo(x + w / 2 - 11, y + h - 22); g.lineTo(x + w / 2 + 11, y + h - 6);
-    g.moveTo(x + w / 2 + 11, y + h - 22); g.lineTo(x + w / 2 - 11, y + h - 6);
+    g.moveTo(x + w / 2 - 12, y + h - 20); g.lineTo(x + w / 2 + 12, y + h - 3);
+    g.moveTo(x + w / 2 + 12, y + h - 20); g.lineTo(x + w / 2 - 12, y + h - 3);
     g.stroke();
   }
 
-  // Fumaça na chaminé de quem tem gente dentro.
+  /* --- chaminé fumegando --- */
   if (pr.def.pop > 0 && pr.moradores.length) {
-    g.fillStyle = tom(parede, -46);
-    g.fillRect(x + w * 0.24, y + h * 0.10, 7, 12);
-    g.fillStyle = 'rgba(238,238,238,.34)';
+    const G = geometriaPredio(pr);
+    const chx = G.meio + G.e.ladoChamine * G.cw * 0.30;
+    const chTopo = G.topoTeto + (G.cumeeira - G.topoTeto) * 0.30 - 3;
+    g.fillStyle = 'rgba(238,238,238,.32)';
     const t = agora / 700 + pr.id;
     for (let i = 0; i < 3; i++) {
       const f = (t + i * 0.45) % 1;
       g.beginPath();
-      g.arc(x + w * 0.24 + 3.5 + Math.sin((t + i) * 1.7) * 4, y + h * 0.10 - f * 20,
-            2 + f * 3.4, 0, 6.2832);
+      g.arc(chx + Math.sin((t + i) * 1.7) * 4, chTopo - f * 20, 2 + f * 3.4, 0, 6.2832);
       g.fill();
     }
   }
@@ -2229,7 +3172,6 @@ function desenharPredio(g, pr) {
     g.fillStyle = '#79c2e8'; g.fillRect(x + 7, y - 9, (w - 14) * f, 5);
   }
 }
-
 /* --- As seis figuras: criança, adulto e idoso, em masculino e feminino --- */
 
 const PELE = ['#e6bb92', '#d19a6c', '#a9754f', '#7d5439'];
@@ -2244,8 +3186,12 @@ function desenharPessoa(g, p, selecionado) {
                || p.estado === 'voltando' || p.estado === 'brincando';
   const esc = fase === FASE.CRIANCA ? 0.66 : fase === FASE.IDOSO ? 0.92 : 1;
   const ciclo = p.passo * 11;
+  const montado = p.veiculo === 'cavalo';
+  // Montado, a pessoa sobe para a sela. Sem isto ela ficava plantada no chão
+  // ao lado do bicho, e o conjunto lia como uma carroça.
+  const ergue = montado ? (CAVALO_SELA - 4.5) * esc : 0;
   const bob = andando ? Math.abs(Math.sin(ciclo)) * 1.4 * esc : 0;
-  const x = p.x, y = p.y - bob;
+  const x = p.x, y = p.y - bob - ergue;
   const i = p.id % 4;
   const pele = PELE[i], peleSombra = PELE_SOMBRA[i];
   const roupa = (p.sexo === 'm' ? ROUPA_M : ROUPA_F)[i];
@@ -2255,14 +3201,30 @@ function desenharPessoa(g, p, selecionado) {
     g.strokeStyle = 'rgba(150,235,140,.9)'; g.lineWidth = 1.7;
     g.beginPath(); g.ellipse(p.x, p.y + 7, 12, 5.5, 0, 0, 6.2832); g.stroke();
   }
-  if (p.veiculo === 'cavalo') desenharCavalo(g, p, esc);
-
-  sombraNoChao(g, p.x + 1.5, p.y + 7 * esc, 6.4 * esc, 2.8 * esc, 0.26);
+  if (montado) desenharCavalo(g, p, esc);
+  else sombraNoChao(g, p.x + 1.5, p.y + 7 * esc, 6.4 * esc, 2.8 * esc, 0.26);
 
   const balanco = andando ? Math.sin(ciclo) : 0;
 
   // --- pernas ou saia ---
-  if (p.sexo === 'f') {
+  if (montado) {
+    // Na sela a perna dobra para o lado do cavalo, com o pé no estribo.
+    const calca = p.sexo === 'f' ? tom(roupa, -30) : '#3c4759';
+    g.fillStyle = calca;
+    g.beginPath();
+    g.moveTo(x - 3 * esc, y + 0.5 * esc);
+    g.lineTo(x + 3 * esc, y + 0.5 * esc);
+    g.lineTo(x + p.dir * 5.4 * esc, y + 5 * esc);
+    g.lineTo(x + p.dir * 2.2 * esc, y + 6.4 * esc);
+    g.closePath(); g.fill();
+    g.fillStyle = '#4a3524';                    // bota no estribo
+    g.fillRect(x + p.dir * 2.4 * esc, y + 5.6 * esc, 4 * esc, 2.1 * esc);
+    g.strokeStyle = '#5a4028'; g.lineWidth = 1 * esc;
+    g.beginPath();
+    g.moveTo(x + p.dir * 3.4 * esc, y + 2.6 * esc);
+    g.lineTo(x + p.dir * 4.2 * esc, y + 5.8 * esc);
+    g.stroke();
+  } else if (p.sexo === 'f') {
     g.fillStyle = tom(roupa, -34);
     g.beginPath();
     g.moveTo(x - 3.2 * esc, y - 2 * esc + curva);
@@ -2465,48 +3427,123 @@ function desenharCarroca(g, p, esc) {
   g.stroke();
 }
 
+/* Proporção de cavalo, não de carrinho: cernelha na altura do ombro de um
+   adulto (~16px, contra ~22px de altura total da pessoa) e corpo de ~30px de
+   comprimento. O que mais estragava a leitura antes era o cavaleiro continuar
+   plantado no chão ao lado do bicho — agora ele sobe para a sela. */
+
+const CAVALO_SELA = 15;        // altura da sela acima do chão, em unidades de mundo
+
 function desenharCavalo(g, p, esc) {
-  const x = p.x, y = p.y + 4 * esc, d = p.dir;
-  const passo = Math.sin(p.passo * 11);
-  sombraNoChao(g, x, y + 5 * esc, 13 * esc, 4 * esc, 0.24);
+  const d = p.dir;
+  const chao = p.y + 7 * esc;
+  const passo = Math.sin(p.passo * 9);
+  const s = esc;
 
-  const pelo = '#8a5c37';
-  g.fillStyle = tom(pelo, -28);                // patas de trás
-  g.fillRect(x - d * 8 * esc, y + 1 * esc, 2.8 * esc, (7 + passo) * esc);
-  g.fillRect(x + d * 5 * esc, y + 1 * esc, 2.8 * esc, (7 - passo) * esc);
-  g.fillStyle = pelo;                          // corpo
-  rrect(g, x - 11 * esc, y - 6 * esc, 22 * esc, 9.5 * esc, 4.4 * esc); g.fill();
-  g.fillStyle = tom(pelo, 20);
-  rrect(g, x - 11 * esc, y - 6 * esc, 22 * esc, 4.4 * esc, 4.4 * esc); g.fill();
-  g.fillStyle = tom(pelo, -14);                // patas da frente
-  g.fillRect(x - d * 4 * esc, y + 2 * esc, 2.8 * esc, (6 - passo) * esc);
-  g.fillRect(x + d * 8 * esc, y + 2 * esc, 2.8 * esc, (6 + passo) * esc);
+  const pelo = ['#7d5233', '#5d4530', '#9a7448', '#3f3630'][p.id % 4];
+  const crina = ['#3b2a1e', '#2a211c', '#5c4526', '#242020'][p.id % 4];
 
-  g.fillStyle = pelo;                          // pescoço e cabeça
-  g.save();
-  g.translate(x + d * 9.5 * esc, y - 5 * esc);
-  g.rotate(d * -0.42);
-  g.fillRect(-2.6 * esc, -9 * esc, 5.4 * esc, 11 * esc);
-  g.restore();
+  sombraNoChao(g, p.x, chao, 16 * s, 4.6 * s, 0.26);
+
+  const cerne = chao - CAVALO_SELA * s;          // linha das costas
+  const compr = 15 * s;                          // meio comprimento do corpo
+
+  /* --- patas: as de trás dobram, as da frente ficam mais retas --- */
+  const perna = (px, topo, frente, fase) => {
+    g.strokeStyle = tom(pelo, frente ? -6 : -22);
+    g.lineWidth = 3.1 * s; g.lineCap = 'round';
+    const balanco = Math.sin(p.passo * 9 + fase) * 2.4 * s;
+    const joelho = topo + 6.5 * s;
+    g.beginPath();
+    g.moveTo(px, topo);
+    g.lineTo(px + (frente ? balanco * 0.3 : -balanco * 0.5), joelho);
+    g.lineTo(px + balanco, chao - 1 * s);
+    g.stroke();
+    g.lineWidth = 1; g.lineCap = 'butt';
+    g.fillStyle = '#241c16';                     // casco
+    g.fillRect(px + balanco - 1.6 * s, chao - 1.6 * s, 3.2 * s, 1.8 * s);
+  };
+  perna(p.x - d * compr * 0.62, cerne + 3.2 * s, false, 0);
+  perna(p.x + d * compr * 0.58, cerne + 3.6 * s, true, Math.PI);
+  perna(p.x - d * compr * 0.44, cerne + 3.2 * s, false, Math.PI * 0.7);
+  perna(p.x + d * compr * 0.40, cerne + 3.6 * s, true, Math.PI * 1.7);
+
+  /* --- barriga e garupa --- */
+  g.fillStyle = pelo;
   g.beginPath();
-  g.ellipse(x + d * 13.4 * esc, y - 12.6 * esc, 4.4 * esc, 3 * esc, d * 0.35, 0, 6.2832);
+  g.ellipse(p.x, cerne + 1.2 * s, compr, 5.6 * s, 0, 0, 6.2832);
   g.fill();
-  g.fillStyle = '#2b1d12';                     // focinho, olho, crina
-  g.beginPath(); g.arc(x + d * 16.4 * esc, y - 11.4 * esc, 1.5 * esc, 0, 6.2832); g.fill();
-  g.beginPath(); g.arc(x + d * 13.6 * esc, y - 13.4 * esc, 0.8 * esc, 0, 6.2832); g.fill();
-  g.fillStyle = '#3b2a1e';
+  g.fillStyle = tom(pelo, 16);                   // lombo iluminado
   g.beginPath();
-  g.moveTo(x + d * 11 * esc, y - 15 * esc);
-  g.lineTo(x + d * 7 * esc, y - 5 * esc);
-  g.lineTo(x + d * 9.6 * esc, y - 4.6 * esc);
+  g.ellipse(p.x, cerne - 0.6 * s, compr * 0.92, 3.4 * s, 0, Math.PI, 0);
+  g.fill();
+  g.fillStyle = tom(pelo, -20);                  // barriga na sombra
+  g.beginPath();
+  g.ellipse(p.x, cerne + 3.6 * s, compr * 0.88, 2.6 * s, 0, 0, Math.PI);
+  g.fill();
+
+  /* --- pescoço e cabeça --- */
+  const pescX = p.x + d * compr * 0.72;
+  g.save();
+  g.translate(pescX, cerne + 0.5 * s);
+  g.rotate(d * -0.52);
+  g.fillStyle = pelo;
+  g.beginPath();
+  g.moveTo(-3.4 * s, 1 * s);
+  g.lineTo(-2.2 * s, -10 * s);
+  g.lineTo(2.8 * s, -10 * s);
+  g.lineTo(3.6 * s, 1 * s);
   g.closePath(); g.fill();
-  g.beginPath();                               // cauda
-  g.moveTo(x - d * 11 * esc, y - 5 * esc);
-  g.quadraticCurveTo(x - d * 16 * esc, y - 2 * esc, x - d * 13.5 * esc, y + 4 * esc);
-  g.lineTo(x - d * 10.5 * esc, y + 1 * esc);
+  g.fillStyle = tom(pelo, 14);
+  g.fillRect(-2.6 * s, -10 * s, 2.4 * s, 11 * s);
+  g.restore();
+
+  const cabX = pescX + d * 6.4 * s, cabY = cerne - 9.6 * s;
+  g.fillStyle = pelo;
+  g.beginPath();
+  g.ellipse(cabX, cabY, 4.6 * s, 2.9 * s, d * 0.34, 0, 6.2832);
+  g.fill();
+  g.fillStyle = tom(pelo, -18);                  // focinho
+  g.beginPath();
+  g.ellipse(cabX + d * 3.4 * s, cabY + 1.4 * s, 2.1 * s, 1.7 * s, 0, 0, 6.2832);
+  g.fill();
+  g.fillStyle = '#1d1712';
+  g.beginPath(); g.arc(cabX + d * 4.4 * s, cabY + 1.6 * s, 0.6 * s, 0, 6.2832); g.fill();
+  g.beginPath(); g.arc(cabX + d * 0.6 * s, cabY - 0.7 * s, 0.75 * s, 0, 6.2832); g.fill();
+  g.fillStyle = pelo;                            // orelhas
+  g.beginPath();
+  g.moveTo(cabX - d * 1.4 * s, cabY - 2.4 * s);
+  g.lineTo(cabX - d * 0.6 * s, cabY - 5 * s);
+  g.lineTo(cabX + d * 0.6 * s, cabY - 2.6 * s);
   g.closePath(); g.fill();
-  g.fillStyle = '#5a4028';                     // sela
-  g.fillRect(x - 3.5 * esc, y - 7 * esc, 8 * esc, 3 * esc);
+
+  /* --- crina e cauda --- */
+  g.fillStyle = crina;
+  g.beginPath();
+  g.moveTo(cabX - d * 3 * s, cabY - 2 * s);
+  g.quadraticCurveTo(p.x + d * compr * 0.5, cerne - 7 * s, pescX - d * 3.6 * s, cerne - 0.5 * s);
+  g.lineTo(pescX - d * 0.5 * s, cerne + 0.5 * s);
+  g.quadraticCurveTo(p.x + d * compr * 0.62, cerne - 5 * s, cabX - d * 1.6 * s, cabY - 1 * s);
+  g.closePath(); g.fill();
+
+  g.beginPath();
+  g.moveTo(p.x - d * compr * 0.96, cerne - 1 * s);
+  g.quadraticCurveTo(p.x - d * (compr + 6 * s), cerne + 4 * s,
+                     p.x - d * (compr + 2 * s), chao - 2 * s);
+  g.lineTo(p.x - d * (compr - 1.5 * s), chao - 3 * s);
+  g.quadraticCurveTo(p.x - d * (compr + 1 * s), cerne + 4 * s, p.x - d * compr * 0.8, cerne + 0.5 * s);
+  g.closePath(); g.fill();
+
+  /* --- arreio --- */
+  g.fillStyle = '#57402a';                       // manta e sela
+  rrect(g, p.x - 6 * s, cerne - 3.4 * s, 12 * s, 4.6 * s, 1.6 * s); g.fill();
+  g.fillStyle = '#7a5a3a';
+  rrect(g, p.x - 4.4 * s, cerne - 4.6 * s, 9 * s, 3 * s, 1.4 * s); g.fill();
+  g.strokeStyle = '#4a3524'; g.lineWidth = 1 * s;   // rédea até a mão
+  g.beginPath();
+  g.moveTo(cabX + d * 1.5 * s, cabY + 1.5 * s);
+  g.quadraticCurveTo(p.x + d * 8 * s, cerne - 6 * s, p.x + d * 4 * s, cerne - 5 * s);
+  g.stroke();
 }
 /* ---------------------------------------------------------------- loop --- */
 
@@ -2558,6 +3595,9 @@ function passo(dt) {
 
   jogo.anoFrac += dt / ANO;
   while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; tickAno(); }
+
+  const mes = mesAtual();
+  if (mes !== jogo.mesAnterior) { jogo.mesAnterior = mes; virouMes(); }
 
   for (let i = flutuantes.length - 1; i >= 0; i--) {
     flutuantes[i].t += dt;
@@ -2613,6 +3653,7 @@ function desenhar() {
     lista.push({ y:(pr.ty + pr.def.h) * TILE, k:1, o:pr });
   }
   for (const p of jogo.pessoas) {
+    if (p.estado === 'dormindo') continue;      // está dentro de casa
     if (p.x < camX - 50 || p.x > camX + vw + 50 || p.y < camY - 50 || p.y > camY + vh + 50) continue;
     lista.push({ y:p.y, k:2, o:p });
   }
@@ -2623,6 +3664,21 @@ function desenhar() {
     if (it.k === 0) desenharNo(ctx, it.o);
     else if (it.k === 1) desenharPredio(ctx, it.o);
     else desenharPessoa(ctx, it.o, sel.has(it.o.id));
+  }
+
+  // Terreno de um pedido pendente: piscando, para você achar sem procurar.
+  if (jogo.pedido) {
+    const d = PREDIO[jogo.pedido.chave];
+    const px = jogo.pedido.tx * TILE, py = jogo.pedido.ty * TILE;
+    const pulso = 0.35 + Math.sin(agora / 260) * 0.22;
+    ctx.fillStyle = 'rgba(255,214,120,' + pulso.toFixed(3) + ')';
+    ctx.fillRect(px, py, d.w * TILE, d.h * TILE);
+    ctx.strokeStyle = 'rgba(255,226,150,.95)'; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+    ctx.strokeRect(px + 1, py + 1, d.w * TILE - 2, d.h * TILE - 2);
+    ctx.setLineDash([]);
+    ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,255,255,.9)';
+    ctx.fillText(d.icone + ' pedido', px + d.w * TILE / 2, py - 5);
   }
 
   if (colocando) {
@@ -2646,11 +3702,104 @@ function desenhar() {
     ctx.fillText(f.texto, f.x, f.y - 14 - f.t * 20);
   }
 
+  // --- brilho das janelas, ainda em coordenadas do mundo ---
+  const luz = luzDoDia();
+  if (luz < 0.55) {
+    ctx.globalCompositeOperation = 'lighter';
+    const forca = (1 - luz / 0.55);
+    for (const pr of jogo.predios) {
+      if (pr.progresso < 1 || pr.def.pop <= 0) continue;
+      if (pr.cx < camX - 120 || pr.cx > camX + vw + 120) continue;
+      if (pr.cy < camY - 120 || pr.cy > camY + vh + 120) continue;
+      const b = brilhoJanela();
+      const r = 54;
+      ctx.globalAlpha = 0.5 * forca;
+      ctx.drawImage(b, pr.cx - r, pr.cy - r + 6, r * 2, r * 2);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+
+  // --- estação, hora do dia e clima, por cima de tudo ---
+  const est = estacaoAtual();
+  ctx.fillStyle = est.tinta;
+  ctx.fillRect(0, 0, W, H);
+
+  if (luz < 1) {
+    ctx.fillStyle = 'rgba(12,20,46,' + ((1 - luz) * 0.60).toFixed(3) + ')';
+    ctx.fillRect(0, 0, W, H);
+    const h = horaDoDia();
+    const dourado = Math.max(0, 1 - Math.abs(h - 0.27) * 13) + Math.max(0, 1 - Math.abs(h - 0.85) * 13);
+    if (dourado > 0.01) {
+      ctx.fillStyle = 'rgba(255,138,52,' + (dourado * 0.20).toFixed(3) + ')';
+      ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  desenharClima();
+
   ctx.fillStyle = vinheta();
   ctx.fillRect(0, 0, W, H);
 
   if (chunks.size > 60) for (const [k, ch] of chunks) if (agora - ch.visto > 5000) chunks.delete(k);
+}
+
+// Mancha de luz quente que sai das janelas. Fica num canvas próprio porque
+// criar gradiente por prédio, por quadro, sairia caro.
+let cacheBrilho = null;
+function brilhoJanela() {
+  if (cacheBrilho) return cacheBrilho;
+  const t = 128;
+  const cv2 = document.createElement('canvas');
+  cv2.width = cv2.height = t;
+  const g = cv2.getContext('2d');
+  const grad = g.createRadialGradient(t / 2, t / 2, 4, t / 2, t / 2, t / 2);
+  grad.addColorStop(0, 'rgba(255,196,104,.85)');
+  grad.addColorStop(0.45, 'rgba(255,170,70,.30)');
+  grad.addColorStop(1, 'rgba(255,160,60,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, t, t);
+  cacheBrilho = cv2;
+  return cv2;
+}
+
+function desenharClima() {
+  const c = jogo.clima;
+  if (c === 'chuva' || c === 'tempestade') {
+    const n = c === 'tempestade' ? 210 : 110;
+    const vel = c === 'tempestade' ? 1.6 : 1.0;
+    ctx.strokeStyle = c === 'tempestade' ? 'rgba(186,208,238,.5)' : 'rgba(180,205,235,.4)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const x = ((i * 97.3 + agora * 0.32) % (W + 60)) - 30;
+      const y = ((i * 53.7 + agora * vel) % (H + 60)) - 30;
+      ctx.moveTo(x, y); ctx.lineTo(x - 4, y + 13);
+    }
+    ctx.stroke();
+    // Relâmpago: um clarão curto de vez em quando.
+    if (c === 'tempestade') {
+      const t = agora / 1000;
+      const janela = t % 8;
+      if (janela < 0.10 && hash2(Math.floor(t / 8), 3, SEED) > 0.45) {
+        ctx.fillStyle = 'rgba(226,238,255,' + (0.42 * (1 - janela / 0.10)).toFixed(3) + ')';
+        ctx.fillRect(0, 0, W, H);
+      }
+    }
+  } else if (c === 'neve') {
+    ctx.fillStyle = 'rgba(255,255,255,.8)';
+    for (let i = 0; i < 95; i++) {
+      const x = ((i * 131.1 + Math.sin(agora / 900 + i) * 26 + agora * 0.03) % (W + 40)) - 20;
+      const y = ((i * 67.3 + agora * 0.09) % (H + 40)) - 20;
+      const s = 1.6 + (i % 3) * 0.8;
+      ctx.fillRect(x, y, s, s);
+    }
+  } else if (c === 'neblina') {
+    ctx.fillStyle = 'rgba(212,222,232,.24)';
+    ctx.fillRect(0, 0, W, H);
+  }
 }
 
 let vigCache = null;
@@ -2680,6 +3829,8 @@ function gravar() {
       v: 2, seed: SEED, salvoEm: jogo.salvoEm,
       cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
+      clima: jogo.clima, mesAnterior: jogo.mesAnterior,
+      pedido: jogo.pedido, autoAprovar: jogo.autoAprovar,
       predios: jogo.predios.map(p => ({ id:p.id, c:p.chave, tx:p.tx, ty:p.ty, pr:p.progresso,
         mor:p.moradores, prod:p.produzindo, trab:p.trabalhador })),
       proxPredioId, proxId: jogo.proxId,
@@ -2706,6 +3857,8 @@ function carregar() {
     cam.x = s.cam.x; cam.y = s.cam.y; cam.z = s.cam.z || 1;
     Object.assign(jogo.recursos, s.recursos || {});
     jogo.ano = s.ano || 1; jogo.anoFrac = s.anoFrac || 0; jogo.fome = !!s.fome;
+    jogo.clima = s.clima || 'limpo'; jogo.mesAnterior = s.mesAnterior !== undefined ? s.mesAnterior : -1;
+    jogo.pedido = s.pedido || null; jogo.autoAprovar = !!s.autoAprovar;
     jogo.proxId = s.proxId || 1;
     proxPredioId = s.proxPredioId || 1;
     jogo.cronica = s.cronica || [];
@@ -2776,11 +3929,22 @@ function novaVila(seed) {
   jogo.cronica = []; jogo.proxId = 1; proxPredioId = 1;
   jogo.recursos = { madeira:220, comida:200, pedra:80 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
+  jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.pedido = null;
+  esconderPedido(); sairModoRua();
   colocando = null; placeEl.classList.remove('on'); barEl.classList.remove('escondido'); selecao = [];
 
   const ini = acharInicio();
   const centro = criarPredio('centro', ini.tx - 1, ini.ty - 1, 1);
   ruaFundadora(centro);        // a praça em volta do Centro, onde a cidade começa
+
+  // Uma casa já de pé, com frente para a rua: a vila nasce sendo uma vila, e
+  // o jogador vê desde o primeiro segundo qual é a regra do lugar.
+  const primeiroLote = escolherLote(PREDIO.casa);
+  let primeiraCasa = null;
+  if (primeiroLote) {
+    primeiraCasa = criarPredio('casa', primeiroLote.tx, primeiroLote.ty, 1);
+  }
+
   cam.x = centro.cx; cam.y = centro.cy;
   cam.z = Math.max(0.9, Math.min(1.6, Math.min(W, H) / 480));
 
@@ -2797,7 +3961,10 @@ function novaVila(seed) {
   a.conjugeId = b.id; b.conjugeId = a.id;
   c.conjugeId = d.id; d.conjugeId = c.id;
   e.estado = 'brincando';
-  for (const f of [a, b, c, d, e]) { f.casaId = centro.id; centro.moradores.push(f.id); }
+  // Uma família vai para a casa nova, a outra fica no Centro.
+  const casa = primeiraCasa || centro;
+  for (const f of [a, b, e]) { f.casaId = casa.id; casa.moradores.push(f.id); }
+  for (const f of [c, d]) { f.casaId = centro.id; centro.moradores.push(f.id); }
   crônica('As famílias ' + sn1 + ' e ' + sn2 + ' fundaram a vila.', true);
 
   atualizarHUD(); desenharMinimapa(); gravar();
@@ -2808,7 +3975,7 @@ function novaVila(seed) {
 redimensionar();
 const salvoEm = carregar();
 if (!salvoEm || !jogo.predios.length) {
-  novaVila(0);
+  novaVila(SEMENTE_PADRAO);
 } else {
   sorteio = (SEED ^ 0x9e3779b9) >>> 0;
   const fora = (Date.now() - salvoEm) / 1000;
@@ -2818,6 +3985,15 @@ if (!salvoEm || !jogo.predios.length) {
 atualizarHUD();
 desenharMinimapa();
 requestAnimationFrame(quadro);
+// Sem armazenamento não há continuidade: melhor dizer do que deixar o jogador
+// achar que o mundo muda sozinho.
+try {
+  localStorage.setItem('__teste__', '1');
+  localStorage.removeItem('__teste__');
+} catch (e) {
+  setTimeout(() => aviso('Este navegador não está guardando o progresso — a vila recomeça a cada abertura'), 1200);
+}
+
 addEventListener('beforeunload', () => { clearTimeout(saveT); gravar(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) gravar(); });
 </script>

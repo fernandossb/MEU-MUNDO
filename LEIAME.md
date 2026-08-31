@@ -44,6 +44,47 @@ Suas ordens são atalhos, não obrigação.
 
 ---
 
+## O tempo, as estações e o clima
+
+O ano continua em **5 minutos**. Para o dia e a noite serem assistíveis, o ciclo
+do sol precisa de uns 25 segundos — o que dá exatamente **12 ciclos por ano**.
+Então cada mês passa como um dia completo: o relógio marca a hora, a data anda
+de mês em mês. Foi o único jeito de ter dia e noite mantendo a proporção.
+
+À noite todo mundo larga o serviço e volta para casa: as ruas esvaziam, as
+janelas acendem. As taxas de coleta foram aumentadas para compensar o
+expediente menor.
+
+As quatro estações (hemisfério sul) e o clima mexem na lavoura:
+
+| | efeito na lavoura |
+|---|---|
+| 🌸 Primavera | ×1,25 — e a mata **rebrota**, então o mapa não fica pelado |
+| ☀️ Verão | ×1,00 |
+| 🍂 Outono | ×0,85 |
+| ❄️ Inverno | ×0,40 |
+| 🌧️ Chuva | ×1,35, mas todos andam 10% mais devagar |
+| 🌨️ Neve | ×0,25 e 22% mais devagar |
+| ⛈️ Tempestade | tira o barco da água e atrasa o passo em 28% |
+
+## Você manda, eles pedem
+
+Os aldeões **pedem licença** antes de construir: aparece um cartão com quem
+pediu, o que quer erguer e quanto custa, e o terreno escolhido pisca no mapa.
+Permita, recuse, ou marque *não perguntar mais*. Com o jogo fechado a vila
+decide sozinha — senão uma noite de sono viraria uma cidade parada esperando
+resposta.
+
+Você também traça ruas: botão **🛣️ Rua**, toque no destino, e a equipe abre a
+via a partir da rede que já existe, pagando 1 de pedra por trecho.
+
+## Pescadores e comércio
+
+- **🎣 Cais** — só nasce na beira d'água (a vila puxa rua até o mar para
+  conseguir); o pescador rende o ano todo, sem estação, só a tempestade atrapalha
+- **🏪 Mercado** — troca o que sobra pelo que falta, a três por um, e aumenta o
+  teto de estoque
+
 ## A vila que anda sozinha
 
 **O conselho** reavalia a vila a cada ano e decide, nesta ordem:
