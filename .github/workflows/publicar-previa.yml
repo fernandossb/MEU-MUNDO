@@ -37,19 +37,38 @@ jobs:
           cp index.html site/index.html
           ls -lh site
 
+      # O GITHUB_TOKEN não tem permissão para criar o site do Pages sozinho:
+      # tentar ligar pelo workflow devolve "Resource not accessible by
+      # integration". Então aqui só verificamos, e avisamos em vez de estourar
+      # um erro vermelho por causa de algo opcional.
+      - name: O Pages está ligado?
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh api "repos/${{ github.repository }}/pages" >/dev/null 2>&1; then
+            echo "ligado=sim" >> "$GITHUB_OUTPUT"
+            echo "Pages ligado — publicando."
+          else
+            echo "ligado=nao" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Prévia não publicada::Ligue o Pages uma vez em Settings > Pages > Build and deployment > Source: GitHub Actions. Depois disso este robô publica sozinho a cada envio."
+          fi
+
       - name: Configurar Pages
+        if: steps.check.outputs.ligado == 'sim'
         uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - name: Empacotar
+        if: steps.check.outputs.ligado == 'sim'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
       - name: Publicar
         id: publicacao
+        if: steps.check.outputs.ligado == 'sim'
         uses: actions/deploy-pages@v4
 
       - name: Endereço
+        if: steps.check.outputs.ligado == 'sim'
         run: echo "Prévia em ${{ steps.publicacao.outputs.page_url }}"
