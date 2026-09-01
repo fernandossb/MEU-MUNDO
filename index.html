@@ -541,6 +541,7 @@ function noNatural(tx, ty) {
 // Coníferas nas alturas frias, copa redonda embaixo.
 const coniferaEm = (tx, ty) => elevacao(tx, ty) > 0.70;
 
+const LADOS_4 = [[1,0],[-1,0],[0,1],[0,-1]];
 const restante = new Map();
 const nk = (tx, ty) => tx + ',' + ty;
 
@@ -578,7 +579,10 @@ function limparNo(tx, ty) {
   removerNoDoChunk(tx, ty);
 }
 
-function acharNo(x, y, tipo, maxTiles) {
+// Com a regra da rua, só serve o que dá para alcançar de cima do calçamento.
+// 'qualquerLugar' ignora essa exigência: é como o conselho descobre para onde
+// vale a pena abrir quarteirão novo.
+function acharNo(x, y, tipo, maxTiles, qualquerLugar) {
   const tx0 = Math.floor(x / TILE), ty0 = Math.floor(y / TILE);
   for (let r = 1; r <= (maxTiles || 26); r++) {
     let melhor = null, dMelhor = Infinity;
@@ -587,6 +591,7 @@ function acharNo(x, y, tipo, maxTiles) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const tx = tx0 + dx, ty = ty0 + dy;
         if (ocupado.has(nk(tx, ty))) continue;
+        if (!qualquerLugar && !encostaEmRua(tx, ty)) continue;
         const n = noEm(tx, ty);
         if (!n || (tipo && n.tipo !== tipo)) continue;
         const d = (n.x - x) ** 2 + (n.y - y) ** 2;
@@ -878,7 +883,7 @@ function invalidarArea(tx, ty, w, h) {
 
 /* ------------------------------------------------------------ movimento -- */
 
-const VEL = 78;
+const VEL = 47;    // 40% mais lento: o vaivém ficava frenético demais
 const CARGA = 12;
 // Um nó de 10 leva ~100 s para ser extraído: com o dia de uma hora, dá uns
 // quinze nós por jornada, que é ritmo de gente trabalhando e não de formiga.
@@ -889,10 +894,36 @@ function tileLivre(tx, ty) {
   const k = nk(tx, ty);
   return !SOLIDO[biomaEm(tx, ty)] && !ocupado.has(k) && !jogo.estradas.has(k);
 }
+// REGRA DA CIDADE: gente anda na rua. Fora do calçamento não se passa — é o
+// que faz a vila crescer em quarteirões em vez de espalhar trilhas pelo mato.
 function bloqueado(x, y) {
-  const tx = Math.floor(x / TILE), ty = Math.floor(y / TILE);
-  if (jogo.estradas.has(nk(tx, ty))) return false;   // rua e ponte são passagem
-  return SOLIDO[biomaEm(tx, ty)] || ocupado.has(nk(tx, ty));
+  return !jogo.estradas.has(nk(Math.floor(x / TILE), Math.floor(y / TILE)));
+}
+
+// Encosta numa rua? Usado para saber o que dá para colher e onde dá para pisar.
+function encostaEmRua(tx, ty) {
+  for (const [dx, dy] of LADOS_4)
+    if (jogo.estradas.has(nk(tx + dx, ty + dy))) return true;
+  return false;
+}
+
+// Centro do tile de rua mais perto — para trazer de volta quem ficou fora.
+function ruaMaisProxima(x, y, maxTiles) {
+  const tx0 = Math.floor(x / TILE), ty0 = Math.floor(y / TILE);
+  if (jogo.estradas.has(nk(tx0, ty0))) return { x, y };
+  for (let r = 1; r <= (maxTiles || 24); r++) {
+    let melhor = null, dMelhor = Infinity;
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        if (!jogo.estradas.has(nk(tx0 + dx, ty0 + dy))) continue;
+        const cx = (tx0 + dx + 0.5) * TILE, cy = (ty0 + dy + 0.5) * TILE;
+        const d = (cx - x) ** 2 + (cy - y) ** 2;
+        if (d < dMelhor) { dMelhor = d; melhor = { x: cx, y: cy }; }
+      }
+    if (melhor) return melhor;
+  }
+  return null;
 }
 const emEstrada = (x, y) => jogo.estradas.has(nk(Math.floor(x / TILE), Math.floor(y / TILE)));
 
@@ -955,8 +986,7 @@ function MonteMin() {
   };
 }
 
-const tileBloqueado = (tx, ty) =>
-  jogo.estradas.has(nk(tx, ty)) ? false : (SOLIDO[biomaEm(tx, ty)] || ocupado.has(nk(tx, ty)));
+const tileBloqueado = (tx, ty) => !jogo.estradas.has(nk(tx, ty));
 
 // Só interessa o que está no caminho AGORA. Checar a linha inteira até um alvo
 // a 400 px fazia o A* disparar por um obstáculo lá longe, que o aldeão nem ia
@@ -1103,7 +1133,8 @@ function mover(p, ax, ay, dt) {
   return d;
 }
 
-const alcanceDe = pr => (Math.max(pr.def.w, pr.def.h) * TILE) / 2 + 16;
+// A folga precisa cobrir a distância da rua vizinha até o centro do prédio.
+const alcanceDe = pr => (Math.max(pr.def.w, pr.def.h) * TILE) / 2 + 24;
 
 function entregaMaisProxima(x, y) {
   let melhor = null, d0 = Infinity;
@@ -1146,6 +1177,8 @@ function mandarFazenda(ps, pr) {
   p.estado = 'indoFazenda'; p.alvo = pr; p.ociosoT = 0;
 }
 function mandarAndar(ps, x, y) {
+  const naRua = ruaMaisProxima(x, y, 20);   // só se anda na rua
+  if (naRua) { x = naRua.x; y = naRua.y; }
   ps.forEach((p, i) => {
     soltarPostos(p);
     const ang = i * 2.4, raio = i === 0 ? 0 : 12 + i * 3;
@@ -1160,6 +1193,16 @@ function soltarPostos(p) {
 }
 
 /* --------------------------------------------------------- IA da pessoa -- */
+
+// Obra atrai gente demais: com três canteiros abertos, a vila inteira virava
+// construtor e ninguém trazia madeira nem pedra. No máximo um terço dos
+// adultos no canteiro.
+function podeVirarConstrutor(p) {
+  if (p.oficio === 'construtor') return true;
+  const adultos = jogo.pessoas.filter(x => faseDaIdade(x.idade) !== FASE.CRIANCA).length;
+  const construtores = jogo.pessoas.filter(x => x.oficio === 'construtor').length;
+  return construtores < Math.max(2, Math.floor(adultos / 3));   // vila pequena precisa de dois
+}
 
 function procurarTrabalho(p) {
   const fase = faseDaIdade(p.idade);
@@ -1180,11 +1223,11 @@ function procurarTrabalho(p) {
   // parte da mão de obra, senão nunca sai do papel.
   const obra = jogo.predios.find(pr => pr.progresso < 1);
   const estrada = jogo.obrasEstrada[0];
-  if (estrada && (!obra || rnd() < 0.4) && (p.oficio === 'construtor' || rnd() < 0.4)) {
+  if (estrada && podeVirarConstrutor(p) && (!obra || rnd() < 0.4) && (p.oficio === 'construtor' || rnd() < 0.4)) {
     soltarPostos(p);
     p.oficio = 'construtor'; p.estado = 'indoEstrada'; p.alvo = estrada; return;
   }
-  if (obra && (p.oficio === 'construtor' || rnd() < 0.5)) {
+  if (obra && podeVirarConstrutor(p) && (p.oficio === 'construtor' || rnd() < 0.5)) {
     soltarPostos(p);
     p.oficio = 'construtor'; p.estado = 'indoConstruir'; p.alvo = obra; return;
   }
@@ -1207,11 +1250,14 @@ function procurarTrabalho(p) {
   // Acabou o que havia por perto. Em vez de cruzar os braços para sempre, ele
   // caminha para fora da vila e procura de novo lá — varrer o mapa inteiro a
   // cada tentativa custaria caro demais com dezenas de gente parada.
+  // Nada por perto. Caminha pela rua para longe do centro e procura de novo lá
+  // — quem abre caminho novo é o conselho, com quarteirão.
   const base = centroDaVila();
   const ang = base ? Math.atan2(p.y - base.cy, p.x - base.cx) + entre(-0.9, 0.9) : rnd() * 6.2832;
-  const dist = entre(190, 340);
+  const dist = entre(150, 300);
+  const ponto = ruaMaisProxima(p.x + Math.cos(ang) * dist, p.y + Math.sin(ang) * dist, 14);
   p.estado = 'andando';
-  p.alvo = { x: p.x + Math.cos(ang) * dist, y: p.y + Math.sin(ang) * dist };
+  p.alvo = ponto || { x: p.x, y: p.y };
   p.ociosoT = 0;
 }
 
@@ -1229,6 +1275,13 @@ function recursoMaisNecessario() {
 
 function atualizarPessoa(p, dt) {
   const fase = faseDaIdade(p.idade);
+
+  // Ninguém fica fora do calçamento: recém-nascido, gente de save antigo ou
+  // quem escapou por um canto volta para a rua mais próxima.
+  if (!jogo.estradas.has(nk(Math.floor(p.x / TILE), Math.floor(p.y / TILE)))) {
+    const volta = ruaMaisProxima(p.x, p.y, 30);
+    if (volta) { p.x = volta.x; p.y = volta.y; p.caminho = null; p.travado = 0; }
+  }
 
   // Anoiteceu: todo mundo larga o serviço e vai para casa. É o que dá ritmo
   // ao dia — de manhã a vila esvazia para o trabalho, à noite as janelas acendem.
@@ -1266,7 +1319,8 @@ function atualizarPessoa(p, dt) {
         p.ociosoT = 0;
         const casa = jogo.predios.find(pr => pr.id === p.casaId) || jogo.predios[0];
         const bx = casa ? casa.cx : p.x, by = casa ? casa.cy : p.y;
-        p.alvo = { x: bx + entre(-70, 70), y: by + entre(-70, 70) };
+        const ponto = ruaMaisProxima(bx + entre(-80, 80), by + entre(-80, 80), 8);
+        p.alvo = ponto || { x: p.x, y: p.y };
       }
       if (fase !== FASE.CRIANCA) { p.estado = 'ocioso'; p.alvo = null; break; }
       const d = mover(p, p.alvo.x, p.alvo.y, dt);
@@ -1282,7 +1336,7 @@ function atualizarPessoa(p, dt) {
 
     case 'indoColetar': {
       const d = mover(p, p.alvo.x, p.alvo.y, dt);
-      if (d < TILE * 0.9) p.estado = 'coletando';
+      if (d < TILE * 1.35) p.estado = 'coletando';
       else if (p.travado > 1.5) { p.estado = 'ocioso'; p.travado = 0; }
       break;
     }
@@ -1318,12 +1372,12 @@ function atualizarPessoa(p, dt) {
         // sempre acha outra árvore e nunca ficaria ocioso — sem esta parada
         // para pensar, obra nenhuma sairia do papel.
         const obra = jogo.predios.find(pr => pr.progresso < 1);
-        if (obra && !p.ordemManual && rnd() < 0.55) {
+        if (obra && !p.ordemManual && podeVirarConstrutor(p) && rnd() < 0.55) {
           soltarPostos(p);
           p.oficio = 'construtor'; p.estado = 'indoConstruir'; p.alvo = obra; break;
         }
         const obraRua = jogo.obrasEstrada[0];
-        if (obraRua && !p.ordemManual && rnd() < 0.3) {
+        if (obraRua && !p.ordemManual && podeVirarConstrutor(p) && rnd() < 0.3) {
           soltarPostos(p);
           p.oficio = 'construtor'; p.estado = 'indoEstrada'; p.alvo = obraRua; break;
         }
@@ -1363,7 +1417,7 @@ function atualizarPessoa(p, dt) {
       }
       const t = obra.tiles[obra.feitos];
       const d = mover(p, (t[0] + 0.5) * TILE, (t[1] + 0.5) * TILE, dt);
-      if (d < TILE * 0.9) p.estado = 'calçando';
+      if (d < TILE * 1.35) p.estado = 'calçando';
       else if (p.travado > 2) { p.estado = 'ocioso'; p.travado = 0; }
       break;
     }
@@ -1656,7 +1710,15 @@ function crescerRua() {
 // Rua com destino: usada quando a vila quer chegar a algum lugar específico
 // (a beira d'água, por exemplo) em vez de só espalhar a malha.
 function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
-  if (jogo.obrasEstrada.length || jogo.recursos.pedra < 10) return false;
+  // Rua com destino é prioridade: ela busca recurso ou beira d'água. A de
+  // rotina espera a vez, mas esta pode entrar junto com uma já em andamento —
+  // senão nunca sai, porque quase sempre há alguma obra de rua aberta.
+  if (jogo.obrasEstrada.length >= 2 || jogo.recursos.pedra < 10) return false;
+  const jaVai = jogo.obrasEstrada.some(o => {
+    const fim = o.tiles[o.tiles.length - 1];
+    return fim && Math.abs(fim[0] - alvoTx) <= 3 && Math.abs(fim[1] - alvoTy) <= 3;
+  });
+  if (jaVai) return false;                  // já existe obra indo para lá
   let origem = null, melhor = Infinity;
   for (const k of jogo.estradas) {
     const [rx, ry] = k.split(',').map(Number);
@@ -1676,7 +1738,11 @@ function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
     const e2 = 2 * err;
     if (e2 > -dy) { err -= dy; x0 += sx; }
     if (e2 < dx) { err += dx; y0 += sy; }
-    if (!podeVirarRua(x0, y0)) break;
+    // Atravessar um trecho que já é rua é normal — a linha sai da malha
+    // existente. Tratar isso como obstáculo fazia a obra morrer no primeiro
+    // passo, e a vila nunca alcançava o recurso ali do lado.
+    if (jogo.estradas.has(nk(x0, y0))) continue;
+    if (!podeVirarRua(x0, y0)) break;          // prédio ou água funda: para
     tiles.push([x0, y0]);
   }
   if (tiles.length < 2) return false;
@@ -1840,12 +1906,23 @@ function distribuirOficios() {
   // Peso de cada frente: começa numa divisão razoável e dobra para o que está
   // em falta. Assim sempre há alguém em cada ofício, mas a vila reage ao aperto.
   const r = jogo.recursos, pop = popAtual();
+  // Recurso que não encosta em rua nenhuma não existe para a vila: nomear
+  // pedreiro sem pedra ao alcance só produz gente andando à toa (e enchia a
+  // crônica de 'fulano virou pedreiro' toda hora).
+  const base = centroDaVila();
+  const alcancavel = {
+    colhedor: !base || !!acharNo(base.cx, base.cy, 'comida', 26),
+    lenhador: !base || !!acharNo(base.cx, base.cy, 'madeira', 26),
+    pedreiro: !base || !!acharNo(base.cx, base.cy, 'pedra', 26),
+  };
   const peso = {
     colhedor: 1.0 * (r.comida < pop * 8 ? 2.4 : r.comida > pop * 30 ? 0.5 : 1),
     lenhador: 1.0 * (r.madeira < 120 ? 2.0 : r.madeira > 700 ? 0.5 : 1),
     pedreiro: 0.8 * (r.pedra < 80 ? 2.4 : r.pedra > 600 ? 0.4 : 1),
   };
+  for (const of in peso) if (!alcancavel[of]) peso[of] = 0;
   const soma = peso.colhedor + peso.lenhador + peso.pedreiro;
+  if (soma <= 0) return;                    // nada ao alcance: espera o quarteirão
 
   const alvo = {};
   for (const of in peso) alvo[of] = Math.round(trabalhadores.length * peso[of] / soma);
@@ -1940,7 +2017,22 @@ function conselho() {
     if (decidirObra('fazenda')) return;
   }
 
-  // --- 2. Teto: é o que destrava a população. Só com comida de sobra. ---
+  // --- 2. Recurso fora de alcance: abre quarteirão até ele ---
+  // Com a regra da rua, o que não encosta no calçamento não existe para a
+  // vila. Sem isto, a cidade morre cercada de floresta que não pode tocar.
+  const centro = centroDaVila();
+  if (centro) {
+    for (const tipo of ['madeira', 'pedra', 'comida']) {
+      if (acharNo(centro.cx, centro.cy, tipo, 24)) continue;       // ainda há na beira
+      const longe = acharNo(centro.cx, centro.cy, tipo, 45, true); // existe, mas sem rua
+      if (longe && crescerRuaRumo(longe.tx, longe.ty, 12)) {
+        crônica('Acabou ' + RECURSO[tipo].nome + ' à beira da rua — abriram quarteirão novo.');
+        return;
+      }
+    }
+  }
+
+  // --- 3. Teto: é o que destrava a população. Só com comida de sobra. ---
   // Não espera lotar: com despensa cheia, abre teto antes de precisar.
   // Cada casa traz de duas a cinco pessoas: só abre teto se a lavoura já
   // aguenta esse tanto de boca a mais.
@@ -1982,7 +2074,7 @@ function conselho() {
     if (decidirObra('centro')) return;
   }
 
-  // --- 6. Malha viária à frente das construções ---
+  // --- 7. Malha viária à frente das construções ---
   if (jogo.estradas.size < 26 + pop * 2.4) crescerRua();
 }
 

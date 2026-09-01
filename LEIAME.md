@@ -106,8 +106,9 @@ Se falta lote com frente para a rua, os próprios aldeões pedem estrada nova.
 falta mais agora" — a regra antiga mandava todo mundo para o mesmo recurso ao
 mesmo tempo e a cidade virava monocultura: quinze lenhadores e nenhum pedreiro.
 
-**Estradas** custam 1 de pedra por tile e dão **+55% de velocidade** a quem
-anda por cima. São construídas tile a tile, por gente de verdade.
+**Estradas** custam 1 de pedra por tile (4 na ponte sobre água rasa) e dão
+**+55% de velocidade**. São construídas tile a tile, por gente de verdade — e
+são o único chão por onde se anda.
 
 **Veículos**, feitos sozinhos pelos prédios e entregues a quem coleta:
 
@@ -118,6 +119,23 @@ anda por cima. São construídas tile a tile, por gente de verdade.
 | ⛵ Barco | Cais | 8 | pescador rende 60% mais |
 
 ---
+
+## A regra da rua
+
+**Gente anda na rua.** Fora do calçamento não se passa — e o que não encosta
+numa rua simplesmente não existe para a vila: não dá para colher a árvore no
+meio do mato, nem construir onde não há testada.
+
+Isso muda o motor do jogo: quando o recurso da beira da rua acaba, o conselho
+**abre quarteirão novo** na direção do que falta. A cidade cresce atrás do que
+precisa, em vez de espalhar trilhas pelo mapa.
+
+Quem por algum motivo ficar fora do calçamento — recém-nascido, save antigo,
+um canto mal resolvido — é trazido de volta para a rua mais próxima.
+
+Dois tetos evitam que a vila se desequilibre: no máximo **metade** dos adultos
+em posto fixo (fazenda, oficina, escola…) e no máximo **um terço** no canteiro
+de obras. Sem eles, a vila inteira virava construtor e ninguém trazia madeira.
 
 ## Como eles andam
 
