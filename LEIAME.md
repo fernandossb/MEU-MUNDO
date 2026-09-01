@@ -88,24 +88,23 @@ via a partir da rede que já existe, pagando 1 de pedra por trecho.
 
 ## A vila que anda sozinha
 
-**O conselho** reavalia a vila a cada ano e decide, nesta ordem:
+**O conselho** reavalia a vila **oito vezes por dia** e decide nesta ordem:
 
-1. **Rua nova**, se a malha está menor que o tamanho da população pede — a via
-   vem antes do lote
-2. **Fazenda**, se a comida está curta (menos de 8 por morador guardados)
-3. **Casa**, se a população encostou no teto e há comida para sustentar mais
-   bocas — o freio que impede a bola de neve
-4. **Fazenda** de rotina, uma a cada 7 moradores
-5. **Oficina** (10+ moradores) e **Estábulo** (18+)
-6. **Depósito**, se muita gente anda longe demais para entregar
-7. **Centro da Vila** novo, quando a vila está cheia e sobrando recurso — é
-   assim que a expansão vira infinita
+1. **Comida**, se a despensa tem menos de 4 dias — cais primeiro, que rende o
+   ano todo, depois lavoura
+2. **Teto** (casa, sobrado ou casarão), se a população se aproxima do limite
+   **e** o saldo de comida aguenta as bocas que vêm junto
+3. **Produção** acompanhando o tamanho: uma lavoura a cada 6 moradores
+4. **Serviços** conforme a vila cresce — depósito, oficina, mercado, estábulo,
+   prefeitura, praça, serraria, escola
+5. **Bairro novo** (outro Centro) quando está cheia e sobrando recurso
+6. **Malha viária** à frente das construções
 
-Se falta lote com frente para a rua, ele abre rua e constrói no ano seguinte.
+Se falta lote com frente para a rua, os próprios aldeões pedem estrada nova.
 
-**Os ofícios mudam.** Todo ano parte dos adultos reconsidera a vida e migra
-para o recurso mais escasso. Sem isso, quem virava colhedor no primeiro ano
-nunca mais mudava e a vila morria sem pedra.
+**Os ofícios mudam.** A mão de obra é repartida por proporção, não por "qual
+falta mais agora" — a regra antiga mandava todo mundo para o mesmo recurso ao
+mesmo tempo e a cidade virava monocultura: quinze lenhadores e nenhum pedreiro.
 
 **Estradas** custam 1 de pedra por tile e dão **+55% de velocidade** a quem
 anda por cima. São construídas tile a tile, por gente de verdade.
@@ -114,8 +113,9 @@ anda por cima. São construídas tile a tile, por gente de verdade.
 
 | | onde | carga | velocidade |
 |---|---|---|---|
-| 🛞 Carroça | Oficina | 26 (contra 12 no braço) | 0,92× |
-| 🐴 Cavalo | Estábulo | 6 | 1,65× |
+| 🛞 Carroça | Oficina | 26 (contra 12 no braço) | puxada a cavalo |
+| 🐴 Cavalo | Estábulo | 6 | 1,65× — montaria |
+| ⛵ Barco | Cais | 8 | pescador rende 60% mais |
 
 ---
 
@@ -129,14 +129,20 @@ resolve uma pedra e não uma casa, e por isso ficavam presas atrás dos prédios
 
 ## As pessoas
 
-Seis perfis desenhados: **criança**, **adulto** e **idoso**, em masculino e
-feminino. Criança é menor e tem a cabeça maior; idoso anda curvado, de cabelo
-branco e bengala; mulher usa saia e cabelo comprido. Cada pessoa tem nome,
-sobrenome, um jeito (teimosa, generoso, sonhador…), cônjuge, filhos e casa.
+Três personagens em arte pixel — **homem, mulher e criança** — cada um com oito
+direções e animação de caminhada. Criança não tem sexo: é criança.
 
-- **Criança** (0–14): não trabalha, brinca perto de casa
-- **Adulto** (15–64): trabalha a plena força
-- **Idoso** (65+): coleta a 60%, carrega 70%, anda mais devagar — e continua útil
+- **Criança** (0–17): não trabalha, brinca perto de casa
+- **Adulto** (18+): trabalha a plena força; depois dos 60 rende um pouco menos
+- Morrem por volta dos **75 anos**
+
+Cada pessoa tem nome, sobrenome, um jeito, cônjuge, filhos e casa. Quem nasce
+com escola aberta na vila trabalha 20% melhor pelo resto da vida.
+
+**Ofícios**: lenhador, colhedor, pedreiro, construtor, fazendeiro, pescador,
+carpinteiro (serraria), professor (escola), comerciante (mercado) e
+administrador (prefeitura). Os quatro últimos são postos fixos: ficam presos ao
+prédio. No máximo metade dos adultos fica em posto — alguém precisa colher.
 
 A **📜 Crônica** guarda a história: casamentos, nascimentos, mortes, mudanças
 de ofício, obras. É onde a vila vira narrativa.
@@ -157,9 +163,12 @@ Os números não foram inventados:
 Uma partida típica fica em torno de **25% crianças e 7% idosos**, com ~4,8% de
 crescimento ao ano — na faixa de uma cidade de fronteira em expansão.
 
-Outras regras: cada pessoa come **6 de comida por ano**; um ano de jogo dura
-**5 minutos**; vida entre 62 e 92 anos; sem comida, a vila entra em fome, os
-nascimentos param e as mortes aumentam.
+Outras regras: cada pessoa come **6 de comida por dia**; vira adulta aos **18**
+e morre por volta dos **75**; sem comida, a vila entra em fome, os nascimentos
+param e as mortes aumentam.
+
+A taxa de natalidade foi recalibrada para a escala de tempo nova: com o ano de
+doze horas, o valor antigo dava um filho a cada 54 horas de jogo.
 
 ---
 
@@ -169,7 +178,7 @@ Ao fechar e reabrir, o jogo recupera até **24 horas** de ausência — o que d�
 até **24 dias de vila, dois anos**. Aparece um relatório do que aconteceu: quanto foi
 colhido, quem nasceu, quem morreu, o que foi construído.
 
-A recuperação produz e consome **ano a ano** (não de uma vez só), senão
+A recuperação produz e consome **dia a dia** (não de uma vez só), senão
 qualquer ausência longa viraria fome garantida. As obras que o conselho
 enfileira durante a ausência também são erguidas, e a oficina e o estábulo
 continuam produzindo.
@@ -205,6 +214,23 @@ O jogo salva sozinho a cada 0,6 s e ao sair. Se o navegador bloquear o
 armazenamento local, ele continua rodando — só não salva.
 
 ---
+
+## Metas
+
+O botão **🎯** abre as metas da vila. Todas empurram para o mesmo objetivo:
+mais gente vivendo bem, sem passar fome. Cumprir uma rende recurso — não há
+moeda no jogo, então o prêmio é o que destrava a próxima obra.
+
+## O que o conselho persegue
+
+A vila tem um objetivo declarado: **crescer sem passar fome**. Ele decide oito
+vezes por dia com base em duas contas — quantos dias a despensa aguenta e qual
+o **saldo real de comida por dia**, medido (não estimado: a conta teórica
+ignorava o tempo gasto andando até o recurso e errava cinco vezes para mais).
+
+Só abre teto novo quando a lavoura já sustenta as bocas que vêm junto. Quando
+falta terreno com frente para a rua, os próprios aldeões pedem estrada nova —
+e a rua atravessa água rasa virando **ponte**, por quatro vezes o preço.
 
 ## Como as atualizações funcionam
 
