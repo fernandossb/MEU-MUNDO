@@ -1687,20 +1687,27 @@ function crescerRua() {
   pontas.sort((a, b) => b[2] - a[2]);
   const [px, py] = pontas[Math.floor(rnd() * Math.min(pontas.length, 5))];
 
-  // Direção: para fora do centro, virando 90° de vez em quando.
-  let dir;
+  // Direção: para fora do centro, virando 90° de vez em quando. Se a folga
+  // não permitir, tenta as outras — é melhor virar a esquina do que desistir.
   const foraX = Math.sign(px - btx) || (rnd() < 0.5 ? 1 : -1);
   const foraY = Math.sign(py - bty) || (rnd() < 0.5 ? 1 : -1);
-  if (rnd() < 0.4) dir = Math.abs(px - btx) > Math.abs(py - bty) ? [0, foraY] : [foraX, 0];
-  else dir = Math.abs(px - btx) > Math.abs(py - bty) ? [foraX, 0] : [0, foraY];
+  const preferida = Math.abs(px - btx) > Math.abs(py - bty) ? [foraX, 0] : [0, foraY];
+  const outra = preferida[0] !== 0 ? [0, foraY] : [foraX, 0];
+  const tentativas = rnd() < 0.4 ? [outra, preferida] : [preferida, outra];
+  tentativas.push([-preferida[0], -preferida[1]], [-outra[0], -outra[1]]);
 
-  const tiles = [];
   const comprimento = 4 + Math.floor(rnd() * 4);
-  let cx = px, cy = py;
-  for (let i = 0; i < comprimento; i++) {
-    cx += dir[0]; cy += dir[1];
-    if (!podeVirarRua(cx, cy)) break;
-    tiles.push([cx, cy]);
+  let tiles = [];
+  for (const dir of tentativas) {
+    tiles = [];
+    let cx = px, cy = py;
+    for (let i = 0; i < comprimento; i++) {
+      cx += dir[0]; cy += dir[1];
+      if (!podeVirarRua(cx, cy)) break;
+      if (ruaParalelaPerto(cx, cy, dir[0], dir[1])) break;   // rente a outra via
+      tiles.push([cx, cy]);
+    }
+    if (tiles.length >= 2) break;
   }
   if (tiles.length < 2) return false;
   jogo.obrasEstrada.push({ tiles, feitos: 0, t: 0 });
@@ -1713,7 +1720,10 @@ function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
   // Rua com destino é prioridade: ela busca recurso ou beira d'água. A de
   // rotina espera a vez, mas esta pode entrar junto com uma já em andamento —
   // senão nunca sai, porque quase sempre há alguma obra de rua aberta.
-  if (jogo.obrasEstrada.length >= 2 || jogo.recursos.pedra < 10) return false;
+  // Piso baixo de propósito: a rua paga por trecho, e exigir estoque grande
+  // criava um beco sem saída — sem pedra não há rua, e sem rua não se chega
+  // até a pedra.
+  if (jogo.obrasEstrada.length >= 2 || jogo.recursos.pedra < 3) return false;
   const jaVai = jogo.obrasEstrada.some(o => {
     const fim = o.tiles[o.tiles.length - 1];
     return fim && Math.abs(fim[0] - alvoTx) <= 3 && Math.abs(fim[1] - alvoTy) <= 3;
@@ -1735,6 +1745,7 @@ function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
   const limite = maxTiles || 8;
   while (guarda++ < 60 && tiles.length < limite) {
     if (x0 === alvoTx && y0 === alvoTy) break;
+    const antesX = x0, antesY = y0;
     const e2 = 2 * err;
     if (e2 > -dy) { err -= dy; x0 += sx; }
     if (e2 < dx) { err += dx; y0 += sy; }
@@ -1743,6 +1754,8 @@ function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
     // passo, e a vila nunca alcançava o recurso ali do lado.
     if (jogo.estradas.has(nk(x0, y0))) continue;
     if (!podeVirarRua(x0, y0)) break;          // prédio ou água funda: para
+    // Sentido do passo que acabou de ser dado, para medir a folga no lado certo.
+    if (ruaParalelaPerto(x0, y0, x0 - antesX, y0 - antesY)) break;
     tiles.push([x0, y0]);
   }
   if (tiles.length < 2) return false;
@@ -1769,6 +1782,30 @@ function aguaMaisProxima() {
 // Água rasa aceita rua: ali a obra vira ponte de madeira, e custa mais pedra.
 const ehPonte = (tx, ty) => jogo.estradas.has(nk(tx, ty)) && biomaEm(tx, ty) === B.RASO;
 
+// Duas ruas paralelas coladas não deixam quarteirão: o miolo fica estreito
+// demais para caber casa, e a vila vira um labirinto de calçamento. Exige-se
+// seis blocos de folga entre vias que correm no mesmo sentido.
+const FOLGA_ENTRE_RUAS = 6;
+
+function ruaParalelaPerto(tx, ty, dirX, dirY) {
+  // Só interessa o que está de lado em relação à rua nova: o cruzamento
+  // perpendicular de onde ela sai é legítimo e não conta.
+  const px = dirX !== 0 ? 0 : 1;
+  const py = dirX !== 0 ? 1 : 0;
+  for (let d = 1; d < FOLGA_ENTRE_RUAS; d++) {
+    for (const s of [1, -1]) {
+      const vx = tx + px * d * s, vy = ty + py * d * s;
+      if (!jogo.estradas.has(nk(vx, vy))) continue;
+      // Aquele tile faz parte de uma via no MESMO sentido da que estou abrindo?
+      const corrreParalela = dirX !== 0
+        ? (jogo.estradas.has(nk(vx - 1, vy)) || jogo.estradas.has(nk(vx + 1, vy)))
+        : (jogo.estradas.has(nk(vx, vy - 1)) || jogo.estradas.has(nk(vx, vy + 1)));
+      if (corrreParalela) return true;
+    }
+  }
+  return false;
+}
+
 function podeVirarRua(tx, ty) {
   const k = nk(tx, ty);
   const b = biomaEm(tx, ty);
@@ -1778,21 +1815,19 @@ function podeVirarRua(tx, ty) {
 
 // Primeira via da vila: uma praça em cruz em volta do Centro, para as primeiras
 // casas terem onde encostar.
+// A vila começa com uma esquina, não com um anel. O anel punha duas vias
+// paralelas a quatro blocos uma da outra — exatamente o que a regra da folga
+// existe para impedir, e a cidade nascia já sem espaço para crescer direito.
 function ruaFundadora(centro) {
   const cx = Math.floor(centro.cx / TILE), cy = Math.floor(centro.cy / TILE);
   const w = centro.def.w, h = centro.def.h;
-  for (let i = -3; i <= w + 2; i++) {
-    for (const ty of [cy - Math.floor(h / 2) - 1, cy + Math.ceil(h / 2)]) {
-      const tx = cx - Math.floor(w / 2) + i;
-      if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); }
-    }
-  }
-  for (let i = -3; i <= h + 2; i++) {
-    for (const tx of [cx - Math.floor(w / 2) - 1, cx + Math.ceil(w / 2)]) {
-      const ty = cy - Math.floor(h / 2) + i;
-      if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); }
-    }
-  }
+  const linha = cy + Math.ceil(h / 2);          // avenida ao sul do Centro
+  const coluna = cx - Math.floor(w / 2) - 1;    // rua a oeste
+  const por = (tx, ty) => {
+    if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); }
+  };
+  for (let i = -5; i <= w + 5; i++) por(cx - Math.floor(w / 2) + i, linha);
+  for (let i = -5; i <= h + 5; i++) por(coluna, cy - Math.floor(h / 2) + i);
 }
 
 function erguerPredio(chave, tx, ty) {
@@ -2709,15 +2744,27 @@ function pedirRuaAte(tx, ty) {
   let x0 = origem[0], y0 = origem[1];
   const dx = Math.abs(tx - x0), dy = Math.abs(ty - y0);
   const sx = x0 < tx ? 1 : -1, sy = y0 < ty ? 1 : -1;
-  let err = dx - dy, guarda = 0;
+  let err = dx - dy, guarda = 0, barrouPorFolga = false;
+  let ultX = x0, ultY = y0;
   while (guarda++ < 90) {
-    if (podeVirarRua(x0, y0)) tiles.push([x0, y0]);
+    if (podeVirarRua(x0, y0)) {
+      // A folga de seis blocos vale para as suas ruas também: senão o mapa
+      // enche de calçamento e não sobra terreno para construir.
+      if (tiles.length && ruaParalelaPerto(x0, y0, x0 - ultX, y0 - ultY)) { barrouPorFolga = true; break; }
+      tiles.push([x0, y0]);
+    }
     if (x0 === tx && y0 === ty) break;
+    ultX = x0; ultY = y0;
     const e2 = 2 * err;
     if (e2 > -dy) { err -= dy; x0 += sx; }
     if (e2 < dx) { err += dx; y0 += sy; }
   }
-  if (!tiles.length) { aviso('Não há por onde passar'); return; }
+  if (!tiles.length) {
+    aviso(barrouPorFolga ? 'Rua paralela colada demais — deixe ' + FOLGA_ENTRE_RUAS + ' blocos de folga'
+                         : 'Não há por onde passar');
+    return;
+  }
+  if (barrouPorFolga) aviso('Rua encurtada: precisa de ' + FOLGA_ENTRE_RUAS + ' blocos entre vias paralelas');
   if (jogo.recursos.pedra < tiles.length) {
     aviso('Falta pedra: precisa de ' + tiles.length + '⛏ e você tem ' + Math.floor(jogo.recursos.pedra));
     return;

@@ -130,6 +130,13 @@ Isso muda o motor do jogo: quando o recurso da beira da rua acaba, o conselho
 **abre quarteirão novo** na direção do que falta. A cidade cresce atrás do que
 precisa, em vez de espalhar trilhas pelo mapa.
 
+**Vias paralelas precisam de seis blocos de folga.** Sem essa regra a vila
+enchia de calçamento e não sobrava terreno para construir — quarteirão estreito
+não cabe casa. A regra vale para o conselho e para você: se a rua que você
+encomendar correr rente a outra no mesmo sentido, ela é encurtada e o jogo
+avisa. Por isso a vila também começa com uma **esquina** em vez de um anel: o
+anel já nascia com duas vias paralelas a quatro blocos uma da outra.
+
 Quem por algum motivo ficar fora do calçamento — recém-nascido, save antigo,
 um canto mal resolvido — é trazido de volta para a rua mais próxima.
 
