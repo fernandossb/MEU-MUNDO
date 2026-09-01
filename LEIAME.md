@@ -334,10 +334,27 @@ Isso vale para as três formas de sair, não só para fechar o app de vez:
 - **app fechado** de verdade.
 
 Nos dois primeiros casos o app não é recarregado — o WebView só congela, e com
-ele congelava a vila inteira. Agora a hora da saída é anotada, e na volta a
-diferença vira dias de vila. Se por algum motivo nenhum desses avisos chegar, o
-próprio laço de quadros percebe o buraco (mais de 25 segundos entre dois
-quadros) e faz a mesma conta.
+ele congelava a vila inteira.
+
+**Quem manda é o relógio de parede, não os avisos do sistema.** A cada quadro o
+jogo compara o `Date.now()` com o do quadro anterior; se ele pulou, o aparelho
+esteve dormindo e a diferença é cobrada. Isso não depende do `visibilitychange`
+chegar (no WebView do Android ele nem sempre chega) nem do `performance.now()`,
+que conta tempo de máquina acordada e não tempo de calendário. Voltou a
+desenhar um quadro? O tempo é cobrado. A casca nativa ainda avisa o jogo no
+`onPause` e no `onResume`, mas só para adiantar e para o save ficar fresco caso
+o Android mate o processo.
+
+**O relógio anda o tempo exato, não em dias inteiros.** Este era o defeito que
+fazia parecer que nada corria com o app fechado: a recuperação só avançava o
+calendário uma vez por dia cheio, e um dia de vila é uma hora de verdade — logo
+sair por cinquenta minutos movia o relógio em zero. Agora o resto do dia entra
+na conta.
+
+Como cada minuto real vale vinte e quatro minutos de vila, dá para conferir
+na hora: **três minutos fora = 1h12 de vila; meia hora = 12 horas; oito horas =
+oito dias.** Ausência curta mostra um aviso; a partir de dez minutos abre o
+relatório completo.
 
 A recuperação produz e consome **dia a dia** (não de uma vez só), senão
 qualquer ausência longa viraria fome garantida. As obras que o conselho

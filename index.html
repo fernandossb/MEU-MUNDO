@@ -2755,7 +2755,9 @@ function tetoEstoque() {
 
 function recuperarOffline(segundos) {
   const s = Math.min(segundos, OFFLINE_MAX);
-  if (s < 60) return null;
+  // Vinte segundos já contam. O piso de um minuto fazia toda troca rápida de
+  // app cair fora da conta.
+  if (s < 20) return null;
   const rel = { segundos: s, madeira:0, comida:0, pedra:0, nascidos:0, mortos:0, obras:0, anos:0 };
   const EFIC = 0.55;   // sem o jogador por perto, rende pouco mais da metade
   emRecuperacao = true;
@@ -2817,9 +2819,20 @@ function recuperarOffline(segundos) {
 
   // A vida da vila anda por DIA. Contar em anos aqui faria uma noite inteira
   // fora não render tick nenhum, já que um ano leva doze horas.
+  /*
+     ESTE era o bug do "o tempo não corre com o app fechado".
+
+     O relógio da vila só andava aqui dentro, uma vez por DIA INTEIRO. E um dia
+     de vila é uma hora de verdade — então sair por cinquenta minutos dava
+     dias = 0, e a data e o relógio ficavam exatamente onde estavam. Parecia
+     que nada tinha acontecido, porque para o calendário nada tinha mesmo.
+
+     Agora o que sobra do dia também entra na conta.
+  */
   const dias = Math.floor(s / DIA);
   rel.dias = dias;
-  rel.anos = +(dias / DIAS_NO_ANO).toFixed(1);
+  rel.diasFracao = s / DIA;                    // com casas decimais, para o relatório
+  rel.anos = +(s / ANO).toFixed(2);
   for (let i = 0; i < dias; i++) {
     render(DIA);
     avancarObras();
@@ -2829,8 +2842,13 @@ function recuperarOffline(segundos) {
     jogo.anoFrac += 1 / DIAS_NO_ANO;
     while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
   }
-  render(s - dias * DIA);
-  avancarObras();
+  const resto = s - dias * DIA;
+  render(resto);
+  // Obra só anda depois de pelo menos um dia: com o resto do dia valendo obra,
+  // uma saída de trinta segundos adiantava o canteiro inteiro de graça.
+  if (dias > 0) avancarObras();
+  jogo.anoFrac += resto / ANO;
+  while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
   jogo.mesAnterior = mesAtual();
 
   emRecuperacao = false;
@@ -3688,7 +3706,9 @@ function mostrarRelatorio(rel) {
   const quando = rel.fechadoEm
     ? 'Você saiu às ' + hhmm(rel.fechadoEm) + ' e voltou às ' + hhmm(rel.abertoEm || Date.now()) + '. '
     : '';
-  el('relatorio-tempo').textContent = quando + 'A vila viveu ' + (h ? h + 'h ' : '') + m + 'min sem você — ' + rel.dias + ' dia(s), ' + rel.anos + ' ano(s).';
+  el('relatorio-tempo').textContent = quando +
+    'Fora por ' + (h ? h + 'h ' : '') + m + 'min — na vila passaram ' +
+    tempoDaVila(rel.segundos) + ' (' + rel.anos + ' ano).';
   const linhas = [
     '🌳 +' + rel.madeira + '   🍖 +' + rel.comida + '   ⛏ +' + rel.pedra,
     '👶 ' + rel.nascidos + ' nasceram · 🕯️ ' + rel.mortos + ' morreram',
@@ -5161,16 +5181,31 @@ function desenharCavalo(g, p, esc, frente) {
 /* ---------------------------------------------------------------- loop --- */
 
 let ultimo = performance.now();
+// Hora de calendário do último quadro. É por ela que se mede a ausência.
+let ultimoReal = Date.now();
 
 function quadro(t) {
   requestAnimationFrame(quadro);
   agora = t;
   let dt = (t - ultimo) / 1000;
   ultimo = t;
-  // ITEM 6: o app em segundo plano congela o requestAnimationFrame, e com ele
-  // congelava a vila inteira. Um buraco grande entre dois quadros quer dizer
-  // que o aparelho esteve dormindo — o tempo real vira tempo de vila.
-  if (dt > 25) { voltarDaAusencia(Date.now() - dt * 1000); dt = 0; }
+
+  /*
+     O tempo fora do ar é cobrado pelo RELÓGIO DE PAREDE, não pelos eventos.
+
+     Depender do visibilitychange era frágil: no WebView do Android ele nem
+     sempre chega, e o performance.now() pode nem andar com o aparelho
+     dormindo (ele conta tempo de máquina acordada, não tempo de calendário).
+     O Date.now() sempre anda. Então basta: voltou a desenhar um quadro? Vê
+     quanto o relógio de parede pulou desde o último quadro e cobra a diferença.
+     Isso funciona com o app em segundo plano, com a tela apagada e com o app
+     morto e reaberto, sem depender de aviso nenhum do sistema.
+  */
+  const agoraReal = Date.now();
+  const buraco = (agoraReal - ultimoReal) / 1000;
+  ultimoReal = agoraReal;
+  if (buraco > 20) { voltarDaAusencia(agoraReal - buraco * 1000); dt = 0; }
+  else if (dt > 25) { voltarDaAusencia(agoraReal - dt * 1000); dt = 0; }
   if (dt > 0.05) dt = 0.05;
   if (!folhaAberta()) passo(dt);
   desenhar();
@@ -5713,16 +5748,32 @@ function voltarDaAusencia(quando) {
   saiuEm = 0;
   jogo.fechadoEm = 0;
   ultimo = performance.now();
+  ultimoReal = Date.now();
   if (!inicio) return;
   const fora = (Date.now() - inicio) / 1000;
-  if (fora < 60) return;
+  if (fora < 20) return;
   const rel = recuperarOffline(fora);
   ultimo = performance.now();
+  ultimoReal = Date.now();
   if (!rel) return;
   rel.fechadoEm = inicio;
   rel.abertoEm = Date.now();
   atualizarHUD(); atualizarBadgePedidos(); desenharMinimapa(); gravar();
-  mostrarRelatorio(rel);
+  // Ausência curta não merece um relatório na cara: um aviso basta, e ele
+  // serve de prova de que o relógio andou.
+  if (fora >= 600) mostrarRelatorio(rel);
+  else aviso('⏱️ ' + tempoDaVila(fora) + ' de vila enquanto você esteve fora');
+}
+
+// Quanto tempo de VILA vale um tanto de tempo real. Um dia de vila é uma hora
+// de verdade, então cada minuto real vale vinte e quatro minutos lá dentro —
+// é a conta que deixa claro que o relógio andou.
+function tempoDaVila(segundosReais) {
+  const horas = (segundosReais / DIA) * 24;
+  const d = Math.floor(horas / 24), h = Math.floor(horas % 24), m = Math.round((horas % 1) * 60);
+  if (d) return d + ' dia(s) e ' + h + 'h';
+  if (h) return h + 'h ' + String(m).padStart(2, '0') + 'min';
+  return m + ' min';
 }
 
 addEventListener('beforeunload', () => { clearTimeout(saveT); gravar(); });

@@ -117,8 +117,31 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        super.onPause();
+        // Avisa o jogo que a vila vai ficar sem plateia: ele anota a hora e grava.
+        // O visibilitychange do WebView costuma chegar, mas não em todo aparelho —
+        // e se o Android matar o processo aqui, o save precisa estar fresco.
+        avisarJogo("marcarSaida");
+    }
+
+    /** Chama uma função do jogo, se ela existir. Sem rede, sem risco. */
+    private void avisarJogo(String funcao) {
+        if (tela == null) return;
+        try {
+            tela.evaluateJavascript("window." + funcao + " && " + funcao + "()", null);
+        } catch (Exception e) {
+            // WebView já destruído: o jogo se vira sozinho pelo relógio de parede.
+        }
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
+        // Volta a contar o tempo que passou fora. O jogo também percebe sozinho
+        // pelo relógio de parede, no primeiro quadro — isto aqui só adianta.
+        avisarJogo("voltarDaAusencia");
+
         // A checagem só acontecia no onCreate. Como o botão Voltar manda o app
         // para segundo plano em vez de fechar, reabrir pelo ícone não criava a
         // Activity de novo — e a versão nova nunca era anunciada. Agora ele
