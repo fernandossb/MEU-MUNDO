@@ -54,6 +54,7 @@ public class MainActivity extends Activity {
 
     private WebView tela;
     private final ExecutorService segundoPlano = Executors.newSingleThreadExecutor();
+    private long ultimaChecagem = 0;
 
     @Override
     protected void onCreate(Bundle estadoSalvo) {
@@ -88,6 +89,7 @@ public class MainActivity extends Activity {
         setContentView(tela);
 
         telaCheia();
+        ultimaChecagem = System.currentTimeMillis();
         segundoPlano.execute(this::procurarAtualizacao);
     }
 
@@ -112,6 +114,20 @@ public class MainActivity extends Activity {
         // Não mata o jogo: manda para segundo plano, que é onde a vila continua
         // valendo (o save já foi gravado no visibilitychange).
         moveTaskToBack(true);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // A checagem só acontecia no onCreate. Como o botão Voltar manda o app
+        // para segundo plano em vez de fechar, reabrir pelo ícone não criava a
+        // Activity de novo — e a versão nova nunca era anunciada. Agora ele
+        // confere também ao voltar, no máximo uma vez a cada meia hora.
+        long agora = System.currentTimeMillis();
+        if (agora - ultimaChecagem > 30 * 60 * 1000L) {
+            ultimaChecagem = agora;
+            segundoPlano.execute(this::procurarAtualizacao);
+        }
     }
 
     /* ------------------------------------------------------- atualização --- */
