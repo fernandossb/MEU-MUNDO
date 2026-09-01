@@ -256,6 +256,25 @@ Com muita gente, quem está fora da tela é atualizado em rodízio, recebendo o
 tempo acumulado de uma vez: anda igual, em passos maiores, e o celular aguenta
 a cidade grande.
 
+## As casas
+
+A **Casa** é arte pixel: a mesma casa em quatro cores — bege, verde, azul e
+terracota — e cada casa sorteia a sua. O sorteio sai do id do prédio, então é
+sempre a mesma cor para a mesma casa: recarregar o save não repinta a rua.
+
+A arte original vinha com árvores e arbustos em volta. Eles foram apagados no
+recorte — o jogo planta a própria vegetação, e duas árvores no mesmo ponto
+ficariam estranhas. O jardim da frente ficou, porque esse é da casa.
+
+À noite, com gente dentro, os vidros acendem: as duas janelas da fachada e a da
+mansarda. A fumaça sai da chaminé da arte, não de um ponto calculado.
+
+As outras construções — Centro da Vila, Sobrado, Casarão, fazendas, oficina,
+escola, prefeitura — continuam em desenho vetorial, cada uma sorteando forma de
+telhado, cor e puxadinho a partir do próprio id.
+
+---
+
 ## As pessoas
 
 Três personagens em arte pixel — **homem, mulher e criança** — cada um com oito
