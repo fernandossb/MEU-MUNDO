@@ -266,8 +266,8 @@ mesma casa, senão a rua se reconstruiria a cada recarregamento.
 | Prédio | Arte |
 |---|---|
 | Centro da Vila | `centro.png` |
-| Casa | `casa1.png`, `casa2.png`, `casa3.png` |
-| Sobrado | `sobrado1.png` |
+| Casa | `cais.png`, `casa2.png`, `sobrado1.png` |
+| Sobrado | `casa3.png` |
 | Casarão | `casarão.png` |
 | Depósito | `depósito.png` |
 | Fazenda | `fazendapequena.png` |
@@ -275,10 +275,33 @@ mesma casa, senão a rua se reconstruiria a cada recarregamento.
 | Oficina | `oficina.png` |
 | Serraria | `serraria.png` |
 | Estábulo | `estabulo.png` |
-| Cais | `cais.png` |
+| Cais | `casa1.png` |
 | Mercado | `mercado.png` |
 | Escola | `escola.png` |
 | Praça, Prefeitura | *ainda vetoriais* |
+
+> **Por que os nomes dos arquivos não batem com o prédio.** Três artes foram
+> remanejadas para a escada de moradia fazer sentido na tela. `casa3.png` é uma
+> casa de dois andares com sacada — é literalmente um sobrado, e é a arte mais
+> alta que cabe num lote 2×2. `casa1.png` é uma palafita, que é o que se põe na
+> beira d'água, então virou o Cais. E `cais.png` (a cabana redonda) virou
+> variante de casa. Trocar de volta é uma linha em `LOTE` e um comando.
+
+### A escada da moradia
+
+A altura desenhada tinha de crescer junto com o prédio, senão o Sobrado (nove
+moradores) aparecia menor que a Casa (cinco):
+
+| | Desenhado | Moradores |
+|---|---|---|
+| Casa | 56×60, 56×48, 56×48 | 5 |
+| Sobrado | 56×82 | 9 |
+| Casarão | 84×101 | 14 |
+
+Como a largura é cravada na do lote, quem manda na "presença" do prédio é a
+proporção da arte: arte larga fica baixa, arte alta fica alta. Por isso a
+correção foi remanejar as artes, e não esticar nenhuma — esticar sairia
+deformado ou invadiria a rua.
 
 ### A regra de tamanho
 

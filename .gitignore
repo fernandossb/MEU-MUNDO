@@ -18,3 +18,8 @@ Thumbs.db
 
 # configuração local do servidor de prévia
 .claude/
+
+# saída das ferramentas de arte (gerada, não versionada)
+ferramentas/predios.png
+ferramentas/predios.b64.txt
+ferramentas/predios.json

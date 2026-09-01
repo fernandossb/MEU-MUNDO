@@ -15,14 +15,20 @@ const ALTURA_MAX = 2.4;      // um prédio pode ser 2,4x a profundidade do lote
 // Lote de cada prédio, igual ao PREDIO do jogo.
 const LOTE = {
   centro:        { w: 3, h: 3, arq: 'centro.png' },
-  casa:          { w: 2, h: 2, arq: ['casa1.png', 'casa2.png', 'casa3.png'] },
+  // casa3 é a de dois andares com sacada — é literalmente um sobrado, e é a
+  // arte mais alta que cabe num lote 2x2 (82 px, contra 60 da mais alta que
+  // sobrou para a casa). Era o que faltava para o Sobrado parecer maior.
+  casa:          { w: 2, h: 2, arq: ['cais.png', 'casa2.png', 'sobrado1.png'] },
   deposito:      { w: 2, h: 2, arq: 'depósito.png' },
   fazenda:       { w: 3, h: 3, arq: 'fazendapequena.png' },
   oficina:       { w: 2, h: 2, arq: 'oficina.png' },
   estabulo:      { w: 3, h: 2, arq: 'estabulo.png' },
-  cais:          { w: 2, h: 2, arq: 'cais.png' },
+  // casa1 é a palafita: cabana sobre estacas é exatamente o que se põe na
+  // beira d'água. E ela era a segunda mais alta, o que atrapalhava a conta do
+  // Sobrado enquanto era variante de casa.
+  cais:          { w: 2, h: 2, arq: 'casa1.png' },
   mercado:       { w: 3, h: 2, arq: 'mercado.png' },
-  sobrado:       { w: 2, h: 2, arq: 'sobrado1.png' },
+  sobrado:       { w: 2, h: 2, arq: 'casa3.png' },
   predio:        { w: 3, h: 2, arq: 'casarão.png' },
   fazendaGrande: { w: 4, h: 3, arq: 'fazendagrande.png' },
   serraria:      { w: 3, h: 2, arq: 'serraria.png' },
