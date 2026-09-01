@@ -65,13 +65,34 @@
 
   /* Barra inferior: construção OU confirmação, nunca as duas (item 6). */
   #rodape {
-    position:absolute; left:8px; right:8px; bottom:calc(env(safe-area-inset-bottom) + 8px);
+    position:absolute; left:0; right:0; bottom:calc(env(safe-area-inset-bottom) + 8px);
     display:flex; flex-direction:column; align-items:center; gap:8px; pointer-events:none;
   }
-  #bar { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; }
-  #bar .btn { flex:0 0 auto; flex-direction:column; gap:3px; min-width:64px; padding:7px 9px; }
+  /* Faixa única que desliza na horizontal, agrupada por categoria. */
+  #bar {
+    display:flex; flex-wrap:nowrap; gap:6px; align-items:stretch;
+    width:100%; overflow-x:auto; overflow-y:hidden;
+    padding:2px 12px 4px; pointer-events:auto;
+    scrollbar-width:none; -ms-overflow-style:none;
+    -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain;
+    scroll-snap-type:x proximity;
+    /* Desbota nas pontas para avisar que há mais coisa para o lado. */
+    -webkit-mask-image:linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+            mask-image:linear-gradient(90deg, transparent 0, #000 14px, #000 calc(100% - 14px), transparent 100%);
+  }
+  #bar::-webkit-scrollbar { display:none; }
+  #bar .btn { flex:0 0 auto; flex-direction:column; gap:3px; min-width:62px; padding:7px 9px; scroll-snap-align:start; }
   #bar .ic { font-size:18px; }
   #bar.escondido { display:none; }
+  /* Etiqueta da categoria: fica na vertical para ocupar quase nada de largura. */
+  #bar .cat {
+    flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+    font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; font-weight:600;
+    color:rgba(235,245,225,.5); padding:0 3px; scroll-snap-align:start;
+    writing-mode:vertical-rl; transform:rotate(180deg);
+    border-left:1px solid rgba(255,255,255,.14);
+  }
+  #bar .cat:first-child { border-left:0; }
   #place { display:none; flex-direction:column; align-items:center; gap:8px; }
   #pedido, #ruamodo {
     display:none; flex-direction:column; align-items:center; gap:8px;
@@ -2410,6 +2431,7 @@ function iniciarColocacao(chave) {
 
 function cancelarColocacao() {
   colocando = null;
+  assinaturaBarra = '';
   placeEl.classList.remove('on');
   barEl.classList.remove('escondido');
   desenharBarra();
@@ -2472,22 +2494,55 @@ function atualizarHUD() {
   if (!colocando) desenharBarra();
 }
 
+// A barra virou uma faixa só, que desliza para o lado. Com quatorze prédios ela
+// ocupava duas fileiras e comia a tela do celular; agrupada por categoria, dá
+// para achar o que se procura sem ler tudo.
+const CATEGORIAS = [
+  { nome: 'Vias',    itens: ['__rua__'] },
+  { nome: 'Moradia', itens: ['casa', 'sobrado', 'predio', 'centro'] },
+  { nome: 'Comida',  itens: ['fazenda', 'fazendaGrande', 'cais'] },
+  { nome: 'Trabalho',itens: ['deposito', 'oficina', 'serraria', 'estabulo'] },
+  { nome: 'Cidade',  itens: ['mercado', 'escola', 'praca', 'prefeitura'] },
+];
+
+let assinaturaBarra = '';
+
 function desenharBarra() {
+  // A barra é redesenhada junto com o HUD, várias vezes por segundo. Refazer o
+  // HTML jogaria a rolagem de volta ao começo no meio do seu gesto, então só
+  // reconstrói quando muda o que dá para pagar.
+  const assinatura = CATEGORIAS.map(c => c.itens.map(k =>
+    k === '__rua__' ? (jogo.estradas.size ? 1 : 0)
+                    : (PREDIO[k] && podePagar(PREDIO[k].custo) ? 1 : 0)).join('')).join('|');
+  if (assinatura === assinaturaBarra && barEl.children.length) return;
+  assinaturaBarra = assinatura;
+  const rolagem = barEl.scrollLeft;
+
   barEl.innerHTML = '';
-  for (const chave in PREDIO) {
-    const def = PREDIO[chave];
-    const b = document.createElement('div');
-    b.className = 'btn' + (podePagar(def.custo) ? '' : ' off');
-    b.innerHTML = '<span class="ic">' + def.icone + '</span><span>' + def.nome.split(' ')[0] +
-                  '</span><span class="cost">' + custoTexto(def.custo) + '</span>';
-    b.onclick = () => iniciarColocacao(chave);
-    barEl.appendChild(b);
+  for (const cat of CATEGORIAS) {
+    const rotulo = document.createElement('div');
+    rotulo.className = 'cat';
+    rotulo.textContent = cat.nome;
+    barEl.appendChild(rotulo);
+
+    for (const chave of cat.itens) {
+      const b = document.createElement('div');
+      if (chave === '__rua__') {
+        b.className = 'btn' + (jogo.estradas.size ? '' : ' off');
+        b.innerHTML = '<span class="ic">🛣️</span><span>Rua</span><span class="cost">1⛏/trecho</span>';
+        b.onclick = entrarModoRua;
+      } else {
+        const def = PREDIO[chave];
+        if (!def) continue;
+        b.className = 'btn' + (podePagar(def.custo) ? '' : ' off');
+        b.innerHTML = '<span class="ic">' + def.icone + '</span><span>' + def.nome.split(' ')[0] +
+                      '</span><span class="cost">' + custoTexto(def.custo) + '</span>';
+        b.onclick = () => iniciarColocacao(chave);
+      }
+      barEl.appendChild(b);
+    }
   }
-  const rua = document.createElement('div');
-  rua.className = 'btn' + (jogo.estradas.size ? '' : ' off');
-  rua.innerHTML = '<span class="ic">🛣️</span><span>Rua</span><span class="cost">1⛏/trecho</span>';
-  rua.onclick = entrarModoRua;
-  barEl.appendChild(rua);
+  barEl.scrollLeft = rolagem;
 }
 
 /* ------------------------------------------- pedidos e traçado de ruas --- */
@@ -2532,6 +2587,7 @@ function entrarModoRua() {
 }
 function sairModoRua() {
   modoRua = false;
+  assinaturaBarra = '';
   ruaModoEl.classList.remove('on');
   barEl.classList.remove('escondido');
   desenharBarra();
