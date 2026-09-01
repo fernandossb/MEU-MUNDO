@@ -256,22 +256,54 @@ Com muita gente, quem está fora da tela é atualizado em rodízio, recebendo o
 tempo acumulado de uma vez: anda igual, em passos maiores, e o celular aguenta
 a cidade grande.
 
-## As casas
+## Os prédios
 
-A **Casa** é arte pixel: a mesma casa em quatro cores — bege, verde, azul e
-terracota — e cada casa sorteia a sua. O sorteio sai do id do prédio, então é
-sempre a mesma cor para a mesma casa: recarregar o save não repinta a rua.
+Treze dos quinze prédios são arte de verdade, numa folha só embutida no arquivo
+como data URI — o jogo continua sendo um arquivo único, offline. A **Casa** tem
+três variantes, sorteadas por um hash do id do prédio: sempre a mesma para a
+mesma casa, senão a rua se reconstruiria a cada recarregamento.
 
-A arte original vinha com árvores e arbustos em volta. Eles foram apagados no
-recorte — o jogo planta a própria vegetação, e duas árvores no mesmo ponto
-ficariam estranhas. O jardim da frente ficou, porque esse é da casa.
+| Prédio | Arte |
+|---|---|
+| Centro da Vila | `centro.png` |
+| Casa | `casa1.png`, `casa2.png`, `casa3.png` |
+| Sobrado | `sobrado1.png` |
+| Casarão | `casarão.png` |
+| Depósito | `depósito.png` |
+| Fazenda | `fazendapequena.png` |
+| Fazenda Grande | `fazendagrande.png` |
+| Oficina | `oficina.png` |
+| Serraria | `serraria.png` |
+| Estábulo | `estabulo.png` |
+| Cais | `cais.png` |
+| Mercado | `mercado.png` |
+| Escola | `escola.png` |
+| Praça, Prefeitura | *ainda vetoriais* |
 
-À noite, com gente dentro, os vidros acendem: as duas janelas da fachada e a da
-mansarda. A fumaça sai da chaminé da arte, não de um ponto calculado.
+### A regra de tamanho
 
-As outras construções — Centro da Vila, Sobrado, Casarão, fazendas, oficina,
-escola, prefeitura — continuam em desenho vetorial, cada uma sorteando forma de
-telhado, cor e puxadinho a partir do próprio id.
+**A largura desenhada é exatamente a largura do lote.** É o que garante que
+nenhum prédio invade a rua ao lado — conferido prédio a prédio. A altura vem da
+proporção da arte, com teto de 2,4 vezes a profundidade do lote, senão a torre
+viraria um poste. A base fica cravada na beirada de baixo do lote: o telhado
+sobe acima do terreno, como deve, mas nada desce para o calçamento.
+
+### Como a folha foi montada
+
+Os PNGs originais tinham uns 500 px de lado — seis a nove vezes o que o jogo
+desenha, e 2,1 MB no total. Cada um foi recortado no que não é transparente e
+reduzido para o tamanho de tela vezes 2,2, que é a folga que o zoom máximo
+precisa. A redução usa alfa pré-multiplicado, senão a borda ganha halo escuro.
+
+Duas economias fizeram a folha caber: **filtro adaptativo no PNG** (testar os
+cinco filtros por linha e ficar com o de menor soma absoluta) e **arredondar a
+cor em degraus de oito** — em arte chapada isso não muda nada aos olhos. De
+2,1 MB para 306 KB.
+
+Janela acesa, fumaça de chaminé e os enfeites desenhados à mão (sulcos da
+lavoura, toldo do mercado, roda da oficina) valem só para os prédios vetoriais:
+a arte nova já traz tudo isso desenhado, e fumaça saindo de um telhado liso
+parece defeito, não vida.
 
 ---
 
