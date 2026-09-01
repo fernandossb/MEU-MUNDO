@@ -150,6 +150,35 @@
   .missao .conta { font-size:10.5px; opacity:.55; margin-top:3px; font-variant-numeric:tabular-nums; }
   #relatorio .linhas { display:flex; flex-direction:column; gap:6px; font-size:13.5px; }
   #ficha .cartao { width:min(360px,92vw); text-align:left; font-size:13px; line-height:1.6; }
+
+  /* Aba de pedidos pendentes (item 2) */
+  #pedidos .lista { width:min(460px,92vw); max-height:60vh; overflow-y:auto; text-align:left;
+    display:flex; flex-direction:column; gap:8px; }
+  .ped { padding:10px 12px; border-radius:9px; background:rgba(255,255,255,.05);
+    border-left:3px solid rgba(255,214,120,.75); font-size:12.5px; }
+  .ped .topo { display:flex; justify-content:space-between; gap:10px; align-items:baseline; }
+  .ped .preco { font-size:11px; opacity:.75; white-space:nowrap; }
+  .ped .desc { opacity:.7; margin:3px 0 8px; }
+  .ped .linha { display:flex; gap:7px; flex-wrap:wrap; }
+  .ped .linha .btn { padding:7px 10px; font-size:12px; }
+
+  /* Contador em cima do botão da lateral */
+  #lateral .btn { position:relative; }
+  .badge {
+    position:absolute; top:-5px; right:-5px; min-width:17px; height:17px; padding:0 4px;
+    border-radius:9px; background:#e0a83c; color:#20180a; font-size:11px; font-weight:700;
+    display:flex; align-items:center; justify-content:center; line-height:1;
+  }
+
+  /* Menu de uma construção: toque longo (item 4) */
+  #predio-menu .cartao { width:min(360px,92vw); text-align:left; font-size:13px; line-height:1.55; }
+  #predio-menu .acoes { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  #predio-menu .acoes .btn { flex-direction:column; gap:4px; min-width:78px; padding:10px 8px; }
+  #predio-menu .acoes .btn .ic { font-size:19px; }
+  #predio-menu .perigo { background:rgba(150,50,40,.5); border-color:rgba(255,140,120,.5); }
+
+  /* Barra do modo rua: traçado à mão (item 5) */
+  #ruamodo .conta { font-size:11.5px; opacity:.72; font-variant-numeric:tabular-nums; }
 </style>
 </head>
 <body>
@@ -180,6 +209,7 @@
 
   <div id="mapwrap" class="panel"><canvas id="minimap" width="92" height="92"></canvas></div>
   <div id="lateral">
+    <div id="btn-pedidos" class="btn panel">🧾<span id="badge-pedidos" class="badge" style="display:none">0</span></div>
     <div id="btn-missoes" class="btn panel">🎯</div>
     <div id="btn-cronica" class="btn panel">📜</div>
     <div id="btn-menu" class="btn panel">☰</div>
@@ -193,13 +223,20 @@
         <div class="btn" id="pedido-sim">✓ Permitir</div>
         <div class="btn" id="pedido-nao">✕ Recusar</div>
         <div class="btn" id="pedido-ver">👁 Onde</div>
+        <div class="btn" id="pedido-lista-btn">🧾 Todos</div>
       </div>
       <label id="pedido-auto"><input type="checkbox" id="pedido-check"> não perguntar mais</label>
     </div>
 
     <div id="ruamodo" class="panel">
-      <div>🛣️ Toque no mapa onde a rua deve chegar</div>
-      <div class="btn" id="rua-sair">Sair do modo rua</div>
+      <div>🛣️ Arraste o dedo no mapa para desenhar a rua</div>
+      <div class="conta" id="rua-conta">nenhum trecho traçado</div>
+      <div class="linha">
+        <div class="btn" id="rua-ok">✓ Construir</div>
+        <div class="btn" id="rua-limpar">↺ Limpar</div>
+        <div class="btn" id="rua-sair">Sair</div>
+      </div>
+      <div class="conta" style="opacity:.5">dois dedos movem e dão zoom no mapa</div>
     </div>
 
     <div id="place">
@@ -227,9 +264,22 @@
 
   <div id="missoes" class="folha">
     <h2>🎯 Metas da vila</h2>
-    <p class="hint">Tudo aqui empurra para o mesmo lugar: mais gente vivendo bem, sem passar fome.</p>
+    <p class="hint">Tudo aqui empurra para o mesmo lugar: mais gente vivendo bem, sem passar fome. As últimas metas são de longuíssimo prazo — a cidade tem para onde crescer por muito tempo.</p>
     <div class="lista" id="missoes-lista"></div>
     <div class="btn" id="missoes-fechar">Fechar</div>
+  </div>
+
+  <div id="pedidos" class="folha">
+    <h2>🧾 Pedidos pendentes</h2>
+    <p class="hint">Eles ficam aqui até você responder. No mapa, o terreno pedido pisca em amarelo — toque nele para decidir na hora.</p>
+    <div class="lista" id="pedidos-lista"></div>
+    <div class="btn" id="pedidos-fechar">Fechar</div>
+  </div>
+
+  <div id="predio-menu" class="folha">
+    <div class="cartao panel" id="predio-menu-corpo" style="padding:15px 17px"></div>
+    <div class="acoes" id="predio-menu-acoes"></div>
+    <div class="btn" id="predio-menu-fechar">Fechar</div>
   </div>
 
   <div id="cronica" class="folha">
@@ -309,6 +359,10 @@ const CLIMA = {
   tempestade:{nome:'tempestade',icone:'⛈️', lavoura:1.10, passo:0.72 },
 };
 
+// Um dia de jogo (uma hora de verdade) é um mês do calendário: doze dias
+// fazem um ano. O contador de dias sai daí, então mês, ano e dia nunca se
+// contradizem — era o que fazia o dia 4 de Abril virar dia 5 de Maio.
+const diaDaVila = () => (jogo.ano - 1) * 12 + mesAtual() + 1;
 const mesAtual  = () => Math.min(11, Math.floor(jogo.anoFrac * 12));
 const horaDoDia = () => (jogo.anoFrac * 12) % 1;          // 0 = meia-noite
 const estacaoAtual = () => ESTACAO[ESTACAO_DO_MES[mesAtual()]];
@@ -584,6 +638,8 @@ function limparNo(tx, ty) {
 // vale a pena abrir quarteirão novo.
 function acharNo(x, y, tipo, maxTiles, qualquerLugar) {
   const tx0 = Math.floor(x / TILE), ty0 = Math.floor(y / TILE);
+  // De onde a busca parte: só interessa o que está no mesmo pedaço da malha.
+  const meuPedaco = qualquerLugar ? 0 : pedacoEm(x, y);
   for (let r = 1; r <= (maxTiles || 26); r++) {
     let melhor = null, dMelhor = Infinity;
     for (let dy = -r; dy <= r; dy++)
@@ -592,6 +648,10 @@ function acharNo(x, y, tipo, maxTiles, qualquerLugar) {
         const tx = tx0 + dx, ty = ty0 + dy;
         if (ocupado.has(nk(tx, ty))) continue;
         if (!qualquerLugar && !encostaEmRua(tx, ty)) continue;
+        // Alcançável de verdade: encostar em ALGUMA rua não basta, tem de ser
+        // uma rua ligada à que ele está pisando (item 1: beco sem saída).
+        if (meuPedaco && pedacoDoTile(tx, ty) !== meuPedaco) continue;
+        if (!qualquerLugar && noRuim(tx, ty)) continue;
         const n = noEm(tx, ty);
         if (!n || (tipo && n.tipo !== tipo)) continue;
         const d = (n.x - x) ** 2 + (n.y - y) ** 2;
@@ -741,7 +801,7 @@ const jogo = {
   predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
   cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
   clima: 'limpo', mesAnterior: -1, diaTotal: 0,
-  pedido: null, autoAprovar: true,
+  pedidos: [], autoAprovar: true,
   fome: false, salvoEm: Date.now(),
 };
 
@@ -927,6 +987,135 @@ function ruaMaisProxima(x, y, maxTiles) {
 }
 const emEstrada = (x, y) => jogo.estradas.has(nk(Math.floor(x / TILE), Math.floor(y / TILE)));
 
+/* ------------------------------------------------- pedaços da malha ------ */
+/*
+   ITEM 1 — beco sem saída. Com a regra "só se anda na rua", a vila pode ter
+   trechos de calçamento que não se ligam ao resto (um começo de quarteirão,
+   uma ponte interrompida). O aldeão escolhia uma árvore do outro lado, ia até
+   a ponta do beco e ficava indo e voltando para sempre.
+
+   Aqui a malha é dividida em pedaços conectados. Quem está no pedaço A não
+   escolhe alvo no pedaço B. Ruas só são acrescentadas, nunca removidas, então
+   basta refazer o índice quando o número de trechos muda.
+*/
+let compRua = new Map();
+let compRuaTam = -1;
+
+function indiceDeRuas() {
+  if (compRuaTam === jogo.estradas.size) return compRua;
+  compRuaTam = jogo.estradas.size;
+  compRua = new Map();
+  let cor = 0;
+  for (const k of jogo.estradas) {
+    if (compRua.has(k)) continue;
+    cor++;
+    compRua.set(k, cor);
+    const fila = [k];
+    while (fila.length) {
+      const [tx, ty] = fila.pop().split(',').map(Number);
+      for (const [dx, dy] of LADOS_4) {
+        const v = nk(tx + dx, ty + dy);
+        if (!jogo.estradas.has(v) || compRua.has(v)) continue;
+        compRua.set(v, cor);
+        fila.push(v);
+      }
+    }
+  }
+  return compRua;
+}
+
+// Em que pedaço da malha está este ponto do mundo. 0 = fora da rua.
+function pedacoEm(x, y) {
+  return indiceDeRuas().get(nk(Math.floor(x / TILE), Math.floor(y / TILE))) || 0;
+}
+
+// Um tile qualquer (uma árvore, um lote) pertence ao pedaço da rua que encosta
+// nele — é por ali que se chega.
+function pedacoDoTile(tx, ty) {
+  const idx = indiceDeRuas();
+  const aqui = idx.get(nk(tx, ty));
+  if (aqui) return aqui;
+  for (const [dx, dy] of LADOS_4) {
+    const c = idx.get(nk(tx + dx, ty + dy));
+    if (c) return c;
+  }
+  return 0;
+}
+
+// Dá para sair daqui e chegar lá andando pela rua?
+function daParaChegar(x, y, tx, ty) {
+  const a = pedacoEm(x, y);
+  if (!a) return true;                     // fora do calçamento: o teleporte resolve
+  const b = pedacoDoTile(tx, ty);
+  return !b || b === a;
+}
+
+/* Qual é a malha "de verdade": a maior. Perguntar pelo pedaço do Centro da
+   Vila não funciona — o tile do meio de um prédio 3x3 não encosta em rua
+   nenhuma, e a resposta vinha sempre 0. */
+let pedacoMaiorCache = 0, pedacoMaiorTam = -1;
+function pedacoPrincipal() {
+  const idx = indiceDeRuas();
+  if (pedacoMaiorTam === idx.size) return pedacoMaiorCache;
+  pedacoMaiorTam = idx.size;
+  const conta = new Map();
+  for (const c of idx.values()) conta.set(c, (conta.get(c) || 0) + 1);
+  let melhor = 0, n = -1;
+  for (const [c, q] of conta) if (q > n) { n = q; melhor = c; }
+  pedacoMaiorCache = melhor;
+  return melhor;
+}
+
+// Trecho de rua do pedaço principal mais perto de um ponto — para trazer de
+// volta quem ficou preso num pedaço solto.
+function ruaDoPedaco(pedaco, x, y) {
+  const idx = indiceDeRuas();
+  let melhor = null, d0 = Infinity;
+  for (const [k, c] of idx) {
+    if (c !== pedaco) continue;
+    const [tx, ty] = k.split(',').map(Number);
+    const cx = (tx + 0.5) * TILE, cy = (ty + 0.5) * TILE;
+    const d = (cx - x) ** 2 + (cy - y) ** 2;
+    if (d < d0) { d0 = d; melhor = { x: cx, y: cy }; }
+  }
+  return melhor;
+}
+
+/* Recurso que ninguém consegue alcançar fica na lista negra por um tempo. Sem
+   isto, o mesmo aldeão escolhia a mesma árvore impossível a cada dois segundos. */
+const nosRuins = new Map();
+function marcarNoRuim(tx, ty) { if (tx !== undefined) nosRuins.set(nk(tx, ty), jogo.tempo + 150); }
+function noRuim(tx, ty) {
+  const k = nk(tx, ty);
+  const t = nosRuins.get(k);
+  if (t === undefined) return false;
+  if (t < jogo.tempo) { nosRuins.delete(k); return false; }
+  return true;
+}
+
+/*
+   Desencalhar: chamado quando alguém desiste de um trajeto. Na primeira e na
+   segunda vez ele só procura outro serviço. Na terceira, é sinal de que está
+   num pedaço de rua isolado — e aí volta para a malha principal, que é a mesma
+   regra de teletransporte que já vale para quem sai do calçamento.
+*/
+function desencalhar(p) {
+  p.caminho = null; p.travado = 0; p.alvo = null;
+  // A paciência recomeça do zero: senão a tentativa seguinte já nasce vencida.
+  p.semAvanco = 0; p.avancoPara = null; p.melhorD = undefined; p.tempoNoAlvo = 0;
+  p.estado = 'ocioso'; p.ociosoT = 1.6;
+  p.frustrado = (p.frustrado || 0) + 1;
+  if (p.frustrado < 3) return;
+  p.frustrado = 0;
+  const principal = pedacoPrincipal();
+  if (!principal || pedacoEm(p.x, p.y) === principal) return;
+  const volta = ruaDoPedaco(principal, p.x, p.y);
+  if (volta) {
+    p.x = volta.x; p.y = volta.y;
+    crônica(nomeCompleto(p) + ' estava preso num beco sem saída e voltou para a vila.');
+  }
+}
+
 function velocidadeDe(p) {
   let v = VEL;
   if (faseDaIdade(p.idade) === FASE.CRIANCA) v *= 0.8;
@@ -1090,7 +1279,41 @@ function passoReto(p, ax, ay, dt) {
   return Math.hypot(p.x - eraX, p.y - eraY) > velocidadeDe(p) * dt * 0.3;
 }
 
+/*
+   ITEM 1 — o beco sem saída de verdade.
+
+   O contador antigo (`travado`) só subia quando o aldeão NÃO CONSEGUIA se
+   mexer. Num beco ele se mexe à vontade: vai até a ponta, volta, vai de novo —
+   a vida inteira, sem nunca chegar e sem nunca desistir. Era exatamente o que
+   se via na tela.
+
+   Agora o que conta é encurtar a distância até o alvo. Seis segundos andando
+   sem chegar mais perto valem por "travado", e o estado que chamou desiste.
+*/
+const PACIENCIA = 6;             // segundos sem se aproximar antes de desistir
+
 function mover(p, ax, ay, dt) {
+  const d = moverPasso(p, ax, ay, dt);
+  if (d <= 0) { p.avancoPara = null; p.semAvanco = 0; return d; }
+  const alvoK = Math.floor(ax / TILE) + ',' + Math.floor(ay / TILE);
+  if (p.avancoPara !== alvoK) {
+    p.avancoPara = alvoK; p.melhorD = d; p.semAvanco = 0; p.tempoNoAlvo = 0;
+    // Prazo generoso, proporcional à distância: mesmo a 20 px/s (bem menos do
+    // que qualquer aldeão anda) a viagem caberia. Quem estoura isto não está
+    // indo a lugar nenhum.
+    p.prazoNoAlvo = 10 + d / 20;
+  }
+  else if (d < p.melhorD - 2) { p.melhorD = d; p.semAvanco = 0; }
+  else p.semAvanco = (p.semAvanco || 0) + dt;
+
+  p.tempoNoAlvo = (p.tempoNoAlvo || 0) + dt;
+  // Passa por cima do que as etapas abaixo escreveram em 'travado': o veredito
+  // é o de cima — chegar, não andar.
+  if (p.semAvanco > PACIENCIA || p.tempoNoAlvo > p.prazoNoAlvo) p.travado = 3;
+  return d;
+}
+
+function moverPasso(p, ax, ay, dt) {
   const d = Math.hypot(ax - p.x, ay - p.y);
   if (d < 1) return 0;
   p.passo += dt;
@@ -1137,13 +1360,17 @@ function mover(p, ax, ay, dt) {
 const alcanceDe = pr => (Math.max(pr.def.w, pr.def.h) * TILE) / 2 + 24;
 
 function entregaMaisProxima(x, y) {
-  let melhor = null, d0 = Infinity;
+  let melhor = null, d0 = Infinity, fallback = null, d1 = Infinity;
   for (const pr of jogo.predios) {
     if (!pr.def.entrega || pr.progresso < 1) continue;
     const d = (pr.cx - x) ** 2 + (pr.cy - y) ** 2;
+    if (d < d1) { d1 = d; fallback = pr; }
+    // Galpão do outro lado de um trecho de rua solto não serve de nada: o
+    // carregador nunca chega lá e fica indo e voltando (item 1).
+    if (!daParaChegar(x, y, pr.tx, pr.ty)) continue;
     if (d < d0) { d0 = d; melhor = pr; }
   }
-  return melhor;
+  return melhor || fallback;
 }
 
 /* ------------------------------------------------------- ordens diretas -- */
@@ -1206,23 +1433,31 @@ function podeVirarConstrutor(p) {
 
 function procurarTrabalho(p) {
   const fase = faseDaIdade(p.idade);
+  // Serviço novo, paciência nova.
+  p.semAvanco = 0; p.avancoPara = null; p.melhorD = undefined; p.travado = 0; p.tempoNoAlvo = 0;
   if (fase === FASE.CRIANCA) { p.estado = 'brincando'; p.alvo = null; return; }
 
   // Quem já tem posto volta para ele. De manhã todo mundo acorda "ocioso", e
   // sem esta linha o lavrador não reconhecia a própria lavoura como vaga
   // (ela estava ocupada por ele mesmo) e ia colher fruta — deixando a fazenda
   // marcada como ocupada e parada.
-  const meuPosto = jogo.predios.find(pr => pr.trabalhador === p.id && pr.progresso >= 1);
+  let meuPosto = jogo.predios.find(pr => pr.trabalhador === p.id && pr.progresso >= 1);
+  // Posto do outro lado de um trecho de rua solto não é posto: ele nunca
+  // chegaria lá, e a lavoura ficaria marcada como ocupada e parada (item 1).
+  if (meuPosto && !daParaChegar(p.x, p.y, meuPosto.tx, meuPosto.ty)) {
+    meuPosto.trabalhador = null; p.fazendaId = null; meuPosto = null;
+  }
   if (meuPosto) {
-    p.oficio = meuPosto.def.pesca ? 'pescador' : 'fazendeiro';
+    p.oficio = meuPosto.def.posto || (meuPosto.def.pesca ? 'pescador' : 'fazendeiro');
     p.estado = 'indoFazenda'; p.alvo = meuPosto;
+    p.semTrabalhoT = 0;
     return;
   }
 
   // Obra parada tem prioridade: vila sem casa não cresce. A estrada disputa
   // parte da mão de obra, senão nunca sai do papel.
-  const obra = jogo.predios.find(pr => pr.progresso < 1);
-  const estrada = jogo.obrasEstrada[0];
+  const obra = jogo.predios.find(pr => pr.progresso < 1 && daParaChegar(p.x, p.y, pr.tx, pr.ty));
+  const estrada = obraDeRuaAlcancavel(p);
   if (estrada && podeVirarConstrutor(p) && (!obra || rnd() < 0.4) && (p.oficio === 'construtor' || rnd() < 0.4)) {
     soltarPostos(p);
     p.oficio = 'construtor'; p.estado = 'indoEstrada'; p.alvo = estrada; return;
@@ -1231,8 +1466,8 @@ function procurarTrabalho(p) {
     soltarPostos(p);
     p.oficio = 'construtor'; p.estado = 'indoConstruir'; p.alvo = obra; return;
   }
-  // Fazenda sem cuidador
-  const fz = jogo.predios.find(temVaga);
+  // Fazenda sem cuidador — e que dê para alcançar pela rua.
+  const fz = jogo.predios.find(pr => temVaga(pr) && daParaChegar(p.x, p.y, pr.tx, pr.ty));
   if (fz && (p.oficio === 'fazendeiro' || rnd() < 0.35)) {
     fz.trabalhador = p.id; p.fazendaId = fz.id;
     p.oficio = fz.def.posto || (fz.def.pesca ? 'pescador' : 'fazendeiro');
@@ -1245,11 +1480,15 @@ function procurarTrabalho(p) {
     p.oficio = no.tipo === 'madeira' ? 'lenhador' : no.tipo === 'comida' ? 'colhedor' : 'pedreiro';
     p.estado = 'indoColetar';
     p.alvo = { tx:no.tx, ty:no.ty, tipo:no.tipo, x:no.x, y:no.y };
+    p.semTrabalhoT = 0;
     return;
   }
-  // Acabou o que havia por perto. Em vez de cruzar os braços para sempre, ele
-  // caminha para fora da vila e procura de novo lá — varrer o mapa inteiro a
-  // cada tentativa custaria caro demais com dezenas de gente parada.
+  // ITEM 3: nada de cruzar os braços. Quem ficou sem posto e sem recurso ao
+  // alcance PEDE a obra que resolveria o problema dele — foi o que se via com
+  // os fazendeiros, rodando pela vila porque não havia lavoura para cuidar.
+  p.semTrabalhoT = (p.semTrabalhoT || 0) + 1;
+  if (p.semTrabalhoT >= 2 && pedirObraParaTrabalhar(p)) { p.semTrabalhoT = 0; }
+
   // Nada por perto. Caminha pela rua para longe do centro e procura de novo lá
   // — quem abre caminho novo é o conselho, com quarteirão.
   const base = centroDaVila();
@@ -1259,6 +1498,89 @@ function procurarTrabalho(p) {
   p.estado = 'andando';
   p.alvo = ponto || { x: p.x, y: p.y };
   p.ociosoT = 0;
+}
+
+/*
+   ITEM 3 — o pedido vem de quem está sem serviço, com nome e tudo. A ordem da
+   lista é a ordem do aperto: primeiro o posto do ofício dele, depois comida se
+   a despensa estiver curta, depois os prédios que dão trabalho a qualquer um.
+*/
+const OBRA_DO_OFICIO = {
+  fazendeiro:    ['fazendaGrande', 'fazenda'],
+  pescador:      ['cais'],
+  carpinteiro:   ['serraria'],
+  professor:     ['escola'],
+  comerciante:   ['mercado'],
+  administrador: ['prefeitura'],
+};
+
+function pedirObraParaTrabalhar(p) {
+  if (emRecuperacao) return false;
+  if (jogo.pedidos.length >= MAX_PEDIDOS) return false;
+  if (jogo.tempo < (jogo.proximoPedidoDeTrabalho || 0)) return false;
+
+  // Antes de pedir prédio: se o problema é que acabou o recurso à beira da rua,
+  // o que resolve é quarteirão novo — e sai muito mais barato que uma obra.
+  const centro = centroDaVila();
+  if (centro) {
+    for (const tipo of ['madeira', 'pedra', 'comida']) {
+      if (acharNo(p.x, p.y, tipo, 22)) continue;
+      const longe = acharNo(centro.cx, centro.cy, tipo, 45, true);
+      if (longe && crescerRuaRumo(longe.tx, longe.ty, 12)) {
+        jogo.proximoPedidoDeTrabalho = jogo.tempo + DIA / 8;
+        crônica(nomeCompleto(p) + ' ficou sem ' + RECURSO[tipo].nome + ' por perto: abriram rua até a mata.');
+        return true;
+      }
+    }
+  }
+
+  // Só entra na lista o que DÁ EMPREGO. Pedir depósito não resolve a vida de
+  // quem está parado — galpão não emprega ninguém, e a vila enchia de galpão.
+  const lista = (OBRA_DO_OFICIO[p.oficio] || []).slice();
+  if (diasDeComida() < 14 || saldoComidaPorDia() < 10) lista.push('fazendaGrande', 'fazenda', 'cais');
+  lista.push('fazenda', 'serraria', 'mercado', 'escola', 'cais');
+
+  const POP_MINIMA = { fazenda: 1, cais: 1, fazendaGrande: 14, serraria: 12,
+                       mercado: 14, escola: 20, prefeitura: 24 };
+  const pop = popAtual();
+
+  for (const chave of lista) {
+    const def = PREDIO[chave];
+    if (!def || !podePagar(def.custo)) continue;
+    if (pop < (POP_MINIMA[chave] || 1)) continue;                                 // cedo demais
+    if (jogo.predios.some(o => o.chave === chave && o.progresso < 1)) continue;   // já está saindo
+    if (jogo.predios.some(o => o.chave === chave && temVaga(o))) continue;        // já há vaga aberta
+    if (def.beiraDagua && !aguaMaisProxima()) continue;
+    const lote = escolherLote(def);
+    if (!lote) continue;
+
+    jogo.proximoPedidoDeTrabalho = jogo.tempo + DIA / 3;
+    if (jogo.autoAprovar) {
+      if (!erguerPredio(chave, lote.tx, lote.ty)) return false;
+      crônica(nomeCompleto(p) + ' estava sem trabalho: a vila abriu ' + def.nome + '.');
+      if (!emRecuperacao) aviso('🛠️ ' + p.nome + ' estava sem trabalho — abriram ' + def.nome);
+      return true;
+    }
+    return !!abrirPedido(chave, lote.tx, lote.ty, p, 'está sem trabalho e pede');
+  }
+
+  // Nem lote sobrou: o que falta, então, é rua.
+  if (crescerRua()) {
+    jogo.proximoPedidoDeTrabalho = jogo.tempo + DIA / 4;
+    crônica(nomeCompleto(p) + ' pediu rua nova: não sobrou lote para trabalhar.');
+    return true;
+  }
+  return false;
+}
+
+// Canteiro de rua que este aldeão consegue alcançar pela malha. Sem isto, uma
+// obra num pedaço solto puxava todos os construtores da vila para o nada.
+function obraDeRuaAlcancavel(p) {
+  for (const o of jogo.obrasEstrada) {
+    const t = o.tiles[o.feitos];
+    if (t && daParaChegar(p.x, p.y, t[0], t[1])) return o;
+  }
+  return null;
 }
 
 function recursoMaisNecessario() {
@@ -1324,20 +1646,26 @@ function atualizarPessoa(p, dt) {
       }
       if (fase !== FASE.CRIANCA) { p.estado = 'ocioso'; p.alvo = null; break; }
       const d = mover(p, p.alvo.x, p.alvo.y, dt);
-      if (d < 8 || p.travado > 1) { p.alvo = null; p.travado = 0; }
+      if (d < 8 || p.travado > 1) { p.alvo = null; p.travado = 0; p.semAvanco = 0; }
       break;
     }
 
     case 'andando': {
       const d = mover(p, p.alvo.x, p.alvo.y, dt);
-      if (d < 6 || p.travado > 1.2) { p.estado = 'ocioso'; p.alvo = null; p.travado = 0; }
+      if (d < 6) { p.estado = 'ocioso'; p.alvo = null; p.travado = 0; p.frustrado = 0; }
+      else if (p.travado > 1.2) desencalhar(p);
       break;
     }
 
     case 'indoColetar': {
       const d = mover(p, p.alvo.x, p.alvo.y, dt);
-      if (d < TILE * 1.35) p.estado = 'coletando';
-      else if (p.travado > 1.5) { p.estado = 'ocioso'; p.travado = 0; }
+      if (d < TILE * 1.35) { p.estado = 'coletando'; p.frustrado = 0; }
+      else if (p.travado > 1.5) {
+        // Não chegou: o recurso entra na lista negra, senão ele escolhe o mesmo
+        // de novo daqui a dois segundos, para sempre.
+        marcarNoRuim(p.alvo && p.alvo.tx, p.alvo && p.alvo.ty);
+        desencalhar(p);
+      }
       break;
     }
 
@@ -1371,12 +1699,12 @@ function atualizarPessoa(p, dt) {
         // Ao entregar, o aldeão dá uma olhada na vila. Com mata densa ele
         // sempre acha outra árvore e nunca ficaria ocioso — sem esta parada
         // para pensar, obra nenhuma sairia do papel.
-        const obra = jogo.predios.find(pr => pr.progresso < 1);
+        const obra = jogo.predios.find(pr => pr.progresso < 1 && daParaChegar(p.x, p.y, pr.tx, pr.ty));
         if (obra && !p.ordemManual && podeVirarConstrutor(p) && rnd() < 0.55) {
           soltarPostos(p);
           p.oficio = 'construtor'; p.estado = 'indoConstruir'; p.alvo = obra; break;
         }
-        const obraRua = jogo.obrasEstrada[0];
+        const obraRua = obraDeRuaAlcancavel(p);
         if (obraRua && !p.ordemManual && podeVirarConstrutor(p) && rnd() < 0.3) {
           soltarPostos(p);
           p.oficio = 'construtor'; p.estado = 'indoEstrada'; p.alvo = obraRua; break;
@@ -1385,7 +1713,7 @@ function atualizarPessoa(p, dt) {
         const no = (p.alvo && noEm(p.alvo.tx, p.alvo.ty)) || acharNo(p.x, p.y, p.cargaTipo, 20);
         if (no) { p.alvo = { tx:no.tx, ty:no.ty, tipo:no.tipo, x:no.x, y:no.y }; p.estado = 'indoColetar'; }
         else p.estado = 'ocioso';
-      } else if (p.travado > 2) { p.estado = 'ocioso'; p.travado = 0; }
+      } else if (p.travado > 2) desencalhar(p);
       break;
     }
 
@@ -1393,8 +1721,8 @@ function atualizarPessoa(p, dt) {
       const pr = p.alvo;
       if (!pr || pr.progresso >= 1 || !jogo.predios.includes(pr)) { p.estado = 'ocioso'; p.alvo = null; break; }
       const d = mover(p, pr.cx, pr.cy, dt);
-      if (d < alcanceDe(pr)) p.estado = 'construindo';
-      else if (p.travado > 2) { p.estado = 'ocioso'; p.travado = 0; }
+      if (d < alcanceDe(pr)) { p.estado = 'construindo'; p.frustrado = 0; }
+      else if (p.travado > 2) desencalhar(p);
       break;
     }
 
@@ -1417,8 +1745,8 @@ function atualizarPessoa(p, dt) {
       }
       const t = obra.tiles[obra.feitos];
       const d = mover(p, (t[0] + 0.5) * TILE, (t[1] + 0.5) * TILE, dt);
-      if (d < TILE * 1.35) p.estado = 'calçando';
-      else if (p.travado > 2) { p.estado = 'ocioso'; p.travado = 0; }
+      if (d < TILE * 1.35) { p.estado = 'calçando'; p.frustrado = 0; }
+      else if (p.travado > 2) desencalhar(p);
       break;
     }
 
@@ -1449,8 +1777,8 @@ function atualizarPessoa(p, dt) {
       const pr = p.alvo;
       if (!pr || pr.progresso < 1 || !jogo.predios.includes(pr)) { p.estado = 'ocioso'; p.alvo = null; break; }
       const d = mover(p, pr.cx, pr.cy, dt);
-      if (d < alcanceDe(pr)) p.estado = 'naFazenda';
-      else if (p.travado > 2) { p.estado = 'ocioso'; p.travado = 0; }
+      if (d < alcanceDe(pr)) { p.estado = 'naFazenda'; p.frustrado = 0; }
+      else if (p.travado > 2) desencalhar(p);
       break;
     }
 
@@ -1546,18 +1874,11 @@ function planejarEstradaAte(pr) {
   if (dist < 2 || dist > 26) return;
 
   const tiles = [];
-  let x0 = Math.floor(pr.cx / TILE), y0 = Math.floor(pr.cy / TILE);
-  const x1 = Math.floor(alvo.cx / TILE), y1 = Math.floor(alvo.cy / TILE);
-  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
-  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
-  let err = dx - dy, guarda = 0;
-  while (guarda++ < 80) {
+  const de = [Math.floor(pr.cx / TILE), Math.floor(pr.cy / TILE)];
+  const ate = [Math.floor(alvo.cx / TILE), Math.floor(alvo.cy / TILE)];
+  for (const [x0, y0] of linhaDeTiles(de[0], de[1], ate[0], ate[1], 80)) {
     const k = nk(x0, y0);
     if (!ocupado.has(k) && !jogo.estradas.has(k) && !SOLIDO[biomaEm(x0, y0)]) tiles.push([x0, y0]);
-    if (x0 === x1 && y0 === y1) break;
-    const e2 = 2 * err;
-    if (e2 > -dy) { err -= dy; x0 += sx; }
-    if (e2 < dx) { err += dx; y0 += sy; }
   }
   if (tiles.length >= 2) jogo.obrasEstrada.push({ tiles, feitos: 0, t: 0 });
 }
@@ -1674,8 +1995,16 @@ function crescerRua() {
 
   // Pontas: tiles de rua com vizinho livre. Quanto mais longe do centro, mais
   // peso — assim a malha avança para fora em vez de se adensar no mesmo lugar.
+  //
+  // ITEM 1, a raiz do problema: a ponta mais longe do centro costumava ser um
+  // TRECHO SOLTO de rua. A vila abria obra lá, e todos os construtores saíam
+  // atrás de um canteiro onde não dá para chegar — parados a vida inteira.
+  // Só a malha principal serve de ponto de partida.
+  const idxRuas = indiceDeRuas();
+  const principal = pedacoPrincipal();
   const pontas = [];
   for (const k of jogo.estradas) {
+    if (principal && idxRuas.get(k) !== principal) continue;
     const [rx, ry] = k.split(',').map(Number);
     let livres = 0;
     for (const [dx, dy] of LADOS) if (podeVirarRua(rx + dx, ry + dy)) livres++;
@@ -1714,6 +2043,33 @@ function crescerRua() {
   return true;
 }
 
+/*
+   ITEM 1, a outra raiz: as ruas eram traçadas com Bresenham comum, que anda na
+   DIAGONAL. E rua diagonal não liga nada — dois tiles que só se tocam pela
+   quina não são vizinhos nem para o A* (que exige os dois lados livres para
+   cortar canto) nem para o índice de pedaços da malha. A vila abria uma via e
+   ela nascia partida em vários pedaços isolados; quem entrasse não saía mais.
+
+   Esta linha só anda para os lados, em degraus. É mais um tile aqui e ali, e
+   em troca toda rua da cidade fica de fato ligada.
+*/
+function linhaDeTiles(x0, y0, x1, y1, limite) {
+  const tiles = [];
+  let x = x0, y = y0;
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy, guarda = 0;
+  const teto = limite || 400;
+  while ((x !== x1 || y !== y1) && guarda++ < teto) {
+    const podeX = x !== x1, podeY = y !== y1;
+    if (podeX && (!podeY || 2 * err > -dy)) { err -= dy; x += sx; }
+    else if (podeY) { err += dx; y += sy; }
+    else break;
+    tiles.push([x, y]);
+  }
+  return tiles;
+}
+
 // Rua com destino: usada quando a vila quer chegar a algum lugar específico
 // (a beira d'água, por exemplo) em vez de só espalhar a malha.
 function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
@@ -1729,38 +2085,57 @@ function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
     return fim && Math.abs(fim[0] - alvoTx) <= 3 && Math.abs(fim[1] - alvoTy) <= 3;
   });
   if (jaVai) return false;                  // já existe obra indo para lá
-  let origem = null, melhor = Infinity;
-  for (const k of jogo.estradas) {
-    const [rx, ry] = k.split(',').map(Number);
-    const d = (rx - alvoTx) ** 2 + (ry - alvoTy) ** 2;
-    if (d < melhor) { melhor = d; origem = [rx, ry]; }
-  }
+  const origem = ruaMaisPertoNaMalha(alvoTx, alvoTy);
   if (!origem) return false;
 
   const tiles = [];
-  let x0 = origem[0], y0 = origem[1];
-  const dx = Math.abs(alvoTx - x0), dy = Math.abs(alvoTy - y0);
-  const sx = x0 < alvoTx ? 1 : -1, sy = y0 < alvoTy ? 1 : -1;
-  let err = dx - dy, guarda = 0;
   const limite = maxTiles || 8;
-  while (guarda++ < 60 && tiles.length < limite) {
-    if (x0 === alvoTx && y0 === alvoTy) break;
-    const antesX = x0, antesY = y0;
-    const e2 = 2 * err;
-    if (e2 > -dy) { err -= dy; x0 += sx; }
-    if (e2 < dx) { err += dx; y0 += sy; }
+  let antesX = origem[0], antesY = origem[1];
+  let passos = 0;
+  for (const [x0, y0] of linhaDeTiles(origem[0], origem[1], alvoTx, alvoTy, 60)) {
+    if (tiles.length >= limite) break;
+    passos++;
     // Atravessar um trecho que já é rua é normal — a linha sai da malha
     // existente. Tratar isso como obstáculo fazia a obra morrer no primeiro
     // passo, e a vila nunca alcançava o recurso ali do lado.
-    if (jogo.estradas.has(nk(x0, y0))) continue;
+    if (jogo.estradas.has(nk(x0, y0))) { antesX = x0; antesY = y0; continue; }
     if (!podeVirarRua(x0, y0)) break;          // prédio ou água funda: para
-    // Sentido do passo que acabou de ser dado, para medir a folga no lado certo.
-    if (ruaParalelaPerto(x0, y0, x0 - antesX, y0 - antesY)) break;
+    /*
+       A folga de seis blocos existe para a vila não virar um tabuleiro de
+       calçamento sem terreno sobrando. Mas ela também impedia a saída do
+       MIOLO: qualquer via que parta do centro corre paralela a alguma outra
+       nos primeiros blocos, e aí a cidade ficava trancada dentro de si mesma,
+       cercada de floresta que não podia tocar.
+
+       Esta rua tem destino — vai buscar madeira, pedra ou a beira d'água. Nos
+       primeiros blocos, o necessário para atravessar o bairro, a folga é
+       dispensada; do quarteirão em diante ela volta a valer.
+    */
+    if (passos > FOLGA_ENTRE_RUAS && ruaParalelaPerto(x0, y0, x0 - antesX, y0 - antesY)) break;
     tiles.push([x0, y0]);
+    antesX = x0; antesY = y0;
   }
-  if (tiles.length < 2) return false;
+  // UM trecho já vale a obra. Exigir dois travava a vila justamente no caso
+  // mais comum e mais grave: a árvore encostada na rua, a um bloco de virar
+  // alcançável — e a cidade parava por causa de um único tile de calçamento.
+  if (!tiles.length) return false;
   jogo.obrasEstrada.push({ tiles, feitos: 0, t: 0 });
   return true;
+}
+
+/* Trecho da malha PRINCIPAL mais perto de um tile. Toda obra de rua nasce
+   daqui — assim ela sempre fica ligada ao resto da cidade. */
+function ruaMaisPertoNaMalha(tx, ty) {
+  const idx = indiceDeRuas();
+  const principal = pedacoPrincipal();
+  let origem = null, melhor = Infinity;
+  for (const [k, c] of idx) {
+    if (principal && c !== principal) continue;
+    const [rx, ry] = k.split(',').map(Number);
+    const d = (rx - tx) ** 2 + (ry - ty) ** 2;
+    if (d < melhor) { melhor = d; origem = [rx, ry]; }
+  }
+  return origem;
 }
 
 // Beira d'água mais próxima do centro, para saber para onde puxar a rua.
@@ -1857,30 +2232,57 @@ function construirAuto(chave) {
 
   const adultos = jogo.pessoas.filter(p => faseDaIdade(p.idade) === FASE.ADULTO);
   const quem = adultos.length ? adultos[Math.floor(rnd() * adultos.length)] : null;
-  jogo.pedido = {
-    chave, tx: lote.tx, ty: lote.ty,
-    quem: quem ? nomeCompleto(quem) : 'O conselho',
-    diaPedido: jogo.diaTotal || 0,
-  };
-  if (!emRecuperacao) mostrarPedido();
-  crônica((quem ? quem.nome : 'O conselho') + ' pediu para construir ' + def.nome + '.');
+  abrirPedido(chave, lote.tx, lote.ty, quem, 'quer construir');
   return true;
 }
 
-function responderPedido(sim) {
-  const ped = jogo.pedido;
+/* ------------------------------------------------- fila de pedidos ------- */
+/*
+   ITEM 2 — pedido não some mais. Antes existia UM pedido de cada vez, ele
+   tapava a tela e caducava sozinho depois de três dias. Agora eles ficam numa
+   fila: o cartão de baixo mostra um, o botão 🧾 abre a lista inteira e tocar no
+   quadrado amarelo do mapa reabre justamente aquele pedido.
+*/
+const MAX_PEDIDOS = 5;
+let proxPedidoId = 1;
+
+function abrirPedido(chave, tx, ty, quem, motivo) {
+  const def = PREDIO[chave];
+  if (!def) return null;
+  if (jogo.pedidos.some(p => p.tx === tx && p.ty === ty)) return null;   // não duplica lote
+  const ped = {
+    id: proxPedidoId++, chave, tx, ty,
+    quem: quem ? nomeCompleto(quem) : 'O conselho',
+    motivo: motivo || 'quer construir',
+    diaPedido: diaDaVila(),
+  };
+  jogo.pedidos.push(ped);
+  if (!emRecuperacao) { mostrarPedido(); atualizarBadgePedidos(); }
+  crônica(ped.quem + ' ' + ped.motivo + ' ' + def.nome + '.');
+  return ped;
+}
+
+const pedidoAtual = () => jogo.pedidos[0] || null;
+const pedidoPorId = id => jogo.pedidos.find(p => p.id === id) || null;
+
+function responderPedido(sim, id) {
+  const ped = id === undefined ? pedidoAtual() : pedidoPorId(id);
   if (!ped) return;
-  jogo.pedido = null;
-  esconderPedido();
+  jogo.pedidos.splice(jogo.pedidos.indexOf(ped), 1);
   const def = PREDIO[ped.chave];
-  if (!sim) { crônica('Você recusou a obra de ' + def.nome + '.'); aviso('Pedido recusado'); return; }
-  if (!areaValida(ped.tx, ped.ty, def.w, def.h) || !encostaNaRua(ped.tx, ped.ty, def.w, def.h)) {
+  if (!sim) { crônica('Você recusou a obra de ' + def.nome + '.'); aviso('Pedido recusado'); }
+  else if (!areaValida(ped.tx, ped.ty, def.w, def.h) || !encostaNaRua(ped.tx, ped.ty, def.w, def.h)) {
     aviso('O terreno já não serve — eles vão procurar outro');
-    return;
+  } else if (!erguerPredio(ped.chave, ped.tx, ped.ty)) {
+    aviso('Faltou recurso para começar');
+  } else {
+    crônica('Você autorizou ' + def.nome + '.', true);
+    aviso('Obra autorizada');
   }
-  if (!erguerPredio(ped.chave, ped.tx, ped.ty)) { aviso('Faltou recurso para começar'); return; }
-  crônica('Você autorizou ' + def.nome + '.', true);
-  aviso('Obra autorizada');
+  atualizarBadgePedidos();
+  if (jogo.pedidos.length) mostrarPedido(); else esconderPedido();
+  if (el('pedidos').classList.contains('on')) abrirPedidos();
+  salvar();
 }
 
 function temEstradaPerto(pr) {
@@ -1925,7 +2327,9 @@ function distribuirOficios() {
   for (const pr of jogo.predios) {
     if (!temVaga(pr)) continue;
     if (emPosto >= Math.max(1, Math.floor(adultos / 2))) break;
-    const i = disponiveis.findIndex(p => faseDaIdade(p.idade) === FASE.ADULTO);
+    // Só nomeia quem consegue chegar lá andando pela rua.
+    const i = disponiveis.findIndex(p => faseDaIdade(p.idade) === FASE.ADULTO
+      && daParaChegar(p.x, p.y, pr.tx, pr.ty));
     if (i < 0) break;
     const cand = disponiveis.splice(i, 1)[0];
     pr.trabalhador = cand.id; cand.fazendaId = pr.id;
@@ -2033,7 +2437,8 @@ function saldoTeorico() {
 
 function conselho() {
   distribuirOficios();
-  if (jogo.pedido) return;                    // há um pedido esperando resposta
+  // Fila cheia: o conselho para de pedir até você responder alguma coisa.
+  if (jogo.pedidos.length >= MAX_PEDIDOS) return;
   if (obrasAtivas() >= OBRAS_AO_MESMO_TEMPO) return;
 
   const pop = popAtual(), cap = popMax();
@@ -2227,11 +2632,29 @@ function rebrotarMata() {
 const DIAS_NO_ANO = 12;
 function tickDia() {
   jogo.diaTotal = (jogo.diaTotal || 0) + 1;
-  // Pedido sem resposta por três dias: eles desistem e tocam a vida.
-  if (jogo.pedido && jogo.diaTotal - (jogo.pedido.diaPedido || 0) >= 3) {
-    crônica('Cansados de esperar, desistiram da obra de ' + PREDIO[jogo.pedido.chave].nome + '.');
-    jogo.pedido = null;
-    if (!emRecuperacao) esconderPedido();
+  // Obra de rua num pedaço de malha que ninguém alcança: cancela e devolve o
+  // canteiro, senão ela fica pendurada segurando a cota de obras da vila.
+  const principalDaMalha = pedacoPrincipal();
+  for (let i = jogo.obrasEstrada.length - 1; i >= 0; i--) {
+    const o = jogo.obrasEstrada[i];
+    const t = o.tiles[o.feitos];
+    if (!t) continue;
+    if (principalDaMalha && pedacoDoTile(t[0], t[1]) && pedacoDoTile(t[0], t[1]) !== principalDaMalha) {
+      jogo.obrasEstrada.splice(i, 1);
+      crônica('Uma obra de rua ficou isolada da cidade e foi abandonada.');
+    }
+  }
+
+  // ITEM 2: o pedido NÃO caduca mais sozinho — ele fica na aba de pedidos
+  // pendentes até você permitir ou recusar. Some só se o terreno deixar de
+  // servir, porque aí não há mais o que autorizar.
+  for (let i = jogo.pedidos.length - 1; i >= 0; i--) {
+    const ped = jogo.pedidos[i];
+    const def = PREDIO[ped.chave];
+    if (!areaValida(ped.tx, ped.ty, def.w, def.h)) {
+      crônica('O terreno pedido para ' + def.nome + ' já foi ocupado — o pedido caiu.');
+      jogo.pedidos.splice(i, 1);
+    }
   }
   const mortos = [], nascidos = [];
 
@@ -2444,7 +2867,12 @@ cv.addEventListener('touchstart', e => {
   if (toques.size === 1) {
     const t = e.changedTouches[0];
     arraste = { x0:t.clientX, y0:t.clientY, x:t.clientX, y:t.clientY, dist:0, t0:performance.now(), id:t.identifier };
+    // ITEM 5: no modo rua o mapa trava sob um dedo e o dedo desenha.
+    if (modoRua) { desenhandoRua = true; tracarAte(t.clientX, t.clientY); }
+    else iniciarToqueLongo(t.clientX, t.clientY);
   } else if (toques.size === 2) {
+    cancelarToqueLongo();
+    desenhandoRua = false;
     const [a, b] = [...toques.values()];
     pinca = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: cam.z };
     arraste = null;
@@ -2456,12 +2884,16 @@ cv.addEventListener('touchmove', e => {
   if (pinca && toques.size >= 2) {
     const [a, b] = [...toques.values()];
     cam.z = Math.max(0.55, Math.min(1.8, pinca.z0 * (Math.hypot(a.x - b.x, a.y - b.y) / pinca.d0)));
+  } else if (desenhandoRua) {
+    const t = [...e.changedTouches].find(t => t.identifier === (arraste && arraste.id));
+    if (t) tracarAte(t.clientX, t.clientY);
   } else if (arraste) {
     const t = [...e.changedTouches].find(t => t.identifier === arraste.id);
     if (t) {
       cam.x -= (t.clientX - arraste.x) / cam.z; cam.y -= (t.clientY - arraste.y) / cam.z;
       arraste.dist += Math.hypot(t.clientX - arraste.x, t.clientY - arraste.y);
       arraste.x = t.clientX; arraste.y = t.clientY;
+      if (arraste.dist > 12) cancelarToqueLongo();
     }
   }
 }, { passive:true });
@@ -2469,22 +2901,38 @@ cv.addEventListener('touchmove', e => {
 cv.addEventListener('touchend', e => {
   for (const t of e.changedTouches) toques.delete(t.identifier);
   if (toques.size < 2) pinca = null;
+  cancelarToqueLongo();
   if (arraste && [...e.changedTouches].some(t => t.identifier === arraste.id)) {
-    if (arraste.dist < 12 && performance.now() - arraste.t0 < 450) toque(arraste.x0, arraste.y0);
+    if (desenhandoRua) desenhandoRua = false;
+    else if (arraste.dist < 12 && performance.now() - arraste.t0 < 450) toque(arraste.x0, arraste.y0);
     arraste = null;
   }
+  if (!toques.size) desenhandoRua = false;
 }, { passive:true });
-cv.addEventListener('touchcancel', () => { toques.clear(); arraste = null; pinca = null; }, { passive:true });
+cv.addEventListener('touchcancel', () => {
+  toques.clear(); arraste = null; pinca = null; desenhandoRua = false; cancelarToqueLongo();
+}, { passive:true });
 
 let mouseArr = null;
-cv.addEventListener('mousedown', e => { mouseArr = { x0:e.clientX, y0:e.clientY, x:e.clientX, y:e.clientY, dist:0 }; });
+cv.addEventListener('mousedown', e => {
+  mouseArr = { x0:e.clientX, y0:e.clientY, x:e.clientX, y:e.clientY, dist:0 };
+  if (modoRua) { desenhandoRua = true; tracarAte(e.clientX, e.clientY); }
+  else iniciarToqueLongo(e.clientX, e.clientY);
+});
 addEventListener('mousemove', e => {
   if (!mouseArr) return;
+  if (desenhandoRua) { tracarAte(e.clientX, e.clientY); return; }
   cam.x -= (e.clientX - mouseArr.x) / cam.z; cam.y -= (e.clientY - mouseArr.y) / cam.z;
   mouseArr.dist += Math.hypot(e.clientX - mouseArr.x, e.clientY - mouseArr.y);
   mouseArr.x = e.clientX; mouseArr.y = e.clientY;
+  if (mouseArr.dist > 6) cancelarToqueLongo();
 });
-addEventListener('mouseup', () => { if (mouseArr && mouseArr.dist < 6) toque(mouseArr.x0, mouseArr.y0); mouseArr = null; });
+addEventListener('mouseup', () => {
+  cancelarToqueLongo();
+  if (desenhandoRua) desenhandoRua = false;
+  else if (mouseArr && mouseArr.dist < 6) toque(mouseArr.x0, mouseArr.y0);
+  mouseArr = null;
+});
 cv.addEventListener('wheel', e => {
   e.preventDefault();
   cam.z = Math.max(0.55, Math.min(1.8, cam.z * (e.deltaY < 0 ? 1.12 : 0.89)));
@@ -2510,10 +2958,23 @@ function pessoaEm(wx, wy, r) {
 }
 const predioEm = (wx, wy) => ocupado.get(nk(Math.floor(wx / TILE), Math.floor(wy / TILE))) || null;
 
+function pedidoEm(wx, wy) {
+  const tx = Math.floor(wx / TILE), ty = Math.floor(wy / TILE);
+  for (const ped of jogo.pedidos) {
+    const d = PREDIO[ped.chave];
+    if (tx >= ped.tx && tx < ped.tx + d.w && ty >= ped.ty && ty < ped.ty + d.h) return ped;
+  }
+  return null;
+}
+
 function toque(sx, sy) {
   if (colocando) return;
   const w = telaParaMundo(sx, sy);
-  if (modoRua) { pedirRuaAte(Math.floor(w.x / TILE), Math.floor(w.y / TILE)); return; }
+  if (modoRua) return;                      // no modo rua o toque desenha, não seleciona
+
+  // ITEM 2: o quadrado amarelo é um botão. Tocar nele traz o pedido de volta.
+  const ped = pedidoEm(w.x, w.y);
+  if (ped) { mostrarPedido(ped.id); aviso('Pedido de ' + PREDIO[ped.chave].nome); return; }
 
   const pes = pessoaEm(w.x, w.y, 20 / cam.z + 12);
   if (pes) {
@@ -2528,7 +2989,8 @@ function toque(sx, sy) {
     if (selecao.length && pr.progresso < 1) { mandarConstruir(selecao, pr); aviso('Ajudando na obra'); return; }
     if (selecao.length && pr.def.fazenda && pr.progresso >= 1) { mandarFazenda(selecao, pr); aviso('Cuidando da fazenda'); return; }
     aviso(pr.def.nome + (pr.progresso < 1 ? ' — ' + Math.round(pr.progresso * 100) + '%'
-      : pr.def.moradia ? ' — ' + pr.moradores.length + '/' + pr.def.pop + ' moradores' : ''));
+      : pr.def.moradia ? ' — ' + pr.moradores.length + '/' + pr.def.pop + ' moradores' : '') +
+      ' · segure para mover, melhorar ou demolir');
     return;
   }
 
@@ -2539,9 +3001,224 @@ function toque(sx, sy) {
   selecao = [];
 }
 
+/* ------------------------------------------- menu da construção (item 4) - */
+/*
+   Segurar o dedo em cima de um prédio abre o que dá para fazer com ele:
+   mover para outro lote, melhorar para a versão maior, ou demolir recuperando
+   metade do material. Um toque curto continua sendo "olhar/mandar trabalhar".
+*/
+const ESPERA_TOQUE_LONGO = 480;      // ms
+let toqueLongoT = 0;
+
+function iniciarToqueLongo(sx, sy) {
+  cancelarToqueLongo();
+  if (colocando || modoRua || folhaAberta()) return;
+  toqueLongoT = setTimeout(() => {
+    toqueLongoT = 0;
+    const w = telaParaMundo(sx, sy);
+    const pr = predioEm(w.x, w.y);
+    if (pr) {
+      arraste = null; mouseArr = null;          // não vira arrasto nem toque curto
+      abrirMenuPredio(pr);
+    }
+  }, ESPERA_TOQUE_LONGO);
+}
+function cancelarToqueLongo() {
+  if (toqueLongoT) { clearTimeout(toqueLongoT); toqueLongoT = 0; }
+}
+
+// A escada de melhorias: cada prédio tem uma versão maior que faz a mesma
+// coisa, só que melhor. É como a vila cresce para cima sem comer o mapa.
+const MELHORIA = {
+  casa: 'sobrado',
+  sobrado: 'predio',
+  fazenda: 'fazendaGrande',
+  deposito: 'mercado',
+};
+
+// Quanto custa a melhoria: a diferença de material, nunca menos de um terço do
+// prédio novo (o velho não se aproveita inteiro).
+function custoDaMelhoria(chaveVelha, chaveNova) {
+  const a = PREDIO[chaveVelha].custo, b = PREDIO[chaveNova].custo, c = {};
+  for (const k in b) c[k] = Math.max(Math.ceil(b[k] / 3), b[k] - (a[k] || 0));
+  return c;
+}
+
+// Metade do material volta quando se demole.
+function reembolsoDe(pr) {
+  const r = {};
+  for (const k in pr.def.custo) r[k] = Math.floor(pr.def.custo[k] * 0.5 * Math.min(1, pr.progresso + 0.15));
+  return r;
+}
+
+// Cabe o prédio (novo ou movido) neste lote? O terreno que o PRÓPRIO prédio
+// ocupa hoje conta como livre — senão nada nunca caberia no lugar onde está.
+function cabeAqui(tx, ty, w, h, menos) {
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const k = nk(tx + x, ty + y);
+      if (menos && ocupado.get(k) === menos) continue;
+      if (SOLIDO[biomaEm(tx + x, ty + y)] || ocupado.has(k) || jogo.estradas.has(k)) return false;
+    }
+  return true;
+}
+
+let predioNoMenu = null;
+
+function abrirMenuPredio(pr) {
+  predioNoMenu = pr;
+  const def = pr.def;
+  const moradores = def.pop > 0 ? pr.moradores.length + '/' + def.pop + ' moradores' : '';
+  const trab = pr.trabalhador ? (pessoaPorId(pr.trabalhador) ? nomeCompleto(pessoaPorId(pr.trabalhador)) : '') : '';
+  el('predio-menu-corpo').innerHTML =
+    '<div style="font-size:17px;font-weight:600;margin-bottom:6px">' + def.icone + ' ' + def.nome + '</div>' +
+    '<div>' + (pr.progresso < 1 ? 'em obras — ' + Math.round(pr.progresso * 100) + '%' : 'de pé') +
+      ' · ' + def.w + '×' + def.h + ' blocos</div>' +
+    (moradores ? '<div>' + moradores + '</div>' : '') +
+    (trab ? '<div>trabalha aqui: ' + trab + '</div>' : '') +
+    '<div style="opacity:.6;font-size:11.5px;margin-top:5px">custou ' + custoTexto(def.custo) + '</div>';
+
+  const acoes = el('predio-menu-acoes');
+  acoes.innerHTML = '';
+  const botao = (icone, texto, aoTocar, classe) => {
+    const b = document.createElement('div');
+    b.className = 'btn' + (classe || '');
+    b.innerHTML = '<span class="ic">' + icone + '</span><span>' + texto + '</span>';
+    b.onclick = aoTocar;
+    acoes.appendChild(b);
+    return b;
+  };
+
+  botao('✋', 'Mover', () => { fecharFolhas(); iniciarMudanca(pr); });
+
+  const nova = MELHORIA[pr.chave];
+  if (nova && pr.progresso >= 1) {
+    const custo = custoDaMelhoria(pr.chave, nova);
+    const b = botao('⬆️', 'Virar ' + PREDIO[nova].nome.split(' ')[0], () => melhorarPredio(pr));
+    b.innerHTML += '<span class="cost">' + custoTexto(custo) + '</span>';
+    if (!podePagar(custo)) b.className += ' off';
+  }
+
+  const ehUltimoCentro = pr.chave === 'centro' &&
+    jogo.predios.filter(o => o.chave === 'centro').length <= 1;
+  if (!ehUltimoCentro) {
+    const volta = reembolsoDe(pr);
+    const b = botao('🧨', 'Demolir', () => confirmarDemolicao(pr), ' perigo');
+    b.innerHTML += '<span class="cost">volta ' + custoTexto(volta) + '</span>';
+  }
+
+  fecharFolhas();
+  el('predio-menu').classList.add('on');
+}
+
+/* --- mover --- */
+function iniciarMudanca(pr) {
+  movendo = pr;
+  colocando = pr.chave;
+  cam.x = pr.cx; cam.y = pr.cy;
+  placeEl.classList.add('on');
+  barEl.classList.add('escondido');
+  placeNome.textContent = '✋ Movendo ' + pr.def.icone + ' ' + pr.def.nome + ' — mova o mapa e confirme';
+  aviso('Arraste o mapa: o prédio vai para o centro da tela');
+}
+
+function moverPredioPara(pr, tx, ty) {
+  if (!cabeAqui(tx, ty, pr.def.w, pr.def.h, pr)) { aviso('Não cabe aí'); return false; }
+  if (!encostaNaRua(tx, ty, pr.def.w, pr.def.h)) { aviso('Precisa encostar numa rua'); return false; }
+  marcarOcupacao(pr, false);
+  invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
+  pr.tx = tx; pr.ty = ty;
+  pr.cx = (tx + pr.def.w / 2) * TILE; pr.cy = (ty + pr.def.h / 2) * TILE;
+  marcarOcupacao(pr, true);
+  invalidarArea(tx, ty, pr.def.w, pr.def.h);
+  crônica(pr.def.nome + ' mudou de lugar.');
+  aviso(pr.def.nome + ' mudou de lugar');
+  salvar();
+  return true;
+}
+
+/* --- melhorar --- */
+function melhorarPredio(pr) {
+  const chaveNova = MELHORIA[pr.chave];
+  if (!chaveNova) return;
+  const nova = PREDIO[chaveNova];
+  const custo = custoDaMelhoria(pr.chave, chaveNova);
+  if (!podePagar(custo)) { aviso('Falta material: ' + custoTexto(custo)); return; }
+
+  // O prédio maior pode precisar de mais um bloco: tenta encaixar em volta do
+  // canto atual antes de desistir.
+  let destino = null;
+  for (const [dx, dy] of [[0,0],[-1,0],[0,-1],[-1,-1],[1,0],[0,1]]) {
+    const tx = pr.tx + dx, ty = pr.ty + dy;
+    if (cabeAqui(tx, ty, nova.w, nova.h, pr) && encostaNaRua(tx, ty, nova.w, nova.h)) {
+      destino = { tx, ty }; break;
+    }
+  }
+  if (!destino) { aviso('Não há espaço em volta para o ' + nova.nome); return; }
+
+  pagar(custo);
+  marcarOcupacao(pr, false);
+  invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
+  const nomeVelho = pr.def.nome;
+  pr.chave = chaveNova; pr.def = nova;
+  pr.tx = destino.tx; pr.ty = destino.ty;
+  pr.cx = (pr.tx + nova.w / 2) * TILE; pr.cy = (pr.ty + nova.h / 2) * TILE;
+  marcarOcupacao(pr, true);
+  invalidarArea(pr.tx, pr.ty, nova.w, nova.h);
+  // Posto que deixou de existir volta a ficar vago.
+  if (!nova.fazenda && !nova.posto) pr.trabalhador = null;
+  fecharFolhas();
+  crônica(nomeVelho + ' virou ' + nova.nome + '.', true);
+  aviso('⬆️ ' + nomeVelho + ' virou ' + nova.nome);
+  flutuar(pr.cx, pr.cy - 22, '⬆️ ' + nova.nome);
+  atualizarHUD(); salvar();
+}
+
+/* --- demolir --- */
+let demolirPedido = null;
+function confirmarDemolicao(pr) {
+  if (demolirPedido !== pr) {
+    demolirPedido = pr;
+    aviso('Toque em Demolir de novo para confirmar');
+    for (const b of el('predio-menu-acoes').children) {
+      if (b.textContent.indexOf('Demolir') >= 0) b.querySelector('span:nth-child(2)').textContent = 'Confirmar';
+    }
+    return;
+  }
+  demolirPedido = null;
+  demolirPredio(pr);
+}
+
+function demolirPredio(pr) {
+  const volta = reembolsoDe(pr);
+  for (const k in volta) jogo.recursos[k] += volta[k];
+  marcarOcupacao(pr, false);
+  invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
+  const i = jogo.predios.indexOf(pr);
+  if (i >= 0) jogo.predios.splice(i, 1);
+
+  // Quem morava ou trabalhava ali fica sem endereço: procura outro teto.
+  for (const p of jogo.pessoas) {
+    if (p.casaId === pr.id) p.casaId = null;
+    if (p.fazendaId === pr.id) p.fazendaId = null;
+    if (p.alvo === pr) { p.alvo = null; p.estado = 'ocioso'; p.ociosoT = 2; }
+  }
+  const semTeto = jogo.pessoas.filter(p => !p.casaId);
+  for (const p of semTeto) {
+    const casa = casaComVaga();
+    if (!casa) break;
+    p.casaId = casa.id; casa.moradores.push(p.id);
+  }
+  fecharFolhas();
+  crônica(pr.def.nome + ' foi demolido — voltou ' + custoTexto(volta) + '.', true);
+  aviso('🧨 ' + pr.def.nome + ' demolido · ' + custoTexto(volta));
+  atualizarHUD(); salvar();
+}
+
 /* ----------------------------------------------------------- colocação --- */
 
 let colocando = null;
+let movendo = null;
 
 function tileAlvoDaCamera(def) {
   return { tx: Math.round(cam.x / TILE - def.w / 2), ty: Math.round(cam.y / TILE - def.h / 2) };
@@ -2558,6 +3235,7 @@ function iniciarColocacao(chave) {
 
 function cancelarColocacao() {
   colocando = null;
+  movendo = null;
   assinaturaBarra = '';
   placeEl.classList.remove('on');
   barEl.classList.remove('escondido');
@@ -2567,6 +3245,11 @@ function cancelarColocacao() {
 function confirmarColocacao() {
   const def = PREDIO[colocando];
   const { tx, ty } = tileAlvoDaCamera(def);
+  // Mudança de endereço (item 4): não cria nada, só troca o prédio de lote.
+  if (movendo) {
+    if (moverPredioPara(movendo, tx, ty)) cancelarColocacao();
+    return;
+  }
   if (!areaValida(tx, ty, def.w, def.h)) { aviso('Não dá para construir aqui'); return; }
   // A mesma regra vale para você: prédio precisa de testada para a rua.
   if (!encostaNaRua(tx, ty, def.w, def.h)) {
@@ -2614,7 +3297,10 @@ function atualizarHUD() {
   if (dormindo) elPovo.dormindo.querySelector('b').textContent = dormindo;
   const est = estacaoAtual(), cli = climaAtual();
   elCal.relogio.textContent = relogio();
-  elCal.data.textContent = 'Dia ' + (mesAtual() + 1) + ' · ' + MESES[mesAtual()] + ' · ano ' + jogo.ano;
+  // ITEM 7: antes o número do dia ERA o número do mês, e virava "dia 4/Abril"
+  // para "dia 5/Maio" — parecia bug. Cada dia de jogo é um mês do calendário,
+  // então o dia agora é contado desde a fundação e nunca briga com o mês.
+  elCal.data.textContent = 'Dia ' + diaDaVila() + ' · ' + MESES[mesAtual()] + ' · ano ' + jogo.ano;
   elCal.estacao.textContent = est.icone + ' ' + est.nome;
   elCal.clima.textContent = cli.icone;
   elCal.clima.title = cli.nome;
@@ -2678,101 +3364,243 @@ const pedidoEl = el('pedido');
 const ruaModoEl = el('ruamodo');
 let modoRua = false;
 
-function mostrarPedido() {
-  const ped = jogo.pedido;
-  if (!ped) return;
+// Qual pedido o cartão de baixo está mostrando: o primeiro da fila, ou o que
+// você tocou no mapa.
+let pedidoNoCartao = 0;
+
+function mostrarPedido(id) {
+  if (id !== undefined && pedidoPorId(id)) pedidoNoCartao = id;
+  const ped = pedidoPorId(pedidoNoCartao) || pedidoAtual();
+  if (!ped) { esconderPedido(); return; }
+  pedidoNoCartao = ped.id;
   const def = PREDIO[ped.chave];
+  const outros = jogo.pedidos.length - 1;
   el('pedido-texto').innerHTML =
-    '<b>' + ped.quem + '</b> quer construir ' + def.icone + ' <b>' + def.nome + '</b><br>' +
-    '<span style="opacity:.7;font-size:11.5px">custo ' + custoTexto(def.custo) + '</span>';
+    '<b>' + ped.quem + '</b> ' + ped.motivo + ' ' + def.icone + ' <b>' + def.nome + '</b><br>' +
+    '<span style="opacity:.7;font-size:11.5px">custo ' + custoTexto(def.custo) +
+    (outros > 0 ? ' · mais ' + outros + ' na fila' : '') + '</span>';
   pedidoEl.classList.add('on');
+  atualizarBadgePedidos();
 }
 function esconderPedido() { pedidoEl.classList.remove('on'); }
 
-el('pedido-sim').onclick = () => responderPedido(true);
-el('pedido-nao').onclick = () => responderPedido(false);
-el('pedido-ver').onclick = () => {
-  if (!jogo.pedido) return;
-  cam.x = (jogo.pedido.tx + 1) * TILE;
-  cam.y = (jogo.pedido.ty + 1) * TILE;
+function atualizarBadgePedidos() {
+  const b = el('badge-pedidos');
+  const n = jogo.pedidos.length;
+  b.textContent = n;
+  b.style.display = n ? '' : 'none';
+  el('btn-pedidos').style.opacity = n ? '1' : '.45';
+}
+
+// A aba: todos os pedidos abertos, cada um com suas três respostas.
+function abrirPedidos() {
+  const lista = el('pedidos-lista');
+  lista.innerHTML = '';
+  if (!jogo.pedidos.length) {
+    const vazio = document.createElement('div');
+    vazio.className = 'ped';
+    vazio.style.opacity = '.6';
+    vazio.textContent = 'Nenhum pedido esperando resposta.';
+    lista.appendChild(vazio);
+  }
+  for (const ped of jogo.pedidos) {
+    const def = PREDIO[ped.chave];
+    const d = document.createElement('div');
+    d.className = 'ped';
+    d.innerHTML =
+      '<div class="topo"><span>' + def.icone + ' <b>' + def.nome + '</b></span>' +
+      '<span class="preco">' + custoTexto(def.custo) + '</span></div>' +
+      '<div class="desc">' + ped.quem + ' ' + ped.motivo + ' · pedido no dia ' + ped.diaPedido + '</div>';
+    const linha = document.createElement('div');
+    linha.className = 'linha';
+    const bSim = document.createElement('div');
+    bSim.className = 'btn' + (podePagar(def.custo) ? '' : ' off');
+    bSim.textContent = '✓ Permitir';
+    bSim.onclick = () => responderPedido(true, ped.id);
+    const bNao = document.createElement('div');
+    bNao.className = 'btn'; bNao.textContent = '✕ Recusar';
+    bNao.onclick = () => responderPedido(false, ped.id);
+    const bVer = document.createElement('div');
+    bVer.className = 'btn'; bVer.textContent = '👁 Onde';
+    bVer.onclick = () => { irAoPedido(ped); fecharFolhas(); };
+    linha.append(bSim, bNao, bVer);
+    d.appendChild(linha);
+    lista.appendChild(d);
+  }
+  fecharFolhas();
+  el('pedidos').classList.add('on');
+}
+
+function irAoPedido(ped) {
+  cam.x = (ped.tx + PREDIO[ped.chave].w / 2) * TILE;
+  cam.y = (ped.ty + PREDIO[ped.chave].h / 2) * TILE;
+  mostrarPedido(ped.id);
   aviso('Terreno que eles escolheram');
-};
+}
+
+el('pedido-sim').onclick = () => responderPedido(true, pedidoNoCartao);
+el('pedido-nao').onclick = () => responderPedido(false, pedidoNoCartao);
+el('pedido-ver').onclick = () => { const p = pedidoPorId(pedidoNoCartao) || pedidoAtual(); if (p) irAoPedido(p); };
+el('pedido-lista-btn').onclick = abrirPedidos;
+el('btn-pedidos').onclick = abrirPedidos;
+el('pedidos-fechar').onclick = fecharFolhas;
 el('pedido-check').onchange = e => {
   jogo.autoAprovar = e.target.checked;
   if (jogo.autoAprovar) {
     aviso('A vila vai construir sem perguntar');
-    if (jogo.pedido) responderPedido(true);
+    while (jogo.pedidos.length) responderPedido(true, jogo.pedidos[0].id);
   }
 };
+
+/* ------------------------------------------------ modo rua (item 5) ------ */
+/*
+   Antes: um toque, e o jogo traçava uma linha reta da rede até ali — que quase
+   sempre corria rente a uma via existente e morria no terceiro bloco pela
+   regra de folga. Ficava impossível fazer rua.
+
+   Agora o mapa trava sob um dedo e VOCÊ desenha o caminho, bloco a bloco.
+   Dois dedos continuam movendo e dando zoom. Enquanto desenha, cada bloco
+   mostra o que vai acontecer: verde passa, laranja é folga curta demais entre
+   vias paralelas (passa, mas avisando — a rua é sua), vermelho é impossível.
+*/
+const MAX_TRECHOS_DESENHADOS = 400;
+const MAX_OBRAS_DO_JOGADOR = 6;
+let tracado = [];
+let tracadoSet = new Set();
+let desenhandoRua = false;
 
 function entrarModoRua() {
   cancelarColocacao();
   modoRua = true;
+  limparTracado();
   ruaModoEl.classList.add('on');
   barEl.classList.add('escondido');
-  aviso('Toque no mapa: a equipe abre a rua a partir da rede atual');
+  aviso('Arraste o dedo para desenhar a rua · dois dedos movem o mapa');
 }
 function sairModoRua() {
   modoRua = false;
+  desenhandoRua = false;
+  limparTracado();
   assinaturaBarra = '';
   ruaModoEl.classList.remove('on');
   barEl.classList.remove('escondido');
   desenharBarra();
 }
-el('rua-sair').onclick = sairModoRua;
+function limparTracado() {
+  tracado = [];
+  tracadoSet = new Set();
+  atualizarContaRua();
+}
 
-// Traça uma via da rede existente até onde você tocou. Quem constrói são os
-// aldeões, tile a tile, pagando pedra — igual às ruas que eles mesmos abrem.
-function pedirRuaAte(tx, ty) {
-  // Aceita até três frentes de obra: recusar porque os aldeões já estão
-  // abrindo uma rua deixava o botão parecendo quebrado.
-  if (jogo.obrasEstrada.length >= 3) { aviso('Já há três ruas em obras — espere terminar'); return; }
-  if (!jogo.estradas.size) { aviso('Não há rede de ruas para partir'); return; }
-  if (SOLIDO[biomaEm(tx, ty)]) { aviso('Não dá para passar rua na água'); return; }
+function atualizarContaRua() {
+  const e = el('rua-conta');
+  if (!e) return;
+  const plano = planejarTracado();
+  if (!tracado.length) { e.textContent = 'nenhum trecho traçado'; return; }
+  e.textContent = plano.tiles.length + ' trecho(s) · ' + plano.custo + '⛏' +
+    (plano.folga ? ' · ' + plano.folga + ' colado(s) em via paralela' : '') +
+    (plano.parouPor ? ' · para em ' + plano.parouPor : '');
+}
 
-  let origem = null, melhor = Infinity;
-  for (const k of jogo.estradas) {
-    const [rx, ry] = k.split(',').map(Number);
-    const d = (rx - tx) ** 2 + (ry - ty) ** 2;
-    if (d < melhor) { melhor = d; origem = [rx, ry]; }
+// Acrescenta um bloco ao traçado.
+function porNoTracado(tx, ty) {
+  const k = nk(tx, ty);
+  if (tracadoSet.has(k) || tracado.length >= MAX_TRECHOS_DESENHADOS) return;
+  tracadoSet.add(k);
+  tracado.push([tx, ty]);
+}
+
+// O dedo anda mais rápido que os eventos de toque: liga o ponto anterior ao
+// novo em linha, senão a rua sai furada.
+function tracarAte(sx, sy) {
+  const w = telaParaMundo(sx, sy);
+  const tx = Math.floor(w.x / TILE), ty = Math.floor(w.y / TILE);
+  const ult = tracado[tracado.length - 1];
+  if (!ult) { porNoTracado(tx, ty); atualizarContaRua(); return; }
+  if (ult[0] === tx && ult[1] === ty) return;
+  // Em degraus, nunca na diagonal: rua diagonal não liga um quarteirão ao outro.
+  for (const [x0, y0] of linhaDeTiles(ult[0], ult[1], tx, ty, 300)) porNoTracado(x0, y0);
+  atualizarContaRua();
+}
+
+// Transforma o rabisco em obra: liga na rede existente, valida bloco a bloco e
+// para no primeiro impossível — em vez de recusar o desenho inteiro.
+function planejarTracado() {
+  const vazio = { tiles: [], custo: 0, folga: 0, parouPor: '' };
+  if (!tracado.length || !jogo.estradas.size) return vazio;
+
+  // Qual ponta do rabisco está mais perto da rede? É por ela que a rua começa.
+  const perto = ([tx, ty]) => {
+    const o = ruaMaisPertoNaMalha(tx, ty);
+    return o ? (o[0] - tx) ** 2 + (o[1] - ty) ** 2 : Infinity;
+  };
+  const ordem = perto(tracado[0]) <= perto(tracado[tracado.length - 1])
+    ? tracado : tracado.slice().reverse();
+
+  // Costura o começo do rabisco até a malha principal.
+  const origem = ruaMaisPertoNaMalha(ordem[0][0], ordem[0][1]);
+  const melhor = origem
+    ? (origem[0] - ordem[0][0]) ** 2 + (origem[1] - ordem[0][1]) ** 2 : Infinity;
+  const cheio = [];
+  const LIGACAO_MAXIMA = 30;
+  if (origem && melhor > LIGACAO_MAXIMA * LIGACAO_MAXIMA) {
+    return { tiles: [], custo: 0, folga: 0, parouPor: 'longe demais da cidade' };
   }
-  const dist = Math.sqrt(melhor);
-  if (dist < 1) { aviso('Já é rua'); return; }
-  if (dist > 40) { aviso('Longe demais — abra a rua por partes'); return; }
+  if (origem && melhor > 2) {
+    for (const t of linhaDeTiles(origem[0], origem[1], ordem[0][0], ordem[0][1], 120)) cheio.push(t);
+  }
+  for (const t of ordem) cheio.push(t);
 
   const tiles = [];
-  let x0 = origem[0], y0 = origem[1];
-  const dx = Math.abs(tx - x0), dy = Math.abs(ty - y0);
-  const sx = x0 < tx ? 1 : -1, sy = y0 < ty ? 1 : -1;
-  let err = dx - dy, guarda = 0, barrouPorFolga = false;
-  let ultX = x0, ultY = y0;
-  while (guarda++ < 90) {
-    if (podeVirarRua(x0, y0)) {
-      // A folga de seis blocos vale para as suas ruas também: senão o mapa
-      // enche de calçamento e não sobra terreno para construir.
-      if (tiles.length && ruaParalelaPerto(x0, y0, x0 - ultX, y0 - ultY)) { barrouPorFolga = true; break; }
-      tiles.push([x0, y0]);
+  let custo = 0, folga = 0, parouPor = '';
+  let antX = origem ? origem[0] : cheio[0][0], antY = origem ? origem[1] : cheio[0][1];
+  for (const [tx, ty] of cheio) {
+    if (jogo.estradas.has(nk(tx, ty))) { antX = tx; antY = ty; continue; }   // já é rua: de graça
+    if (!podeVirarRua(tx, ty)) {
+      const b = biomaEm(tx, ty);
+      parouPor = b === B.AGUA ? 'água funda' : ocupado.has(nk(tx, ty)) ? 'uma construção' : 'terreno impossível';
+      break;
     }
-    if (x0 === tx && y0 === ty) break;
-    ultX = x0; ultY = y0;
-    const e2 = 2 * err;
-    if (e2 > -dy) { err -= dy; x0 += sx; }
-    if (e2 < dx) { err += dx; y0 += sy; }
+    if (ruaParalelaPerto(tx, ty, tx - antX, ty - antY)) folga++;   // avisa, mas não barra
+    tiles.push([tx, ty]);
+    custo += biomaEm(tx, ty) === B.RASO ? 4 : 1;                   // ponte custa mais
+    antX = tx; antY = ty;
   }
-  if (!tiles.length) {
-    aviso(barrouPorFolga ? 'Rua paralela colada demais — deixe ' + FOLGA_ENTRE_RUAS + ' blocos de folga'
-                         : 'Não há por onde passar');
-    return;
-  }
-  if (barrouPorFolga) aviso('Rua encurtada: precisa de ' + FOLGA_ENTRE_RUAS + ' blocos entre vias paralelas');
-  if (jogo.recursos.pedra < tiles.length) {
-    aviso('Falta pedra: precisa de ' + tiles.length + '⛏ e você tem ' + Math.floor(jogo.recursos.pedra));
-    return;
-  }
-  jogo.obrasEstrada.push({ tiles, feitos: 0, t: 0 });
-  crônica('Você mandou abrir uma rua de ' + tiles.length + ' trechos.');
-  aviso('Rua encomendada: ' + tiles.length + ' trechos, ' + tiles.length + '⛏');
+  return { tiles, custo, folga, parouPor };
 }
+
+function confirmarRua() {
+  if (!tracado.length) { aviso('Arraste o dedo no mapa para desenhar o caminho'); return; }
+  if (!jogo.estradas.size) { aviso('Não há rede de ruas para partir'); return; }
+  if (jogo.obrasEstrada.length >= MAX_OBRAS_DO_JOGADOR) {
+    aviso('Já há ' + MAX_OBRAS_DO_JOGADOR + ' ruas em obras — espere alguma terminar'); return;
+  }
+  const plano = planejarTracado();
+  if (!plano.tiles.length) {
+    if (plano.parouPor === 'longe demais da cidade') {
+      aviso('Comece o traçado perto de uma rua que já existe');
+    } else {
+      aviso(plano.parouPor ? 'O caminho esbarra em ' + plano.parouPor + ' logo no começo' : 'Nada para construir aí');
+    }
+    return;
+  }
+  if (jogo.recursos.pedra < plano.custo) {
+    aviso('Falta pedra: precisa de ' + plano.custo + '⛏ e você tem ' + Math.floor(jogo.recursos.pedra));
+    return;
+  }
+  jogo.obrasEstrada.push({ tiles: plano.tiles, feitos: 0, t: 0 });
+  crônica('Você mandou abrir uma rua de ' + plano.tiles.length + ' trechos.');
+  let msg = 'Rua encomendada: ' + plano.tiles.length + ' trechos, ' + plano.custo + '⛏';
+  if (plano.folga) msg += ' · ' + plano.folga + ' bloco(s) a menos de ' + FOLGA_ENTRE_RUAS + ' de outra via';
+  if (plano.parouPor) msg += ' · parou em ' + plano.parouPor;
+  aviso(msg);
+  limparTracado();
+  salvar();
+}
+
+el('rua-sair').onclick = sairModoRua;
+el('rua-ok').onclick = confirmarRua;
+el('rua-limpar').onclick = () => { limparTracado(); aviso('Traçado apagado'); };
 
 const toastEl = el('toast');
 let toastT = 0;
@@ -2827,6 +3655,7 @@ el('btn-cronica').onclick = () => {
 el('cronica-fechar').onclick = fecharFolhas;
 el('btn-missoes').onclick = abrirMissoes;
 el('missoes-fechar').onclick = fecharFolhas;
+el('predio-menu-fechar').onclick = fecharFolhas;
 el('relatorio-fechar').onclick = fecharFolhas;
 el('ficha-fechar').onclick = fecharFolhas;
 el('place-ok').onclick = confirmarColocacao;
@@ -2852,7 +3681,14 @@ function abrirFicha(p) {
 
 function mostrarRelatorio(rel) {
   const h = Math.floor(rel.segundos / 3600), m = Math.round((rel.segundos % 3600) / 60);
-  el('relatorio-tempo').textContent = 'A vila viveu ' + (h ? h + 'h ' : '') + m + 'min sem você — ' + rel.dias + ' dia(s), ' + rel.anos + ' ano(s).';
+  const hhmm = ms => {
+    const d = new Date(ms);
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  };
+  const quando = rel.fechadoEm
+    ? 'Você saiu às ' + hhmm(rel.fechadoEm) + ' e voltou às ' + hhmm(rel.abertoEm || Date.now()) + '. '
+    : '';
+  el('relatorio-tempo').textContent = quando + 'A vila viveu ' + (h ? h + 'h ' : '') + m + 'min sem você — ' + rel.dias + ' dia(s), ' + rel.anos + ' ano(s).';
   const linhas = [
     '🌳 +' + rel.madeira + '   🍖 +' + rel.comida + '   ⛏ +' + rel.pedra,
     '👶 ' + rel.nascidos + ' nasceram · 🕯️ ' + rel.mortos + ' morreram',
@@ -2981,7 +3817,19 @@ function desenharEstrada(g, tx, ty) {
    existe moeda no jogo, então o prêmio é o que destrava a próxima obra.
 */
 
+/*
+   ITEM 8 — as metas ficaram de verdade. As primeiras ainda ensinam o jogo em
+   poucas horas; depois delas começa a escada longa, até o milhão de habitantes.
+   Cada degrau multiplica o anterior, então o jogo tem para onde ir por muito
+   tempo. Prêmio grande só serve com galpão grande: o estoque continua limitado
+   pelos depósitos, então crescer a cidade é o que destrava a recompensa.
+*/
+const semFome = () => !jogo.fome;
+const predioPronto = c => jogo.predios.filter(p => p.chave === c && p.progresso >= 1).length;
+const prediosProntos = () => jogo.predios.filter(p => p.progresso >= 1).length;
+
 const MISSOES = [
+  /* --- os primeiros passos: dá para cumprir na primeira sessão --- */
   {
     id: 'lar', titulo: 'Primeiro lar', icone: '🏠',
     texto: 'Chegar a 10 moradores.',
@@ -3016,7 +3864,7 @@ const MISSOES = [
   {
     id: 'vila', titulo: 'Vila de verdade', icone: '🏘️',
     texto: 'Chegar a 30 moradores sem passar fome.',
-    meta: () => 30, valor: () => jogo.fome ? 0 : popAtual(),
+    meta: () => 30, valor: () => semFome() ? popAtual() : 0,
     premio: { madeira: 250, pedra: 120 },
   },
   {
@@ -3035,10 +3883,82 @@ const MISSOES = [
     id: 'cidade', titulo: 'Isto já é uma cidade', icone: '🏛️',
     texto: 'Chegar a 60 moradores com prefeitura de pé.',
     meta: () => 60,
-    valor: () => jogo.predios.some(p => p.chave === 'prefeitura' && p.progresso >= 1) ? popAtual() : 0,
+    valor: () => predioPronto('prefeitura') ? popAtual() : 0,
     premio: { madeira: 500, pedra: 300, comida: 300 },
   },
+
+  /* --- daqui para baixo é a escada longa --- */
+  {
+    id: 'burgo', titulo: 'Burgo', icone: '🏘️',
+    texto: 'Chegar a 150 moradores sem passar fome.',
+    meta: () => 150, valor: () => semFome() ? popAtual() : 0,
+    premio: { madeira: 1200, pedra: 800, comida: 900 },
+  },
+  {
+    id: 'bairros', titulo: 'Bairros', icone: '🧱',
+    texto: 'Ter 60 construções de pé ao mesmo tempo.',
+    meta: () => 60, valor: prediosProntos,
+    premio: { madeira: 1500, pedra: 1000 },
+  },
+  {
+    id: 'avenidas', titulo: 'Avenidas', icone: '🛤️',
+    texto: 'Abrir 600 trechos de rua.',
+    meta: () => 600, valor: () => jogo.estradas.size,
+    premio: { pedra: 2000 },
+  },
+  {
+    id: 'comuna', titulo: 'Comuna', icone: '🏙️',
+    texto: 'Chegar a 400 moradores sem passar fome.',
+    meta: () => 400, valor: () => semFome() ? popAtual() : 0,
+    premio: { madeira: 3000, pedra: 2000, comida: 2500 },
+  },
+  {
+    id: 'celeiro', titulo: 'Celeiro do reino', icone: '🌾',
+    texto: 'Manter 40 lavouras e pescarias trabalhando.',
+    meta: () => 40,
+    valor: () => jogo.predios.filter(p => p.def.fazenda && p.progresso >= 1 && p.trabalhador).length,
+    premio: { comida: 5000 },
+  },
+  {
+    id: 'capital', titulo: 'Capital', icone: '👑',
+    texto: 'Chegar a 1.000 moradores sem passar fome.',
+    meta: () => 1000, valor: () => semFome() ? popAtual() : 0,
+    premio: { madeira: 8000, pedra: 6000, comida: 8000 },
+  },
+  {
+    id: 'seculo', titulo: 'Um século de vila', icone: '⏳',
+    texto: 'A vila completar 100 anos desde a fundação.',
+    meta: () => 100, valor: () => jogo.ano,
+    premio: { madeira: 5000, pedra: 5000, comida: 5000 },
+  },
+  {
+    id: 'metropole', titulo: 'Metrópole', icone: '🌆',
+    texto: 'Chegar a 10.000 moradores sem passar fome.',
+    meta: () => 10000, valor: () => semFome() ? popAtual() : 0,
+    premio: { madeira: 40000, pedra: 30000, comida: 40000 },
+  },
+  {
+    id: 'malha', titulo: 'Malha imperial', icone: '🕸️',
+    texto: 'Abrir 5.000 trechos de rua.',
+    meta: () => 5000, valor: () => jogo.estradas.size,
+    premio: { pedra: 30000 },
+  },
+  {
+    id: 'megalopole', titulo: 'Megalópole', icone: '🌃',
+    texto: 'Chegar a 100.000 moradores sem passar fome.',
+    meta: () => 100000, valor: () => semFome() ? popAtual() : 0,
+    premio: { madeira: 300000, pedra: 250000, comida: 300000 },
+  },
+  {
+    id: 'imperio', titulo: 'Reino Infinito', icone: '🌍',
+    texto: 'Chegar a 1.000.000 de moradores sem passar fome.',
+    meta: () => 1000000, valor: () => semFome() ? popAtual() : 0,
+    premio: { madeira: 2000000, pedra: 2000000, comida: 2000000 },
+  },
 ];
+
+// 1.000.000 lê melhor que 1000000 numa barra de progresso.
+const numero = n => Math.floor(n).toLocaleString('pt-BR');
 
 function conferirMissoes() {
   if (!jogo.missoes) jogo.missoes = {};
@@ -3074,8 +3994,9 @@ function abrirMissoes() {
       '<div class="topo"><span>' + m.icone + ' <b>' + m.titulo + '</b></span>' +
       '<span class="premio">' + (feita ? 'cumprida' : premio) + '</span></div>' +
       '<div class="desc">' + m.texto + '</div>' +
-      '<div class="barra"><i style="width:' + pct.toFixed(0) + '%"></i></div>' +
-      '<div class="conta">' + Math.floor(Math.min(valor, meta)) + ' de ' + meta + '</div>';
+      '<div class="barra"><i style="width:' + pct.toFixed(1) + '%"></i></div>' +
+      '<div class="conta">' + numero(Math.min(valor, meta)) + ' de ' + numero(meta) +
+      (pct > 0 && pct < 1 ? ' · ' + pct.toFixed(pct < 0.01 ? 4 : 2) + '%' : '') + '</div>';
     lista.appendChild(d);
   }
   fecharFolhas();
@@ -4165,9 +5086,43 @@ function quadro(t) {
   agora = t;
   let dt = (t - ultimo) / 1000;
   ultimo = t;
+  // ITEM 6: o app em segundo plano congela o requestAnimationFrame, e com ele
+  // congelava a vila inteira. Um buraco grande entre dois quadros quer dizer
+  // que o aparelho esteve dormindo — o tempo real vira tempo de vila.
+  if (dt > 25) { voltarDaAusencia(Date.now() - dt * 1000); dt = 0; }
   if (dt > 0.05) dt = 0.05;
   if (!folhaAberta()) passo(dt);
   desenhar();
+}
+
+/*
+   Passando de algumas centenas de moradores, simular todo mundo em todo quadro
+   derruba o celular — e as metas novas pedem MUITA gente. Quem está na tela
+   continua sendo atualizado a cada quadro; quem está fora entra num rodízio e
+   recebe o tempo acumulado de uma vez. Anda igual, só que em passos maiores.
+*/
+let fatiaDoPovo = 0;
+const FATIAS_DO_POVO = 4;
+
+function atualizarPovo(dt) {
+  const margem = 220 / cam.z;
+  const meiaL = W / (2 * cam.z) + margem, meiaA = H / (2 * cam.z) + margem;
+  const x0 = cam.x - meiaL, x1 = cam.x + meiaL, y0 = cam.y - meiaA, y1 = cam.y + meiaA;
+  fatiaDoPovo = (fatiaDoPovo + 1) % FATIAS_DO_POVO;
+  const povo = jogo.pessoas;
+  for (let i = 0; i < povo.length; i++) {
+    const p = povo[i];
+    if (p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1) {
+      p.atraso = 0;
+      atualizarPessoa(p, dt);
+      continue;
+    }
+    p.atraso = (p.atraso || 0) + dt;
+    if (i % FATIAS_DO_POVO !== fatiaDoPovo) continue;
+    const acumulado = Math.min(p.atraso, 0.25);
+    p.atraso = 0;
+    atualizarPessoa(p, acumulado);
+  }
 }
 
 function passo(dt) {
@@ -4179,7 +5134,7 @@ function passo(dt) {
   if (teclas.has('w') || teclas.has('arrowup'))    cam.y -= v;
   if (teclas.has('s') || teclas.has('arrowdown'))  cam.y += v;
 
-  for (const p of jogo.pessoas) atualizarPessoa(p, dt);
+  atualizarPovo(dt);
   atualizarProducao(dt);
 
   // O que passa da capacidade dos galpões se perde — é o que dá função ao
@@ -4294,10 +5249,13 @@ function desenhar() {
     else desenharPessoa(ctx, it.o, sel.has(it.o.id));
   }
 
-  // Terreno de um pedido pendente: piscando, para você achar sem procurar.
-  if (jogo.pedido) {
-    const d = PREDIO[jogo.pedido.chave];
-    const px = jogo.pedido.tx * TILE, py = jogo.pedido.ty * TILE;
+  // Terreno dos pedidos pendentes: piscando, para você achar sem procurar.
+  // Tocar no quadrado reabre aquele pedido (item 2).
+  for (const ped of jogo.pedidos) {
+    const d = PREDIO[ped.chave];
+    const px = ped.tx * TILE, py = ped.ty * TILE;
+    if (px > camX + vw + 60 || px + d.w * TILE < camX - 60) continue;
+    if (py > camY + vh + 60 || py + d.h * TILE < camY - 60) continue;
     const pulso = 0.35 + Math.sin(agora / 260) * 0.22;
     ctx.fillStyle = 'rgba(255,214,120,' + pulso.toFixed(3) + ')';
     ctx.fillRect(px, py, d.w * TILE, d.h * TILE);
@@ -4306,13 +5264,29 @@ function desenhar() {
     ctx.setLineDash([]);
     ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,.9)';
-    ctx.fillText(d.icone + ' pedido', px + d.w * TILE / 2, py - 5);
+    ctx.fillText(d.icone + ' toque para decidir', px + d.w * TILE / 2, py - 5);
+  }
+
+  // Traçado da rua que você está desenhando (item 5).
+  if (modoRua && tracado.length) {
+    let antX = tracado[0][0], antY = tracado[0][1];
+    for (const [tx, ty] of tracado) {
+      let cor;
+      if (jogo.estradas.has(nk(tx, ty))) cor = 'rgba(150,190,255,.35)';
+      else if (!podeVirarRua(tx, ty)) cor = 'rgba(230,80,70,.55)';
+      else if (ruaParalelaPerto(tx, ty, tx - antX, ty - antY)) cor = 'rgba(240,170,60,.55)';
+      else cor = 'rgba(130,220,120,.50)';
+      ctx.fillStyle = cor;
+      ctx.fillRect(tx * TILE + 1, ty * TILE + 1, TILE - 2, TILE - 2);
+      antX = tx; antY = ty;
+    }
   }
 
   if (colocando) {
     const def = PREDIO[colocando];
     const { tx, ty } = tileAlvoDaCamera(def);
-    const ok = areaValida(tx, ty, def.w, def.h) && encostaNaRua(tx, ty, def.w, def.h);
+    const ok = (movendo ? cabeAqui(tx, ty, def.w, def.h, movendo) : areaValida(tx, ty, def.w, def.h))
+      && encostaNaRua(tx, ty, def.w, def.h);
     ctx.fillStyle = ok ? 'rgba(130,220,120,.32)' : 'rgba(230,90,80,.32)';
     ctx.fillRect(tx * TILE, ty * TILE, def.w * TILE, def.h * TILE);
     ctx.strokeStyle = ok ? 'rgba(170,255,160,.95)' : 'rgba(255,130,120,.95)';
@@ -4459,7 +5433,7 @@ function gravar() {
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
       clima: jogo.clima, mesAnterior: jogo.mesAnterior, diaTotal: jogo.diaTotal,
       missoes: jogo.missoes,
-      pedido: jogo.pedido, autoAprovar: jogo.autoAprovar,
+      pedidos: jogo.pedidos, proxPedidoId, autoAprovar: jogo.autoAprovar,
       predios: jogo.predios.map(p => ({ id:p.id, c:p.chave, tx:p.tx, ty:p.ty, pr:p.progresso,
         mor:p.moradores, prod:p.produzindo, trab:p.trabalhador })),
       proxPredioId, proxId: jogo.proxId,
@@ -4489,7 +5463,10 @@ function carregar() {
     jogo.clima = s.clima || 'limpo'; jogo.mesAnterior = s.mesAnterior !== undefined ? s.mesAnterior : -1;
     jogo.diaTotal = s.diaTotal || 0;
     jogo.missoes = s.missoes || {};
-    jogo.pedido = s.pedido || null; jogo.autoAprovar = !!s.autoAprovar;
+    // Save antigo tinha um pedido só; vira uma fila de um item.
+    jogo.pedidos = s.pedidos || (s.pedido ? [Object.assign({ id:1, motivo:'quer construir' }, s.pedido)] : []);
+    proxPedidoId = s.proxPedidoId || (jogo.pedidos.length + 1);
+    jogo.autoAprovar = !!s.autoAprovar;
     jogo.proxId = s.proxId || 1;
     proxPredioId = s.proxPredioId || 1;
     jogo.cronica = s.cronica || [];
@@ -4561,7 +5538,7 @@ function novaVila(seed) {
   jogo.cronica = []; jogo.proxId = 1; proxPredioId = 1;
   jogo.recursos = { madeira:220, comida:200, pedra:80 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
-  jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.pedido = null; jogo.diaTotal = 0;
+  jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.pedidos = []; jogo.diaTotal = 0;
   jogo.missoes = {}; jogo.saldoComida = undefined; jogo.comidaAnterior = undefined;
   esconderPedido(); sairModoRua();
   colocando = null; placeEl.classList.remove('on'); barEl.classList.remove('escondido'); selecao = [];
@@ -4613,9 +5590,14 @@ if (!salvoEm || !jogo.predios.length) {
   sorteio = (SEED ^ 0x9e3779b9) >>> 0;
   const fora = (Date.now() - salvoEm) / 1000;
   const rel = recuperarOffline(fora);
-  if (rel) setTimeout(() => mostrarRelatorio(rel), 260);
+  if (rel) {
+    rel.fechadoEm = salvoEm; rel.abertoEm = Date.now();
+    setTimeout(() => mostrarRelatorio(rel), 260);
+  }
 }
 atualizarHUD();
+atualizarBadgePedidos();
+if (jogo.pedidos.length) mostrarPedido();
 desenharMinimapa();
 requestAnimationFrame(quadro);
 // Sem armazenamento não há continuidade: melhor dizer do que deixar o jogador
@@ -4627,8 +5609,49 @@ try {
   setTimeout(() => aviso('Este navegador não está guardando o progresso — a vila recomeça a cada abertura'), 1200);
 }
 
+/* ------------------------------------ o tempo com o app fechado (item 6) - */
+/*
+   Fechar pelo botão Voltar não mata o app: ele vai para segundo plano, o
+   WebView congela e o relógio da vila parava junto. Agora a hora de saída é
+   anotada e, ao voltar, a diferença é convertida em dias de vila — a mesma
+   conta que já valia para quem fechava o app de verdade.
+*/
+let saiuEm = 0;
+
+function marcarSaida() {
+  saiuEm = Date.now();
+  jogo.fechadoEm = saiuEm;
+  clearTimeout(saveT);
+  gravar();
+}
+
+function voltarDaAusencia(quando) {
+  const inicio = quando || saiuEm || jogo.fechadoEm || 0;
+  // Zera as DUAS marcas: visibilitychange e focus disparam em sequência, e sem
+  // isto o segundo recontava as mesmas horas de ausência.
+  saiuEm = 0;
+  jogo.fechadoEm = 0;
+  ultimo = performance.now();
+  if (!inicio) return;
+  const fora = (Date.now() - inicio) / 1000;
+  if (fora < 60) return;
+  const rel = recuperarOffline(fora);
+  ultimo = performance.now();
+  if (!rel) return;
+  rel.fechadoEm = inicio;
+  rel.abertoEm = Date.now();
+  atualizarHUD(); atualizarBadgePedidos(); desenharMinimapa(); gravar();
+  mostrarRelatorio(rel);
+}
+
 addEventListener('beforeunload', () => { clearTimeout(saveT); gravar(); });
-document.addEventListener('visibilitychange', () => { if (document.hidden) gravar(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) marcarSaida(); else voltarDaAusencia();
+});
+addEventListener('pagehide', marcarSaida);
+addEventListener('pageshow', () => voltarDaAusencia());
+addEventListener('blur', () => { if (!saiuEm) { saiuEm = Date.now(); jogo.fechadoEm = saiuEm; } });
+addEventListener('focus', () => voltarDaAusencia());
 </script>
 </body>
 </html>

@@ -36,6 +36,9 @@ para achar montanha.
 | Mandar coletar | com alguém selecionado, tocar numa árvore, arbusto ou pedra | idem |
 | Construir | botão do prédio → arraste o mapa para mirar → **✓** | idem, ou `Enter` |
 | Cuidar da fazenda | pessoa selecionada → tocar na fazenda | idem |
+| Mover / melhorar / demolir uma construção | **segurar o dedo** nela | segurar o botão do mouse |
+| Traçar rua | botão **🛣️ Rua** → desenhar com o dedo → **✓ Construir** | desenhar com o mouse |
+| Ver pedidos pendentes | botão **🧾**, ou tocar no quadrado amarelo do mapa | idem |
 | Ler a história da vila | botão **📜** | idem |
 
 Você **não precisa** dar ordens. A vila se vira sozinha: quem fica parado
@@ -48,7 +51,12 @@ Suas ordens são atalhos, não obrigação.
 
 Um **dia inteiro leva uma hora** de verdade. O ano tem doze dias, um por mês —
 então um ano de vila leva doze horas, e a história dela se mede em dias, não em
-minutos. A demografia (envelhecer, casar, nascer, morrer) corre **por dia**, com
+minutos.
+
+O calendário mostra **`Dia 35 · Novembro · ano 3`**: o dia é contado desde a fundação
+e sai da própria conta de mês e ano, então os três nunca se contradizem. Antes
+o número do dia *era* o número do mês, e a virada da meia-noite ia de
+"dia 4 / Abril" para "dia 5 / Maio" — parecia defeito. A demografia (envelhecer, casar, nascer, morrer) corre **por dia**, com
 as taxas anuais divididas por doze: o comportamento ao longo do ano é o mesmo,
 só distribuído.
 
@@ -76,8 +84,66 @@ Permita, recuse, ou marque *não perguntar mais*. Com o jogo fechado a vila
 decide sozinha — senão uma noite de sono viraria uma cidade parada esperando
 resposta.
 
-Você também traça ruas: botão **🛣️ Rua**, toque no destino, e a equipe abre a
-via a partir da rede que já existe, pagando 1 de pedra por trecho.
+**Pedido não some mais.** Eles se acumulam numa fila de até cinco e ficam lá
+até você responder:
+
+- o botão **🧾** na lateral abre a aba **Pedidos pendentes**, com o contador de
+  quantos esperam e os três botões (permitir / recusar / onde) para cada um;
+- no mapa, **tocar no quadrado amarelo** reabre aquele pedido na hora;
+- o cartão de baixo mostra um pedido por vez e avisa quantos mais estão na fila.
+
+Um pedido só cai da lista se o terreno dele for ocupado por outra coisa.
+
+### Quem está sem trabalho pede a obra que precisa
+
+Aldeão parado não cruza os braços. Quando ele não tem posto e não sobrou
+recurso ao alcance, ele mesmo abre um pedido — *"Gabriela Silveira está sem
+trabalho e pede Fazenda"*. A ordem é a ordem do aperto:
+
+1. se o que acabou foi recurso à beira da rua, o pedido é de **quarteirão novo**
+   (sai muito mais barato que uma obra);
+2. depois, o posto do ofício dele (lavoura para o fazendeiro, cais para o
+   pescador, serraria para o carpinteiro…);
+3. depois, o que a vila estiver sentindo falta e **empregue alguém**.
+
+Galpão e oficina ficaram de fora da lista de propósito: eles não empregam
+ninguém, e a vila estava enchendo de depósito sem resolver a vida de quem
+estava parado.
+
+## Mexer no que já está de pé
+
+**Segure o dedo** (ou o botão do mouse) em cima de qualquer construção para
+abrir o menu dela:
+
+| Ação | O que faz |
+|---|---|
+| ✋ **Mover** | o prédio vira fantasma; arraste o mapa e confirme no **✓**. Moradores, obra e trabalhador vão junto |
+| ⬆️ **Melhorar** | Casa → Sobrado → Casarão, Fazenda → Fazenda Grande, Depósito → Mercado. Cobra só a diferença de material e encaixa o tamanho novo em volta do lote atual |
+| 🧨 **Demolir** | devolve metade do material. Pede confirmação. O último Centro da Vila não pode ser demolido |
+
+Um toque curto continua sendo o de sempre: olhar o prédio, mandar ajudar na
+obra ou cuidar da lavoura.
+
+## Traçar rua com o dedo
+
+Botão **🛣️ Rua**: o mapa **trava** sob um dedo e o dedo passa a desenhar o
+caminho da via, bloco a bloco, do tamanho que você quiser. Dois dedos continuam
+movendo e dando zoom.
+
+Enquanto desenha, cada bloco mostra o que vai acontecer:
+
+| Cor | Significado |
+|---|---|
+| 🟩 verde | passa |
+| 🟧 laranja | fica a menos de seis blocos de uma via paralela — passa, mas a vila avisa |
+| 🟥 vermelho | impossível (água funda, construção em cima) |
+| 🟦 azul | já é rua |
+
+O rodapé mostra o total de trechos e o custo em pedra **antes** de confirmar. O
+traçado é costurado sozinho até a rede que já existe, e a obra para no primeiro
+bloco impossível em vez de recusar o desenho inteiro. Antes disso, um toque
+traçava uma reta que quase sempre morria no terceiro bloco pela regra de folga
+— era o que deixava o modo rua inutilizável.
 
 ## Pescadores e comércio
 
@@ -140,6 +206,17 @@ anel já nascia com duas vias paralelas a quatro blocos uma da outra.
 Quem por algum motivo ficar fora do calçamento — recém-nascido, save antigo,
 um canto mal resolvido — é trazido de volta para a rua mais próxima.
 
+**As ruas nunca andam na diagonal.** Elas sobem em degraus, sempre ligadas
+pelos lados. Dois tiles que só se tocam pela quina não são vizinhos nem para a
+busca de caminho nem para a malha — e o traçado antigo, em diagonal, fazia a
+vila nascer partida em pedaços de calçamento isolados uns dos outros. Quem
+entrasse num deles não saía mais.
+
+A folga de seis blocos é dispensada nos primeiros blocos de uma rua **com
+destino** (buscar madeira, pedra ou a beira d'água). Sem isso a cidade ficava
+trancada dentro de si mesma: toda saída do miolo corre paralela a alguma via, e
+a vila morria cercada de floresta que não podia tocar.
+
 Dois tetos evitam que a vila se desequilibre: no máximo **metade** dos adultos
 em posto fixo (fazenda, oficina, escola…) e no máximo **um terço** no canteiro
 de obras. Sem eles, a vila inteira virava construtor e ninguém trazia madeira.
@@ -151,6 +228,33 @@ precisam: primeiro tentam a linha reta, e a busca só entra quando há obstácul
 nos 150 px à frente. A rota cobra mais barato por andar na rua, então a vila
 usa as vias que construiu. Antes elas só escorregavam de lado ao bater — o que
 resolve uma pedra e não uma casa, e por isso ficavam presas atrás dos prédios.
+
+### Beco sem saída
+
+O que segurava gente presa não era ficar imóvel — era **andar sem chegar**. Num
+beco o aldeão vai até a ponta, volta, vai de novo: ele se mexe o tempo todo,
+então o antigo contador de "travado" nunca disparava e ele nunca desistia.
+
+Agora o que vale é **encurtar a distância até o alvo**:
+
+- seis segundos andando sem chegar mais perto contam como travado;
+- todo alvo tem prazo, proporcional à distância — quem estoura não está indo a
+  lugar nenhum;
+- o recurso que ninguém alcançou entra numa lista negra por um tempo, senão o
+  mesmo aldeão escolheria a mesma árvore impossível a cada dois segundos;
+- na terceira desistência seguida ele volta para a malha principal, que é a
+  mesma regra de teletransporte que já valia para quem sai do calçamento.
+
+A malha viária é indexada em **pedaços conectados**, e ninguém escolhe alvo
+fora do próprio pedaço: nem árvore, nem lavoura, nem galpão de entrega, nem
+canteiro de obras. A vila também só cresce rua a partir do pedaço principal —
+antes ela preferia a ponta mais distante do centro, que costumava ser
+justamente um trecho solto, e mandava todos os construtores para um canteiro
+onde não dava para chegar.
+
+Com muita gente, quem está fora da tela é atualizado em rodízio, recebendo o
+tempo acumulado de uma vez: anda igual, em passos maiores, e o celular aguenta
+a cidade grande.
 
 ## As pessoas
 
@@ -200,8 +304,21 @@ doze horas, o valor antigo dava um filho a cada 54 horas de jogo.
 ## A vila continua sem você
 
 Ao fechar e reabrir, o jogo recupera até **24 horas** de ausência — o que dá
-até **24 dias de vila, dois anos**. Aparece um relatório do que aconteceu: quanto foi
-colhido, quem nasceu, quem morreu, o que foi construído.
+até **24 dias de vila, dois anos**. O relatório diz **a que horas você saiu e a
+que horas voltou**, e o que aconteceu no meio: quanto foi colhido, quem nasceu,
+quem morreu, o que foi construído.
+
+Isso vale para as três formas de sair, não só para fechar o app de vez:
+
+- **botão Voltar** (que manda o app para segundo plano sem matá-lo);
+- **tela apagada** ou app trocado;
+- **app fechado** de verdade.
+
+Nos dois primeiros casos o app não é recarregado — o WebView só congela, e com
+ele congelava a vila inteira. Agora a hora da saída é anotada, e na volta a
+diferença vira dias de vila. Se por algum motivo nenhum desses avisos chegar, o
+próprio laço de quadros percebe o buraco (mais de 25 segundos entre dois
+quadros) e faz a mesma conta.
 
 A recuperação produz e consome **dia a dia** (não de uma vez só), senão
 qualquer ausência longa viraria fome garantida. As obras que o conselho
@@ -245,6 +362,23 @@ armazenamento local, ele continua rodando — só não salva.
 O botão **🎯** abre as metas da vila. Todas empurram para o mesmo objetivo:
 mais gente vivendo bem, sem passar fome. Cumprir uma rende recurso — não há
 moeda no jogo, então o prêmio é o que destrava a próxima obra.
+
+As nove primeiras ensinam o jogo e cabem nas primeiras horas. Depois começa a
+**escada longa**, cada degrau multiplicando o anterior:
+
+| Meta | Moradores |
+|---|---|
+| Burgo | 150 |
+| Comuna | 400 |
+| 👑 Capital | **1.000** |
+| 🌆 Metrópole | 10.000 |
+| 🌃 Megalópole | **100.000** |
+| 🌍 Reino Infinito | **1.000.000** |
+
+No caminho há metas de apoio: 600 e 5.000 trechos de rua, 60 construções de pé,
+40 lavouras trabalhando, e um **século de vila** (cem anos desde a fundação).
+São metas de longuíssimo prazo de propósito — a cidade tem para onde crescer
+por muito tempo.
 
 ## O que o conselho persegue
 
