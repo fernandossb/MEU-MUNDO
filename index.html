@@ -46,6 +46,13 @@
     font-variant-numeric:tabular-nums; flex-wrap:wrap;
   }
   #c-relogio { font-weight:600; font-size:14px; }
+  #c-veloc {
+    pointer-events:auto; cursor:pointer; font-weight:600; font-size:12px;
+    padding:2px 7px; border-radius:7px; margin-left:2px;
+    background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.18);
+  }
+  #c-veloc:active { background:rgba(255,255,255,.26); }
+  #c-veloc.sufocado { color:#e8b45c; }   /* pediu mais do que o quadro aguenta */
   #c-data { opacity:.8; }
   #c-clima { font-size:14px; }
 
@@ -151,6 +158,29 @@
   #relatorio .linhas { display:flex; flex-direction:column; gap:6px; font-size:13.5px; }
   #ficha .cartao { width:min(360px,92vw); text-align:left; font-size:13px; line-height:1.6; }
 
+  /* Painel de produção: de onde vem e para onde vai cada recurso */
+  #producao .lista { width:min(460px,92vw); max-height:62vh; overflow-y:auto; text-align:left;
+    display:flex; flex-direction:column; gap:10px; }
+  .prod { padding:10px 12px; border-radius:9px; background:rgba(255,255,255,.05);
+    border-left:3px solid rgba(150,200,140,.5); font-size:12.5px; }
+  .prod.negativo { border-left-color:rgba(224,120,90,.85); }
+  .prod .topo { display:flex; justify-content:space-between; align-items:baseline; gap:10px; }
+  .prod .titulo { font-size:14px; font-weight:600; }
+  .prod .saldo { font-variant-numeric:tabular-nums; font-weight:600; }
+  .prod .saldo.mais { color:#8fd07a; }
+  .prod .saldo.menos { color:#e8886a; }
+  .prod .estoque { font-size:11px; opacity:.6; }
+  .prod .barra { display:flex; height:7px; border-radius:4px; overflow:hidden;
+    background:rgba(255,255,255,.10); margin:7px 0 6px; }
+  .prod .barra .ent { background:#6fae5c; }
+  .prod .barra .sai { background:#c46a4c; }
+  .prod .linhas { display:flex; flex-direction:column; gap:2px; font-size:11.5px; }
+  .prod .linhas div { display:flex; justify-content:space-between; }
+  .prod .linhas .v { font-variant-numeric:tabular-nums; opacity:.85; }
+  .prod .linhas .mais .v { color:#8fd07a; }
+  .prod .linhas .menos .v { color:#e8886a; }
+  .prod .gente { font-size:11px; opacity:.6; margin-top:6px; }
+
   /* Aba de pedidos pendentes (item 2) */
   #pedidos .lista { width:min(460px,92vw); max-height:60vh; overflow-y:auto; text-align:left;
     display:flex; flex-direction:column; gap:8px; }
@@ -197,6 +227,7 @@
       <span id="c-data">Janeiro, ano 1</span>
       <span id="c-estacao">☀️ Verão</span>
       <span id="c-clima">🌤️</span>
+      <span id="c-veloc" title="velocidade do tempo">1×</span>
     </div>
     <div id="povo" class="panel">
       <span>🧒<b id="p-criancas">0</b></span>
@@ -209,6 +240,7 @@
 
   <div id="mapwrap" class="panel"><canvas id="minimap" width="92" height="92"></canvas></div>
   <div id="lateral">
+    <div id="btn-producao" class="btn panel">📊</div>
     <div id="btn-pedidos" class="btn panel">🧾<span id="badge-pedidos" class="badge" style="display:none">0</span></div>
     <div id="btn-missoes" class="btn panel">🎯</div>
     <div id="btn-cronica" class="btn panel">📜</div>
@@ -267,6 +299,13 @@
     <p class="hint">Tudo aqui empurra para o mesmo lugar: mais gente vivendo bem, sem passar fome. As últimas metas são de longuíssimo prazo — a cidade tem para onde crescer por muito tempo.</p>
     <div class="lista" id="missoes-lista"></div>
     <div class="btn" id="missoes-fechar">Fechar</div>
+  </div>
+
+  <div id="producao" class="folha">
+    <h2>📊 Produção da vila</h2>
+    <p class="hint">Medido, não estimado: cada entrada e saída é anotada quando acontece. Os números são por dia de jogo.</p>
+    <div class="lista" id="producao-lista"></div>
+    <div class="btn" id="producao-fechar">Fechar</div>
   </div>
 
   <div id="pedidos" class="folha">
@@ -338,6 +377,21 @@ const SUB   = 2;            // amostras de terreno por tile (suavização)
    A economia continua medida em segundos de verdade — colher, construir e
    comer rendem o mesmo por minuto de jogo que sempre renderam.
 */
+/*
+   VELOCIDADE DO TEMPO. Um dia de jogo leva quase quatro minutos, e há coisas
+   (uma geração, uma seca, uma vila madura) que só aparecem em horas. Acelerar
+   NÃO é multiplicar o dt: com passo grande o aldeão pula um tile inteiro e
+   atravessa parede. O que se faz é rodar a mesma física várias vezes por
+   quadro, com o mesmo passinho de sempre.
+
+   Por isso existe um orçamento de tempo: se um quadro passar de 12 ms
+   simulando, ele corta e entrega o resto no quadro seguinte. Vila grande
+   acelera menos, e ninguém trava.
+*/
+const VELOCIDADES = [1, 4, 16];
+const ORCAMENTO_SIMULACAO = 12;   // ms por quadro gastos simulando
+let velocidade = 1;
+
 const ANO   = 86400;              // um ano de jogo = um dia de verdade
 const DIAS_NO_ANO = 365;          // calendário normal, sem bissexto
 const ANO_DIA = ANO / DIAS_NO_ANO;  // ~237 s: um dia de jogo em segundos reais
@@ -761,7 +815,31 @@ const PREDIO = {
     nome:'Prefeitura', icone:'🏛️', w:4, h:3, tempo:320, custo:{ madeira:380, pedra:260 },
     pop:8, entrega:true, posto:'administrador', cor:'#cbb99a', teto:'#4e5a63',
   },
+
+  /*
+     A MINA. Pedra é o único recurso que não rebrota, e rua custa pedra: toda
+     partida acabava estrangulada, com a madeira batendo no teto do galpão e a
+     pedra em zero. A mina tira pedra do próprio morro, sem gastar o veio que
+     está no chão — mas só pode ser cavada ENCOSTADA NA ROCHA, que costuma ser
+     longe. Chegar até lá é o preço, e é o que dá uma razão nova para a vila
+     esticar a malha viária.
+  */
+  mina: {
+    nome:'Mina', icone:'⛰️', w:2, h:2, tempo:200, custo:{ madeira:140, pedra:30 },
+    pop:0, posto:'mineiro', mina:true, beiraRocha:true, cor:'#8d8b86', teto:'#5a5852',
+  },
 };
+
+/*
+   Quanta pedra um mineiro tira por segundo — uns 14 por dia de jogo.
+
+   Um pedreiro no mato rende perto de 10: tira 0,1 por segundo, mas gasta mais
+   da metade do expediente indo e voltando. A mina rende 40% mais porque custa
+   140 de madeira e prende um adulto para sempre; se rendesse igual, ninguém
+   teria motivo para cavar. E, ao contrário do pedregulho, ela nunca acaba —
+   é essa a razão de existir dela.
+*/
+const RENDIMENTO_MINA = 0.06;
 
 const VEICULO = {
   carroca: { nome:'carroça', carga:26, veloc:0.92, custo:{ madeira:40, pedra:10 }, tempo:400 },
@@ -789,12 +867,13 @@ const OFICIO = {
   professor:    { nome:'professor',    rec:null, icone:'🏫' },
   comerciante:  { nome:'comerciante',  rec:null, icone:'🏪' },
   administrador:{ nome:'administrador',rec:null, icone:'🏛️' },
+  mineiro:      { nome:'mineiro',      rec:null, icone:'⛰️' },
   construtor: { nome:'construtor', rec:null,      icone:'🔨' },
   nenhum:     { nome:'sem ofício', rec:null,      icone:'·' },
 };
 
 // Ofícios que ficam presos a um prédio: quem os tem não entra no rodízio.
-const OFICIO_DE_POSTO = new Set(['fazendeiro','pescador','carpinteiro','professor','comerciante','administrador']);
+const OFICIO_DE_POSTO = new Set(['fazendeiro','pescador','carpinteiro','professor','comerciante','administrador','mineiro']);
 const FASE = { CRIANCA:'crianca', ADULTO:'adulto', IDOSO:'idoso' };
 // Vira adulto aos 18. 'IDOSO' não é mais uma fase visual — os personagens são
 // só homem, mulher e criança — mas continua marcando quem rende menos.
@@ -864,6 +943,68 @@ function contarFases() {
     if (f !== FASE.CRIANCA && p.oficio === 'nenhum') c.semOficio++;
   }
   return c;
+}
+
+/* -------------------------------------------------- livro-caixa da vila -- */
+/*
+   De onde vem e para onde vai cada recurso. MEDIDO, não estimado: a conta
+   teórica já enganou o conselho uma vez, ele autorizava casas achando que
+   havia fartura e a vila passava fome. Aqui cada entrada e cada saída é
+   anotada no momento em que acontece.
+
+   O número guardado é por DIA de jogo, suavizado por média móvel — senão ele
+   pularia a cada carregador que chega ao galpão.
+*/
+const FLUXO_CATEGORIAS = {
+  colheita: { nome: 'colheita',      sinal: +1 },
+  lavoura:  { nome: 'lavoura e mar', sinal: +1 },
+  mina:     { nome: 'mina',          sinal: +1 },
+  feira:    { nome: 'feira',         sinal: +1 },
+  metas:    { nome: 'metas',         sinal: +1 },
+  consumo:  { nome: 'consumo',       sinal: -1 },
+  obras:    { nome: 'obras',         sinal: -1 },
+  ruas:     { nome: 'ruas',          sinal: -1 },
+  veiculos: { nome: 'veículos',      sinal: -1 },
+  troca:    { nome: 'vendido na feira', sinal: -1 },
+  perda:    { nome: 'galpão cheio',  sinal: -1 },
+};
+
+const fluxoDia = {};        // acumulando dentro do dia corrente
+const fluxoMedio = {};      // média móvel, por dia de jogo
+
+function anotarFluxo(rec, cat, qtd) {
+  if (!qtd || !RECURSO[rec]) return;
+  const f = fluxoDia[rec] || (fluxoDia[rec] = {});
+  f[cat] = (f[cat] || 0) + Math.abs(qtd);
+}
+
+// Chamado uma vez por dia de jogo: fecha o dia e suaviza.
+function fecharDiaDoFluxo() {
+  for (const rec in RECURSO) {
+    const dia = fluxoDia[rec] || {};
+    const med = fluxoMedio[rec] || (fluxoMedio[rec] = {});
+    for (const cat in FLUXO_CATEGORIAS) {
+      const hoje = dia[cat] || 0;
+      med[cat] = med[cat] === undefined ? hoje : med[cat] * 0.65 + hoje * 0.35;
+    }
+    fluxoDia[rec] = {};
+  }
+}
+
+// Entra, sai e saldo de um recurso, por dia de jogo.
+function balancoDe(rec) {
+  const med = fluxoMedio[rec] || {};
+  let entra = 0, sai = 0;
+  const linhas = [];
+  for (const cat in FLUXO_CATEGORIAS) {
+    const v = med[cat] || 0;
+    if (v < 0.01) continue;
+    const c = FLUXO_CATEGORIAS[cat];
+    if (c.sinal > 0) entra += v; else sai += v;
+    linhas.push({ nome: c.nome, sinal: c.sinal, valor: v });
+  }
+  linhas.sort((a, b) => b.valor - a.valor);
+  return { entra, sai, saldo: entra - sai, linhas };
 }
 
 /* --------------------------------------------------------------- crônica -- */
@@ -1584,6 +1725,7 @@ function procurarTrabalho(p) {
    a despensa estiver curta, depois os prédios que dão trabalho a qualquer um.
 */
 const OBRA_DO_OFICIO = {
+  mineiro:       ['mina'],
   fazendeiro:    ['fazendaGrande', 'fazenda'],
   pescador:      ['cais'],
   carpinteiro:   ['serraria'],
@@ -1616,9 +1758,10 @@ function pedirObraParaTrabalhar(p) {
   // quem está parado — galpão não emprega ninguém, e a vila enchia de galpão.
   const lista = (OBRA_DO_OFICIO[p.oficio] || []).slice();
   if (diasDeComida() < 210 || saldoComidaPorAno() < 240) lista.push('fazendaGrande', 'fazenda', 'cais');
+  if (jogo.recursos.pedra < 250) lista.push('mina');
   lista.push('fazenda', 'serraria', 'mercado', 'escola', 'cais');
 
-  const POP_MINIMA = { fazenda: 1, cais: 1, fazendaGrande: 14, serraria: 12,
+  const POP_MINIMA = { fazenda: 1, cais: 1, mina: 1, fazendaGrande: 14, serraria: 12,
                        mercado: 14, escola: 20, prefeitura: 24 };
   const pop = popAtual();
 
@@ -1629,6 +1772,7 @@ function pedirObraParaTrabalhar(p) {
     if (jogo.predios.some(o => o.chave === chave && o.progresso < 1)) continue;   // já está saindo
     if (jogo.predios.some(o => o.chave === chave && temVaga(o))) continue;        // já há vaga aberta
     if (def.beiraDagua && !aguaMaisProxima()) continue;
+    if (def.beiraRocha && !rochaMaisProxima()) continue;
     const lote = escolherLote(def);
     if (!lote) continue;
 
@@ -1756,6 +1900,7 @@ function atualizarPessoa(p, dt) {
       const d = mover(p, dep.cx, dep.cy, dt);
       if (d < alcanceDe(dep)) {
         jogo.recursos[p.cargaTipo] += Math.round(p.carga);
+        anotarFluxo(p.cargaTipo, 'colheita', Math.round(p.carga));
         flutuar(dep.cx, dep.cy - 18, '+' + Math.round(p.carga) + ' ' + RECURSO[p.cargaTipo].icone);
         p.carga = 0;
 
@@ -1823,6 +1968,7 @@ function atualizarPessoa(p, dt) {
         const custoTrecho = t && biomaEm(t[0], t[1]) === B.RASO ? 4 : 1;   // ponte é mais cara
         if (t && jogo.recursos.pedra >= custoTrecho) {
           jogo.recursos.pedra -= custoTrecho;
+          anotarFluxo('pedra', 'ruas', custoTrecho);
           jogo.estradas.add(nk(t[0], t[1]));
           limparNo(t[0], t[1]);   // a rua passa por cima da mata
           obra.feitos++;
@@ -1854,10 +2000,19 @@ function atualizarPessoa(p, dt) {
         // Peixe não tem estação: só a tempestade tira o barco da água.
         const mar = jogo.clima === 'tempestade' ? 0.25 : 1;
         const barco = p.veiculo === 'barco' ? 1.6 : 1;
-        jogo.recursos.comida += 0.048 * rende * mar * barco * dt;
+        const q = 0.048 * rende * mar * barco * dt;
+        jogo.recursos.comida += q;
+        anotarFluxo('comida', 'lavoura', q);
+      } else if (pr.def.mina) {
+        // A mina não depende de estação nem de clima: pedra é pedra.
+        const q = RENDIMENTO_MINA * rende * dt;
+        jogo.recursos.pedra += q;
+        anotarFluxo('pedra', 'mina', q);
       } else if (pr.def.fazenda) {
         const tamanho = pr.def.lavouraGrande ? 1.9 : 1;
-        jogo.recursos.comida += 0.052 * rende * tamanho * fatorLavoura() * dt;
+        const q = 0.052 * rende * tamanho * fatorLavoura() * dt;
+        jogo.recursos.comida += q;
+        anotarFluxo('comida', 'lavoura', q);
       }
       break;
     }
@@ -1973,7 +2128,7 @@ function atualizarProducao(dt) {
     pr.produzindo += dt;
     if (pr.produzindo >= def.tempo) {
       pr.produzindo = 0;
-      for (const k in def.custo) jogo.recursos[k] -= def.custo[k];
+      for (const k in def.custo) { jogo.recursos[k] -= def.custo[k]; anotarFluxo(k, 'veiculos', def.custo[k]); }
       candidato.veiculo = tipo;
       flutuar(pr.cx, pr.cy - 20, VEICULO[tipo].nome + ' pronto');
       const comOQue = tipo === 'carroca' ? 'uma carroça puxada a cavalo' : tipo === 'barco' ? 'um barco' : 'um cavalo';
@@ -1985,7 +2140,9 @@ function atualizarProducao(dt) {
 /* --------------------------------------------------- conselho e demografia */
 
 function podePagar(custo) { for (const k in custo) if (jogo.recursos[k] < custo[k]) return false; return true; }
-function pagar(custo) { for (const k in custo) jogo.recursos[k] -= custo[k]; }
+function pagar(custo, categoria) {
+  for (const k in custo) { jogo.recursos[k] -= custo[k]; anotarFluxo(k, categoria || 'obras', custo[k]); }
+}
 function custoTexto(custo) { return Object.keys(custo).map(k => custo[k] + RECURSO[k].icone).join(' '); }
 
 function areaValida(tx, ty, w, h) {
@@ -2011,6 +2168,27 @@ function encostaNaRua(tx, ty, w, h) {
     if (jogo.estradas.has(nk(tx - 1, ty + y))) return true;
     if (jogo.estradas.has(nk(tx + w, ty + y))) return true;
   }
+  return false;
+}
+
+/*
+   Onde dá para cavar mina: encostado no morro, OU num tile que a natureza fez
+   de pedra — o pedregulho do campo é a ponta de um veio.
+
+   Exigir o bioma ROCHA não servia: na semente padrão o morro mais perto fica a
+   mais de sessenta tiles do centro, e a mina nunca sairia do papel. O
+   pedregulho, esse, está em 4% do campo, sempre por perto.
+
+   E a conta usa noNatural, não noEm: o veio continua lá depois que a superfície
+   se esgotou. Cavar fundo justamente onde o pedregulho acabou é o certo.
+*/
+function temRochaPerto(tx, ty, w, h) {
+  for (let y = -1; y <= h; y++)
+    for (let x = -1; x <= w; x++) {
+      const b = biomaEm(tx + x, ty + y);
+      if (b === B.ROCHA || b === B.NEVE) return true;
+      if (noNatural(tx + x, ty + y) === 'pedra') return true;
+    }
   return false;
 }
 
@@ -2048,6 +2226,7 @@ function escolherLote(def) {
         const ty = dy !== 0 ? (dy > 0 ? ry + 1 : ry - def.h) : ry - off;
         if (!areaValida(tx, ty, def.w, def.h)) continue;
         if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
+        if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
         return { tx, ty };
       }
     }
@@ -2211,6 +2390,24 @@ function ruaMaisPertoNaMalha(tx, ty) {
     if (d < melhor) { melhor = d; origem = [rx, ry]; }
   }
   return origem;
+}
+
+// Veio de pedra mais próximo do centro — morro ou pedregulho. É para lá que a
+// rua vai quando falta lote de mina.
+function rochaMaisProxima() {
+  const base = centroDaVila();
+  if (!base) return null;
+  const btx = Math.floor(base.cx / TILE), bty = Math.floor(base.cy / TILE);
+  for (let r = 3; r < 60; r++) {
+    for (let a = 0; a < r * 6; a++) {
+      const ang = a / (r * 6) * 6.2832;
+      const tx = btx + Math.round(Math.cos(ang) * r), ty = bty + Math.round(Math.sin(ang) * r);
+      const b = biomaEm(tx, ty);
+      if (SOLIDO[b]) continue;                       // não se puxa rua para dentro da rocha
+      if (temRochaPerto(tx, ty, 2, 2)) return { tx, ty };
+    }
+  }
+  return null;
 }
 
 // Beira d'água mais próxima do centro, para saber para onde puxar a rua.
@@ -2385,7 +2582,7 @@ function distribuirOficios() {
   // fazenda ficava marcada como ocupada por um lenhador: ninguém plantava, e o
   // conselho ainda achava que a vaga estava preenchida.
   for (const pr of jogo.predios) {
-    if ((!pr.def.fazenda && !pr.def.posto) || !pr.trabalhador) continue;
+    if ((!pr.def.fazenda && !pr.def.mina && !pr.def.posto) || !pr.trabalhador) continue;
     const t = pessoaPorId(pr.trabalhador);
     const certo = pr.def.posto || (pr.def.pesca ? 'pescador' : 'fazendeiro');
     if (!t || t.oficio !== certo) pr.trabalhador = null;
@@ -2612,6 +2809,14 @@ function conselho() {
     if (decidirObra('fazenda')) return;
   }
 
+  /* --- Pedra: é ela que trava rua e obra, e não rebrota. Com a despensa de
+         pedra curta, a mina vem antes de qualquer serviço. Uma a cada quinze
+         moradores, para não virar um campo de minas. --- */
+  const minas = contar('mina');
+  if (jogo.recursos.pedra < 400 && minas < Math.max(1, Math.ceil(pop / 15))) {
+    if (decidirObra('mina')) return;
+  }
+
   // --- 4. Serviços, na ordem em que a vila sente falta ---
   let longe = 0;
   for (const p of jogo.pessoas) {
@@ -2659,6 +2864,15 @@ function decidirObra(chave) {
     }
     return false;
   }
+  if (def.beiraRocha) {
+    // Sem lote encostado na rocha: o que falta é rua até o morro.
+    const morro = rochaMaisProxima();
+    if (morro && crescerRuaRumo(morro.tx, morro.ty, 14)) {
+      crônica('Para abrir a mina, os aldeões pediram uma rua até o morro.');
+      return true;
+    }
+    return false;
+  }
   if (crescerRua()) {
     crônica('Faltou terreno com frente para a rua — os aldeões pediram mais uma.');
     aviso('🛣️ Sem lote livre: a vila está abrindo rua nova');
@@ -2673,7 +2887,7 @@ function postoAtivo(chave) {
   return jogo.predios.some(p => p.chave === chave && p.progresso >= 1
     && p.trabalhador && pessoaPorId(p.trabalhador));
 }
-const temVaga = pr => (pr.def.fazenda || pr.def.posto) && pr.progresso >= 1 && !pr.trabalhador;
+const temVaga = pr => (pr.def.fazenda || pr.def.mina || pr.def.posto) && pr.progresso >= 1 && !pr.trabalhador;
 
 // A serraria multiplica a madeira que entra; a escola forma gente que rende
 // mais; a praça anima a vila e nascem mais crianças.
@@ -2729,6 +2943,8 @@ function feiraDoMes() {
   if (vende < 12) return;
   r[maior] -= vende;
   r[menor] += vende / 3;
+  anotarFluxo(maior, 'troca', vende);
+  anotarFluxo(menor, 'feira', vende / 3);
   if (!emRecuperacao) flutuarNoMercado(maior, menor, Math.round(vende / 3));
 }
 
@@ -2890,6 +3106,7 @@ function tickDia() {
     }
   }
 
+  fecharDiaDoFluxo();
   conselho();
   conferirMissoes();
   atualizarHUD();
@@ -3453,6 +3670,14 @@ function confirmarColocacao() {
     aviso('Precisa encostar numa rua — espere a vila abrir uma, ou construa junto ao Centro');
     return;
   }
+  if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) {
+    aviso('A mina precisa ser cavada encostada na rocha');
+    return;
+  }
+  if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) {
+    aviso('O cais precisa encostar na água');
+    return;
+  }
   if (!podePagar(def.custo)) { aviso('Falta recurso'); cancelarColocacao(); return; }
   pagar(def.custo);
   const pr = criarPredio(colocando, tx, ty, 0);
@@ -3475,7 +3700,17 @@ function confirmarColocacao() {
 const el = id => document.getElementById(id);
 const elRes = { madeira: el('r-madeira'), comida: el('r-comida'), pedra: el('r-pedra'), pop: el('r-pop') };
 const elPovo = { criancas: el('p-criancas'), adultos: el('p-adultos'), idosos: el('p-idosos'), sem: el('p-sem'), dormindo: el('p-dormindo') };
-const elCal = { relogio: el('c-relogio'), data: el('c-data'), estacao: el('c-estacao'), clima: el('c-clima') };
+const elCal = { relogio: el('c-relogio'), data: el('c-data'), estacao: el('c-estacao'),
+                clima: el('c-clima'), veloc: el('c-veloc') };
+
+elCal.veloc.onclick = () => {
+  velocidade = VELOCIDADES[(VELOCIDADES.indexOf(velocidade) + 1) % VELOCIDADES.length];
+  aviso(velocidade === 1 ? 'Tempo no ritmo normal' : 'Tempo acelerado ' + velocidade + '×');
+  salvar();
+};
+// O painel do calendário precisa receber toque só neste botão; o resto
+// continua deixando o dedo passar para o mapa.
+el('calendario').style.pointerEvents = 'none';
 const barEl = el('bar'), placeEl = el('place'), placeNome = el('placenome');
 
 function atualizarHUD() {
@@ -3499,6 +3734,9 @@ function atualizarHUD() {
   // do dia saía do mês, e virar de mês parecia virar de dia.
   elCal.data.textContent = dataTexto();
   elCal.estacao.textContent = est.icone + ' ' + est.nome;
+  elCal.veloc.textContent = velocidade + '×';
+  // Amarelo quando a vila está grande demais para entregar a velocidade pedida.
+  elCal.veloc.classList.toggle('sufocado', velocidade > 1 && passosNoQuadro < velocidade);
   elCal.clima.textContent = cli.icone;
   elCal.clima.title = cli.nome;
   if (!colocando) desenharBarra();
@@ -3511,7 +3749,7 @@ const CATEGORIAS = [
   { nome: 'Vias',    itens: ['__rua__'] },
   { nome: 'Moradia', itens: ['casa', 'sobrado', 'predio', 'centro'] },
   { nome: 'Comida',  itens: ['fazenda', 'fazendaGrande', 'cais'] },
-  { nome: 'Trabalho',itens: ['deposito', 'oficina', 'serraria', 'estabulo'] },
+  { nome: 'Trabalho',itens: ['deposito', 'mina', 'oficina', 'serraria', 'estabulo'] },
   { nome: 'Cidade',  itens: ['mercado', 'escola', 'praca', 'prefeitura'] },
 ];
 
@@ -3850,6 +4088,8 @@ el('btn-cronica').onclick = () => {
   fecharFolhas(); el('cronica').classList.add('on');
 };
 el('cronica-fechar').onclick = fecharFolhas;
+el('btn-producao').onclick = abrirProducao;
+el('producao-fechar').onclick = fecharFolhas;
 el('btn-missoes').onclick = abrirMissoes;
 el('missoes-fechar').onclick = fecharFolhas;
 el('predio-menu-fechar').onclick = fecharFolhas;
@@ -4165,7 +4405,7 @@ function conferirMissoes() {
     if (jogo.missoes[m.id]) continue;
     if (m.valor() < m.meta()) continue;
     jogo.missoes[m.id] = jogo.diaTotal || 1;
-    for (const k in m.premio) jogo.recursos[k] += m.premio[k];
+    for (const k in m.premio) { jogo.recursos[k] += m.premio[k]; anotarFluxo(k, 'metas', m.premio[k]); }
     const premioTexto = Object.keys(m.premio)
       .map(k => '+' + m.premio[k] + RECURSO[k].icone).join(' ');
     crônica('Missão cumprida: ' + m.titulo + ' (' + premioTexto + ')', true);
@@ -4177,6 +4417,98 @@ function conferirMissoes() {
     atualizarHUD();
     return;                     // uma por vez, para o aviso não atropelar
   }
+}
+
+/*
+   O painel de produção. Ele existe porque sem medida não há ajuste: eu passei
+   sessões inteiras rodando simulação e imprimindo tabela para descobrir coisas
+   como "setenta e seis lenhadores e nenhum pedreiro" ou "a pedra em três com a
+   madeira batendo no teto do galpão". Isto põe a mesma informação na tela.
+*/
+function abrirProducao() {
+  const lista = el('producao-lista');
+  lista.innerHTML = '';
+  const pop = popAtual();
+
+  for (const rec in RECURSO) {
+    const b = balancoDe(rec);
+    const total = Math.max(b.entra, b.sai, 0.01);
+    const d = document.createElement('div');
+    d.className = 'prod' + (b.saldo < 0 ? ' negativo' : '');
+
+    const sinal = b.saldo >= 0 ? '+' : '−';
+    const classe = b.saldo >= 0 ? 'mais' : 'menos';
+    const estoque = Math.round(jogo.recursos[rec]);
+    const teto = tetoEstoque();
+
+    let html =
+      '<div class="topo">' +
+        '<span class="titulo">' + RECURSO[rec].icone + ' ' + RECURSO[rec].nome + '</span>' +
+        '<span class="saldo ' + classe + '">' + sinal + Math.abs(b.saldo).toFixed(1) + '/dia</span>' +
+      '</div>' +
+      '<div class="estoque">no galpão: ' + estoque + ' de ' + teto +
+        (estoque >= teto ? ' — <b>cheio, o que passa se perde</b>' : '') + '</div>' +
+      '<div class="barra">' +
+        '<i class="ent" style="width:' + (b.entra / (b.entra + b.sai || 1) * 100).toFixed(0) + '%"></i>' +
+        '<i class="sai" style="width:' + (b.sai / (b.entra + b.sai || 1) * 100).toFixed(0) + '%"></i>' +
+      '</div>';
+
+    if (!b.linhas.length) {
+      html += '<div class="linhas"><div><span>ainda sem movimento</span></div></div>';
+    } else {
+      html += '<div class="linhas">' + b.linhas.map(l =>
+        '<div class="' + (l.sinal > 0 ? 'mais' : 'menos') + '">' +
+          '<span>' + (l.sinal > 0 ? '↑ ' : '↓ ') + l.nome + '</span>' +
+          '<span class="v">' + (l.sinal > 0 ? '+' : '−') + l.valor.toFixed(1) + '</span>' +
+        '</div>').join('') + '</div>';
+    }
+
+    // Quem trabalha nisso hoje.
+    html += '<div class="gente">' + quemProduz(rec) + '</div>';
+    d.innerHTML = html;
+    lista.appendChild(d);
+  }
+
+  // Uma linha de contexto: dá para saber se a vila aguenta crescer.
+  const resumo = document.createElement('div');
+  resumo.className = 'prod';
+  resumo.style.borderLeftColor = 'rgba(220,190,120,.8)';
+  const adultos = jogo.pessoas.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA).length;
+  const ocio = jogo.pessoas.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA
+    && (p.estado === 'ocioso' || p.estado === 'andando')).length;
+  resumo.innerHTML =
+    '<div class="topo"><span class="titulo">A vila</span>' +
+    '<span class="saldo">' + pop + ' de ' + popMax() + '</span></div>' +
+    '<div class="linhas">' +
+      '<div><span>despensa</span><span class="v">' + Math.round(diasDeComida()) + ' dias</span></div>' +
+      '<div><span>adultos</span><span class="v">' + adultos + '</span></div>' +
+      '<div><span>sem serviço agora</span><span class="v">' + ocio + '</span></div>' +
+      '<div><span>obras abertas</span><span class="v">' +
+        (jogo.predios.filter(p => p.progresso < 1).length + jogo.obrasEstrada.length) + '</span></div>' +
+    '</div>';
+  lista.appendChild(resumo);
+
+  fecharFolhas();
+  el('producao').classList.add('on');
+}
+
+// Quem está atrás de cada recurso, em uma linha.
+function quemProduz(rec) {
+  const conta = of => jogo.pessoas.filter(p => p.oficio === of).length;
+  const predios = c => jogo.predios.filter(p => p.chave === c && p.progresso >= 1 && p.trabalhador).length;
+  if (rec === 'madeira') {
+    const s = predios('serraria');
+    return conta('lenhador') + ' lenhador(es)' + (s ? ' · serraria ativa (+40%)' : '');
+  }
+  if (rec === 'comida') {
+    const lav = jogo.predios.filter(p => p.def.fazenda && p.progresso >= 1 && p.trabalhador).length;
+    return conta('colhedor') + ' colhedor(es) · ' + lav + ' lavoura(s) e cais em atividade';
+  }
+  if (rec === 'pedra') {
+    const m = jogo.predios.filter(p => p.def.mina && p.progresso >= 1 && p.trabalhador).length;
+    return conta('pedreiro') + ' pedreiro(s) · ' + m + ' mina(s) em atividade';
+  }
+  return '';
 }
 
 function abrirMissoes() {
@@ -5382,9 +5714,22 @@ function quadro(t) {
   if (buraco > 20) { voltarDaAusencia(agoraReal - buraco * 1000); dt = 0; }
   else if (dt > 25) { voltarDaAusencia(agoraReal - dt * 1000); dt = 0; }
   if (dt > 0.05) dt = 0.05;
-  if (!folhaAberta()) passo(dt);
+
+  if (!folhaAberta() && dt > 0) {
+    const limite = performance.now() + ORCAMENTO_SIMULACAO;
+    passosNoQuadro = 0;
+    for (let i = 0; i < velocidade; i++) {
+      passo(dt);
+      passosNoQuadro++;
+      if (i > 0 && performance.now() > limite) break;   // vila grande: entrega o resto depois
+    }
+  }
   desenhar();
 }
+
+// Quantas voltas de física couberam no último quadro — o botão mostra quando a
+// vila ficou pesada demais para a velocidade pedida.
+let passosNoQuadro = 1;
 
 /*
    Passando de algumas centenas de moradores, simular todo mundo em todo quadro
@@ -5433,6 +5778,7 @@ function passo(dt) {
   const teto = tetoEstoque();
   for (const k in jogo.recursos) {
     if (jogo.recursos[k] > teto) {
+      anotarFluxo(k, 'perda', jogo.recursos[k] - teto);
       jogo.recursos[k] = teto;
       if (jogo.tempo - avisouTeto > 90) {
         avisouTeto = jogo.tempo;
@@ -5442,7 +5788,9 @@ function passo(dt) {
   }
 
   // Consumo de comida: 6 por pessoa por ano (item 9).
-  jogo.recursos.comida -= popAtual() * (COMIDA_POR_ANO / ANO) * dt;
+  const comeu = popAtual() * (COMIDA_POR_ANO / ANO) * dt;
+  jogo.recursos.comida -= comeu;
+  anotarFluxo('comida', 'consumo', comeu);
   if (jogo.recursos.comida <= 0) {
     jogo.recursos.comida = 0;
     if (!jogo.fome) { jogo.fome = true; crônica('A vila passou a sentir fome.', true); aviso('⚠️ Sem comida — a vila está passando fome'); }
@@ -5716,6 +6064,7 @@ function gravar() {
       v: 2, seed: SEED, salvoEm: jogo.salvoEm,
       cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
+      velocidade,
       clima: jogo.clima, mesAnterior: jogo.mesAnterior, diaAnterior: jogo.diaAnterior,
       diaTotal: jogo.diaTotal,
       missoes: jogo.missoes,
@@ -5746,6 +6095,7 @@ function carregar() {
     cam.x = s.cam.x; cam.y = s.cam.y; cam.z = s.cam.z || 1;
     Object.assign(jogo.recursos, s.recursos || {});
     jogo.ano = s.ano || 1; jogo.anoFrac = s.anoFrac || 0; jogo.fome = !!s.fome;
+    velocidade = VELOCIDADES.includes(s.velocidade) ? s.velocidade : 1;
     jogo.clima = s.clima || 'limpo';
     jogo.mesAnterior = s.mesAnterior !== undefined ? s.mesAnterior : -1;
     jogo.diaAnterior = s.diaAnterior !== undefined ? s.diaAnterior : -1;

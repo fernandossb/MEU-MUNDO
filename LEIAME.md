@@ -39,6 +39,8 @@ para achar montanha.
 | Mover / melhorar / demolir uma construção | **segurar o dedo** nela | segurar o botão do mouse |
 | Traçar rua | botão **🛣️ Rua** → desenhar com o dedo → **✓ Construir** | desenhar com o mouse |
 | Ver pedidos pendentes | botão **🧾**, ou tocar no quadrado amarelo do mapa | idem |
+| Ver de onde vem cada recurso | botão **📊** | idem |
+| Acelerar o tempo | tocar no **1×** ao lado da data | idem |
 | Ler a história da vila | botão **📜** | idem |
 
 Você **não precisa** dar ordens. A vila se vira sozinha: quem fica parado
@@ -283,6 +285,69 @@ onde não dava para chegar.
 Com muita gente, quem está fora da tela é atualizado em rodízio, recebendo o
 tempo acumulado de uma vez: anda igual, em passos maiores, e o celular aguenta
 a cidade grande.
+
+## O painel de produção
+
+O botão **📊** abre o livro-caixa da vila: de onde vem e para onde vai cada
+recurso, por dia de jogo.
+
+Ele é **medido, não estimado**. Cada entrada e cada saída é anotada no momento
+em que acontece — colheita entregue no galpão, lavoura, mina, feira, prêmio de
+meta; consumo, obras, ruas, veículos, e o que se perde com o galpão cheio. A
+conta teórica já enganou o conselho uma vez: ele autorizava casas achando que
+havia fartura e a vila passava fome.
+
+Cada recurso mostra o saldo do dia, a barra de entra-contra-sai, as linhas
+ordenadas por tamanho e quem está atrás daquilo (`3 lenhador(es)`,
+`6 lavoura(s) e cais em atividade`). No fim, uma linha da vila: população,
+despensa em dias, adultos, quantos estão sem serviço agora e quantas obras
+estão abertas.
+
+É a ferramenta que faltava para ajustar o jogo sem adivinhar. Nas sessões
+anteriores eu descobri "setenta e seis lenhadores e nenhum pedreiro" e "a pedra
+em três com a madeira batendo no teto do galpão" rodando simulação e imprimindo
+tabela — isto põe a mesma informação na tela.
+
+---
+
+## A velocidade do tempo
+
+O chip ao lado da data alterna **1× · 4× · 16×**.
+
+Acelerar **não** é multiplicar o passo: com passo grande o aldeão pula um tile
+inteiro e atravessa parede. O que o jogo faz é rodar a mesma física várias
+vezes por quadro, com o passinho de sempre. Por isso existe um orçamento: se um
+quadro passar de 12 ms simulando, ele corta e entrega o resto no quadro
+seguinte — vila grande acelera menos, e ninguém trava. O chip fica **amarelo**
+quando a vila ficou pesada demais para a velocidade pedida.
+
+O tempo com o app fechado não muda: ele continua saindo do relógio de parede.
+
+---
+
+## A mina
+
+Pedra é o único recurso que **não rebrota**, e rua custa pedra. Toda partida
+acabava estrangulada, com a madeira batendo no teto do galpão e a pedra em zero.
+
+A **⛰️ Mina** tira pedra do veio sem gastar o pedregulho que está no chão —
+uns 14 por dia contra os ~10 de um pedreiro no mato. Rende mais porque custa
+140 de madeira e prende um adulto para sempre; e, ao contrário do pedregulho,
+nunca acaba.
+
+Ela só pode ser cavada **encostada num veio**: o morro, ou um tile que a
+natureza fez de pedra. A conta usa a pedra *natural* do terreno, não a que
+sobrou — cavar fundo justamente onde o pedregulho da superfície se esgotou é o
+certo. Quando não há lote com veio à mão, o conselho puxa rua até o morro, do
+mesmo jeito que já puxava até a água para o cais.
+
+O conselho ergue uma mina quando a pedra cai abaixo de 400, até uma a cada
+quinze moradores.
+
+> A mina ainda não tem arte própria e é desenhada em vetorial, como a praça e a
+> prefeitura.
+
+---
 
 ## Os prédios
 
