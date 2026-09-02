@@ -34,13 +34,34 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # O runner do GitHub já vem com o SDK do Android instalado. A ação de
+      # terceiros só serve para deixar o sdkmanager no PATH, e ela falha de vez
+      # em quando por causa do download dela mesma — foi o que derrubou o build
+      # 625d1af, sem nada a ver com o jogo. Agora ela pode falhar à vontade: o
+      # passo seguinte encontra o SDK de qualquer jeito.
       - name: Configurar Android SDK
+        id: sdk
+        continue-on-error: true
         uses: android-actions/setup-android@v3
 
       - name: Instalar SDK 34
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+          set -e
+          # Acha o SDK: o da ação, ou o que já vem no runner.
+          RAIZ="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "SDK em: $RAIZ"
+          test -d "$RAIZ" || { echo "SDK do Android não encontrado"; exit 1; }
+          echo "ANDROID_HOME=$RAIZ"     >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$RAIZ" >> "$GITHUB_ENV"
+
+          SDKMANAGER="$(command -v sdkmanager || echo "$RAIZ/cmdline-tools/latest/bin/sdkmanager")"
+          test -x "$SDKMANAGER" || SDKMANAGER="$RAIZ/cmdline-tools/bin/sdkmanager"
+          echo "sdkmanager: $SDKMANAGER"
+
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          # Duas tentativas: o download do SDK também tropeça de vez em quando.
+          "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools" \
+            || { sleep 20; "$SDKMANAGER" "platforms;android-34" "build-tools;34.0.0" "platform-tools"; }
 
       - name: Configurar Gradle
         uses: gradle/actions/setup-gradle@v4
