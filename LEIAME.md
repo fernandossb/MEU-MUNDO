@@ -320,6 +320,67 @@ pai nem mãe de ninguém** — uma limpeza nunca corta o meio de uma linhagem.
 
 ---
 
+## A cadeia de produção
+
+Madeira, comida e pedra eram terminais: entravam no galpão e paravam. Serraria
+e oficina existiam como prédio e não faziam nada além de ocupar um trabalhador.
+
+| Prédio | Transforma | Efeito |
+|---|---|---|
+| 🪚 **Serraria** | madeira → **🟫 tábua** (3 por 1) | com tábua no galpão, **toda obra anda 50% mais rápido** |
+| 🛞 **Oficina** | madeira + pedra → **🔨 ferramenta** | quem colhe com ferramenta rende **35% mais**, e a ferramenta se gasta |
+
+Os dois bens **nunca são exigência, só bônus**. Acabou a tábua, a obra continua
+— mais devagar. Acabou a ferramenta, colhe-se no ritmo de antes. Isso é de
+propósito: insumo obrigatório vira travamento, e este jogo já teve um beco
+desses com a pedra.
+
+O desgaste da ferramenta é o que dá demanda contínua à oficina: uma oficina
+sustenta uns sete colhedores, então a vila precisa de mais conforme cresce.
+Tábua e ferramenta só aparecem no alto da tela depois que há como fabricá-las.
+
+### O conselho precisou de conserto para isso funcionar
+
+A cadeia não saía do papel: numa vila de setenta e três moradores havia **zero
+serrarias**. A regra de moradia acerta quase sempre, e como o conselho devolve
+assim que enfileira uma obra, ela consumia todas as rodadas — o bloco de
+serviços nunca era alcançado. Agora a moradia tem cota (no máximo duas casas em
+obra ao mesmo tempo) e oficina e serraria acompanham o tamanho da vila, em vez
+de serem "uma e pronto".
+
+---
+
+## A fila de obras
+
+O painel 📊 termina com o que está sendo construído: prédio e rua, com quanto já
+andou, quantos estão martelando e — quando é o caso — **parada**, que é o aviso
+de que ninguém pegou aquele canteiro.
+
+## Marcadores no minimapa
+
+O minimapa mostrava um borrão amarelo igual para tudo. Agora se distingue o que
+precisa de atenção: **laranja** para canteiro de prédio, **azul** para obra de
+rua, **amarelo piscando** para pedido esperando resposta, e um **círculo
+branco** no Centro da Vila.
+
+---
+
+## Pontes
+
+A água rasa sempre virou ponte de madeira (4 de pedra o trecho). Agora a **água
+funda** também pode ser vencida, a 9 de pedra o trecho, **desde que a travessia
+seja curta** — cinco tiles é rio, não mar. O vão é medido no sentido em que a
+rua está indo, então a vila atravessa um rio e não calça um lago.
+
+> **Este mundo não tem rios.** Amostrando 766 tiles de água funda num raio de
+> 300 tiles, nenhum tinha travessia curta: o relevo nasce de ruído de elevação,
+> que produz costa e lago, não canal. O mecanismo da ponte está pronto e
+> testado, mas não há o que atravessar até o gerador de terreno ganhar rios — e
+> isso mudaria o mapa de quem já joga, o que a regra do mapa fixo não permite
+> sem começar vila nova.
+
+---
+
 ## O painel de produção
 
 O botão **📊** abre o livro-caixa da vila: de onde vem e para onde vai cada

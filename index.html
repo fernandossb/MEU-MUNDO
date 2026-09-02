@@ -180,6 +180,12 @@
   .prod .linhas .mais .v { color:#8fd07a; }
   .prod .linhas .menos .v { color:#e8886a; }
   .prod .gente { font-size:11px; opacity:.6; margin-top:6px; }
+  .obra { display:flex; flex-direction:column; gap:3px; margin-top:7px; }
+  .obra .cab { display:flex; justify-content:space-between; gap:8px; font-size:12px; }
+  .obra .pct { font-variant-numeric:tabular-nums; opacity:.75; }
+  .obra .tr { height:5px; border-radius:3px; background:rgba(255,255,255,.12); overflow:hidden; }
+  .obra .tr i { display:block; height:100%; background:#e0b45c; }
+  .obra.rua .tr i { background:#9fb8d8; }
 
   /* Aba de pedidos pendentes (item 2) */
   #pedidos .lista { width:min(460px,92vw); max-height:60vh; overflow-y:auto; text-align:left;
@@ -220,6 +226,8 @@
       <span>🌳<b id="r-madeira">0</b></span>
       <span>🍖<b id="r-comida">0</b></span>
       <span>⛏<b id="r-pedra">0</b></span>
+      <span id="r-tabua-w" style="display:none">🟫<b id="r-tabua">0</b></span>
+      <span id="r-ferramenta-w" style="display:none">🔨<b id="r-ferramenta">0</b></span>
       <span>🏠<b id="r-pop">0</b></span>
     </div>
     <div id="calendario" class="panel">
@@ -645,11 +653,50 @@ function corTerrenoDe(e, eOeste, eNorte, m, tx, ty) {
 // a se espalhar atrás de recurso, que é o motor da expansão da cidade.
 const RENDIMENTO_DO_NO = 10;
 
+/*
+   O que sai do chão. É esta lista que o mapa semeia e que os aldeões colhem.
+*/
 const RECURSO = {
   madeira: { nome:'madeira', icone:'🌳', total:RENDIMENTO_DO_NO },
   comida:  { nome:'comida',  icone:'🍖', total:RENDIMENTO_DO_NO },
   pedra:   { nome:'pedra',   icone:'⛏', total:RENDIMENTO_DO_NO },
 };
+
+/*
+   A CADEIA DE PRODUÇÃO.
+
+   Madeira, comida e pedra eram terminais: entravam no galpão e paravam ali.
+   Serraria e oficina existiam como prédio e não faziam nada além de ocupar um
+   trabalhador. Agora elas transformam.
+
+   Os dois bens novos NUNCA são exigência — só bônus. Se acabar a tábua, a obra
+   continua, mais devagar; se acabar a ferramenta, colhe-se mais devagar. Isso
+   é de propósito: um insumo obrigatório vira travamento, e este jogo já teve
+   um beco desses com a pedra.
+*/
+const MANUFATURADO = {
+  tabua:      { nome:'tábua',      icone:'🟫' },
+  ferramenta: { nome:'ferramenta', icone:'🔨' },
+};
+
+// Tudo o que ocupa espaço no galpão: o que se colhe e o que se fabrica.
+const BEM = Object.assign({}, RECURSO, MANUFATURADO);
+
+/* ---- a serraria serra ---- */
+const TABUA_MADEIRA = 0.052;   // madeira consumida por segundo
+const TABUA_SAIDA   = 0.017;   // tábua produzida — três de madeira viram uma
+const TABUA_NA_OBRA = 0.011;   // tábua gasta por construtor por segundo
+const OBRA_COM_TABUA = 1.5;    // com tábua no galpão, a obra anda 50% mais
+
+/* ---- a oficina forja ---- */
+const FERRO_MADEIRA = 0.022;
+const FERRO_PEDRA   = 0.015;
+const FERRO_SAIDA   = 0.020;
+const FERRO_NO_MATO = 0.0028;  // desgaste por colhedor por segundo
+const COLHEITA_COM_FERRO = 1.35;
+
+// Tem no galpão para dar? Meio ponto já conta: a produção é contínua.
+const temNoGalpao = bem => jogo.recursos[bem] > 0.5;
 
 function noNatural(tx, ty) {
   const b = biomaEm(tx, ty);
@@ -766,7 +813,7 @@ const PREDIO = {
   },
   oficina: {
     nome:'Oficina', icone:'🛞', w:2, h:2, tempo:140, custo:{ madeira:90, pedra:30 },
-    pop:0, produz:'carroca', cor:'#9b7f5e', teto:'#5f4a33',
+    pop:0, produz:'carroca', posto:'ferreiro', forja:true, cor:'#9b7f5e', teto:'#5f4a33',
   },
   estabulo: {
     nome:'Estábulo', icone:'🐴', w:3, h:2, tempo:150, custo:{ madeira:110, comida:60 },
@@ -798,7 +845,7 @@ const PREDIO = {
   },
   serraria: {
     nome:'Serraria', icone:'🪚', w:3, h:2, tempo:180, custo:{ madeira:150, pedra:60 },
-    pop:0, posto:'carpinteiro', cor:'#a8875a', teto:'#6b4f33',
+    pop:0, posto:'carpinteiro', serra:true, cor:'#a8875a', teto:'#6b4f33',
   },
   escola: {
     nome:'Escola', icone:'🏫', w:3, h:2, tempo:210, custo:{ madeira:200, pedra:90 },
@@ -865,12 +912,13 @@ const OFICIO = {
   comerciante:  { nome:'comerciante',  rec:null, icone:'🏪' },
   administrador:{ nome:'administrador',rec:null, icone:'🏛️' },
   mineiro:      { nome:'mineiro',      rec:null, icone:'⛰️' },
+  ferreiro:     { nome:'ferreiro',     rec:null, icone:'🔨' },
   construtor: { nome:'construtor', rec:null,      icone:'🔨' },
   nenhum:     { nome:'sem ofício', rec:null,      icone:'·' },
 };
 
 // Ofícios que ficam presos a um prédio: quem os tem não entra no rodízio.
-const OFICIO_DE_POSTO = new Set(['fazendeiro','pescador','carpinteiro','professor','comerciante','administrador','mineiro']);
+const OFICIO_DE_POSTO = new Set(['fazendeiro','pescador','carpinteiro','professor','comerciante','administrador','mineiro','ferreiro']);
 const FASE = { CRIANCA:'crianca', ADULTO:'adulto', IDOSO:'idoso' };
 // Vira adulto aos 18. 'IDOSO' não é mais uma fase visual — os personagens são
 // só homem, mulher e criança — mas continua marcando quem rende menos.
@@ -951,7 +999,7 @@ const pessoaPorId = id => jogo.pessoas.find(p => p.id === id) || null;
 /* ----------------------------------------------------------- estado ------ */
 
 const jogo = {
-  recursos: { madeira:220, comida:200, pedra:80 },
+  recursos: { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 },
   predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
   cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
   nome: 'Vila Nova', ancestrais: [],
@@ -1002,6 +1050,8 @@ const FLUXO_CATEGORIAS = {
   colheita: { nome: 'colheita',      sinal: +1 },
   lavoura:  { nome: 'lavoura e mar', sinal: +1 },
   mina:     { nome: 'mina',          sinal: +1 },
+  serraria: { nome: 'serraria',      sinal: +1 },
+  oficina:  { nome: 'oficina',       sinal: +1 },
   feira:    { nome: 'feira',         sinal: +1 },
   metas:    { nome: 'metas',         sinal: +1 },
   consumo:  { nome: 'consumo',       sinal: -1 },
@@ -1009,6 +1059,9 @@ const FLUXO_CATEGORIAS = {
   ruas:     { nome: 'ruas',          sinal: -1 },
   veiculos: { nome: 'veículos',      sinal: -1 },
   troca:    { nome: 'vendido na feira', sinal: -1 },
+  serrado:  { nome: 'serrado em tábua',  sinal: -1 },
+  desgaste: { nome: 'gasto na colheita',  sinal: -1 },
+  forjado:  { nome: 'forjado em ferramenta', sinal: -1 },
   perda:    { nome: 'galpão cheio',  sinal: -1 },
 };
 
@@ -1016,14 +1069,14 @@ const fluxoDia = {};        // acumulando dentro do dia corrente
 const fluxoMedio = {};      // média móvel, por dia de jogo
 
 function anotarFluxo(rec, cat, qtd) {
-  if (!qtd || !RECURSO[rec]) return;
+  if (!qtd || !BEM[rec]) return;
   const f = fluxoDia[rec] || (fluxoDia[rec] = {});
   f[cat] = (f[cat] || 0) + Math.abs(qtd);
 }
 
 // Chamado uma vez por dia de jogo: fecha o dia e suaviza.
 function fecharDiaDoFluxo() {
-  for (const rec in RECURSO) {
+  for (const rec in BEM) {
     const dia = fluxoDia[rec] || {};
     const med = fluxoMedio[rec] || (fluxoMedio[rec] = {});
     for (const cat in FLUXO_CATEGORIAS) {
@@ -1917,6 +1970,14 @@ function atualizarPessoa(p, dt) {
       p.cargaTipo = p.alvo.tipo;
       let eficiencia = (fase === FASE.IDOSO ? 0.6 : 1) * (p.instruido ? 1.2 : 1);
       if (p.alvo.tipo === 'madeira') eficiencia *= bonusMadeira();
+      // Ferramenta forjada na oficina: quem colhe com ela rende mais, e a
+      // ferramenta se gasta. É o que dá demanda contínua à oficina.
+      if (temNoGalpao('ferramenta')) {
+        const gasta = Math.min(jogo.recursos.ferramenta, FERRO_NO_MATO * dt);
+        jogo.recursos.ferramenta -= gasta;
+        anotarFluxo('ferramenta', 'desgaste', gasta);
+        eficiencia *= COLHEITA_COM_FERRO;
+      }
       const tirado = gastarNo(p.alvo.tx, p.alvo.ty, TAXA * eficiencia * dt);
       p.carga += tirado;
       if (tirado <= 0) {
@@ -1977,7 +2038,16 @@ function atualizarPessoa(p, dt) {
       // passavam de 100% no mesmo quadro e os dois chamavam a conclusão —
       // era isso que fazia chegar duas famílias na mesma casa.
       if (pr.progresso >= 1) { p.estado = 'ocioso'; p.alvo = null; break; }
-      pr.progresso += dt / pr.def.tempo;
+      // Com tábua serrada no galpão a obra anda 50% mais. Sem, anda igual ao
+      // que sempre andou — a tábua acelera, nunca trava.
+      let ritmo = 1;
+      if (temNoGalpao('tabua')) {
+        const gasta = Math.min(jogo.recursos.tabua, TABUA_NA_OBRA * dt);
+        jogo.recursos.tabua -= gasta;
+        anotarFluxo('tabua', 'obras', gasta);
+        ritmo = OBRA_COM_TABUA;
+      }
+      pr.progresso += (dt * ritmo) / pr.def.tempo;
       if (pr.progresso >= 1) { concluirPredio(pr); p.estado = 'ocioso'; p.alvo = null; }
       break;
     }
@@ -2001,7 +2071,7 @@ function atualizarPessoa(p, dt) {
       if (obra.t > 3) {      // um trecho de rua leva ~3 s
         obra.t = 0;
         const t = obra.tiles[obra.feitos];
-        const custoTrecho = t && biomaEm(t[0], t[1]) === B.RASO ? 4 : 1;   // ponte é mais cara
+        const custoTrecho = t ? custoDoTrecho(t[0], t[1]) : 1;
         if (t && jogo.recursos.pedra >= custoTrecho) {
           jogo.recursos.pedra -= custoTrecho;
           anotarFluxo('pedra', 'ruas', custoTrecho);
@@ -2044,6 +2114,27 @@ function atualizarPessoa(p, dt) {
         const q = RENDIMENTO_MINA * rende * dt;
         jogo.recursos.pedra += q;
         anotarFluxo('pedra', 'mina', q);
+      } else if (pr.def.serra) {
+        // Serraria: madeira entra, tábua sai. Três por uma.
+        const entra = TABUA_MADEIRA * rende * dt;
+        if (jogo.recursos.madeira > entra) {
+          jogo.recursos.madeira -= entra;
+          const sai = TABUA_SAIDA * rende * dt;
+          jogo.recursos.tabua += sai;
+          anotarFluxo('madeira', 'serrado', entra);
+          anotarFluxo('tabua', 'serraria', sai);
+        }
+      } else if (pr.def.forja) {
+        // Oficina: madeira e pedra viram ferramenta.
+        const mad = FERRO_MADEIRA * rende * dt, ped = FERRO_PEDRA * rende * dt;
+        if (jogo.recursos.madeira > mad && jogo.recursos.pedra > ped) {
+          jogo.recursos.madeira -= mad; jogo.recursos.pedra -= ped;
+          const sai = FERRO_SAIDA * rende * dt;
+          jogo.recursos.ferramenta += sai;
+          anotarFluxo('madeira', 'forjado', mad);
+          anotarFluxo('pedra', 'forjado', ped);
+          anotarFluxo('ferramenta', 'oficina', sai);
+        }
       } else if (pr.def.fazenda) {
         const tamanho = pr.def.lavouraGrande ? 1.9 : 1;
         const q = 0.052 * rende * tamanho * fatorLavoura() * dt;
@@ -2294,7 +2385,7 @@ function crescerRua() {
     if (principal && idxRuas.get(k) !== principal) continue;
     const [rx, ry] = k.split(',').map(Number);
     let livres = 0;
-    for (const [dx, dy] of LADOS) if (podeVirarRua(rx + dx, ry + dy)) livres++;
+    for (const [dx, dy] of LADOS) if (podeVirarRua(rx + dx, ry + dy, dx, dy)) livres++;
     if (!livres) continue;
     const d = Math.hypot(rx - btx, ry - bty);
     pontas.push([rx, ry, d]);
@@ -2319,7 +2410,7 @@ function crescerRua() {
     let cx = px, cy = py;
     for (let i = 0; i < comprimento; i++) {
       cx += dir[0]; cy += dir[1];
-      if (!podeVirarRua(cx, cy)) break;
+      if (!podeVirarRua(cx, cy, dir[0], dir[1])) break;
       if (ruaParalelaPerto(cx, cy, dir[0], dir[1])) break;   // rente a outra via
       tiles.push([cx, cy]);
     }
@@ -2386,7 +2477,8 @@ function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
     // existente. Tratar isso como obstáculo fazia a obra morrer no primeiro
     // passo, e a vila nunca alcançava o recurso ali do lado.
     if (jogo.estradas.has(nk(x0, y0))) { antesX = x0; antesY = y0; continue; }
-    if (!podeVirarRua(x0, y0)) break;          // prédio ou água funda: para
+    // O sentido do passo permite medir o vão: rio curto vira ponte, lago não.
+    if (!podeVirarRua(x0, y0, x0 - antesX, y0 - antesY)) break;
     /*
        A folga de seis blocos existe para a vila não virar um tabuleiro de
        calçamento sem terreno sobrando. Mas ela também impedia a saída do
@@ -2460,7 +2552,11 @@ function aguaMaisProxima() {
 }
 
 // Água rasa aceita rua: ali a obra vira ponte de madeira, e custa mais pedra.
-const ehPonte = (tx, ty) => jogo.estradas.has(nk(tx, ty)) && biomaEm(tx, ty) === B.RASO;
+const ehPonte = (tx, ty) => {
+  if (!jogo.estradas.has(nk(tx, ty))) return false;
+  const b = biomaEm(tx, ty);
+  return b === B.RASO || b === B.AGUA;
+};
 
 // Duas ruas paralelas coladas não deixam quarteirão: o miolo fica estreito
 // demais para caber casa, e a vila vira um labirinto de calçamento. Exige-se
@@ -2486,11 +2582,55 @@ function ruaParalelaPerto(tx, ty, dirX, dirY) {
   return false;
 }
 
-function podeVirarRua(tx, ty) {
+/*
+   RIOS E PONTES.
+
+   Até aqui a água funda era parede: dava para calçar o raso (que virava ponte
+   de madeira, a 4 de pedra o trecho), mas o fundo barrava, e a vila morria
+   cercada de mata do outro lado do rio.
+
+   Agora dá para atravessar o fundo TAMBÉM — desde que a travessia seja curta.
+   O limite não é decoração: uma ponte de dez tiles seria absurda de construir
+   e de olhar, e abriria caminho para a vila calçar um lago inteiro. Cinco
+   tiles é rio, não mar.
+*/
+const VAO_MAXIMO = 5;             // tiles de água funda que uma ponte vence
+const CUSTO_PONTE_RASA = 4;
+const CUSTO_PONTE_FUNDA = 9;      // ponte de verdade custa o dobro da rasa
+
+// A água acaba em poucos tiles nesta direção? Mede para os dois lados de quem
+// vai atravessar, e é o que separa "rio" de "lago".
+function vaoCurto(tx, ty, dirX, dirY) {
+  if (!dirX && !dirY) return false;
+  let n = 1;
+  for (let i = 1; i <= VAO_MAXIMO; i++) {
+    const b = biomaEm(tx + dirX * i, ty + dirY * i);
+    if (b !== B.AGUA && b !== B.RASO) return true;    // achou a outra margem
+    n++;
+    if (n > VAO_MAXIMO) break;
+  }
+  return false;
+}
+
+/*
+   O 'sentido' é para onde a rua está indo. Sem ele não dá para medir vão, e aí
+   a água funda continua barrada — que é o certo para quem chama sem direção
+   (o traçado à mão, por exemplo, onde você aponta tile a tile).
+*/
+function podeVirarRua(tx, ty, dirX, dirY) {
   const k = nk(tx, ty);
   const b = biomaEm(tx, ty);
-  if (b === B.AGUA) return false;                 // fundo demais para ponte
-  return (b !== B.RASO ? !SOLIDO[b] : true) && !ocupado.has(k) && !jogo.estradas.has(k);
+  if (ocupado.has(k) || jogo.estradas.has(k)) return false;
+  if (b === B.AGUA) return vaoCurto(tx, ty, dirX || 0, dirY || 0);
+  return b === B.RASO || !SOLIDO[b];
+}
+
+// Quanto custa calçar este trecho: chão é 1, ponte rasa 4, ponte funda 9.
+function custoDoTrecho(tx, ty) {
+  const b = biomaEm(tx, ty);
+  if (b === B.AGUA) return CUSTO_PONTE_FUNDA;
+  if (b === B.RASO) return CUSTO_PONTE_RASA;
+  return 1;
 }
 
 // Primeira via da vila: uma praça em cruz em volta do Centro, para as primeiras
@@ -2820,8 +2960,16 @@ function conselho() {
      Por isso a vila não espera lotar para construir: ela abre teto enquanto a
      folga for pequena diante do próprio tamanho. O freio continua sendo a
      comida — só ergue casa se a lavoura já aguentar as bocas a mais. */
+  /*
+     E o teto tem cota. A regra de moradia acerta quase sempre, e como o
+     conselho DEVOLVE assim que enfileira uma obra, ela consumia todas as
+     rodadas: numa vila de setenta e três moradores havia zero serrarias e zero
+     escolas, porque o conselho nunca chegava ao bloco de serviços. Com no
+     máximo duas casas em obra ao mesmo tempo, a vez passa para os outros.
+  */
+  const obrasDe = teste => jogo.predios.filter(p => p.progresso < 1 && teste(p.def)).length;
   const folga = cap - pop;
-  const querMaisTeto = folga <= Math.max(8, pop * 0.4);
+  const querMaisTeto = folga <= Math.max(8, pop * 0.4) && obrasDe(d => d.moradia) < 2;
   if (querMaisTeto && comidaDias >= 90 && saldoComidaPorAno() > 864) {
     // Casarão vale mais que casa quando a vila já tem madeira e pedra.
     if (pop >= 20 && podePagar(PREDIO.sobrado.custo) && decidirObra('sobrado')) return;
@@ -2854,12 +3002,20 @@ function conselho() {
   // acordava com treze galpões.
   if (longe >= 3 && contar('deposito') < Math.ceil(pop / 12) && decidirObra('deposito')) return;
 
-  if (!jaTem('oficina') && pop >= 8 && decidirObra('oficina')) return;
+  /*
+     Oficina e serraria não são mais "uma e pronto": elas alimentam a cadeia de
+     produção, e a demanda cresce com a vila. Uma oficina forja ferramenta para
+     uns sete colhedores; uma serraria serra tábua para um punhado de obras.
+     Sem acompanhar o tamanho, a ferramenta ficava empatada em zero — feita e
+     gasta no mesmo dia, e o bônus de 35% quase nunca valia.
+  */
+  if (pop >= 8  && contar('oficina')  < Math.ceil(pop / 25) && decidirObra('oficina')) return;
+  if (pop >= 12 && contar('serraria') < Math.ceil(pop / 30) && decidirObra('serraria')) return;
+
   if (!jaTem('mercado') && pop >= 14 && decidirObra('mercado')) return;
   if (!jaTem('estabulo') && pop >= 16 && decidirObra('estabulo')) return;
   if (!jaTem('prefeitura') && pop >= 24 && decidirObra('prefeitura')) return;
   if (contar('praca') < Math.floor(pop / 25) && pop >= 18 && decidirObra('praca')) return;
-  if (!jaTem('serraria') && pop >= 12 && decidirObra('serraria')) return;
   if (!jaTem('escola') && pop >= 20 && decidirObra('escola')) return;
 
   // --- 5. Bairro novo quando a vila está cheia e sobra recurso ---
@@ -3727,7 +3883,8 @@ function confirmarColocacao() {
 /* ------------------------------------------------------------ interface -- */
 
 const el = id => document.getElementById(id);
-const elRes = { madeira: el('r-madeira'), comida: el('r-comida'), pedra: el('r-pedra'), pop: el('r-pop') };
+const elRes = { madeira: el('r-madeira'), comida: el('r-comida'), pedra: el('r-pedra'),
+                tabua: el('r-tabua'), ferramenta: el('r-ferramenta'), pop: el('r-pop') };
 const elPovo = { criancas: el('p-criancas'), adultos: el('p-adultos'), idosos: el('p-idosos'), sem: el('p-sem'), dormindo: el('p-dormindo') };
 const elCal = { relogio: el('c-relogio'), data: el('c-data'), estacao: el('c-estacao'),
                 clima: el('c-clima'), veloc: el('c-veloc') };
@@ -3746,6 +3903,17 @@ function atualizarHUD() {
   elRes.madeira.textContent = Math.floor(jogo.recursos.madeira);
   elRes.comida.textContent  = Math.floor(jogo.recursos.comida);
   elRes.pedra.textContent   = Math.floor(jogo.recursos.pedra);
+  /*
+     Tábua e ferramenta só aparecem depois que a vila tem como fabricá-las.
+     Numa vila de dez pessoas, dois números sempre em zero no alto da tela são
+     só entulho.
+  */
+  for (const bem of ['tabua', 'ferramenta']) {
+    const tem = jogo.recursos[bem] > 0 ||
+      jogo.predios.some(p => (bem === 'tabua' ? p.def.serra : p.def.forja) && p.progresso >= 1);
+    el('r-' + bem + '-w').style.display = tem ? '' : 'none';
+    if (tem) elRes[bem].textContent = Math.floor(jogo.recursos[bem]);
+  }
   elRes.pop.textContent     = popAtual() + '/' + popMax();
   const c = contarFases();
 
@@ -4020,14 +4188,17 @@ function planejarTracado() {
   let antX = origem ? origem[0] : cheio[0][0], antY = origem ? origem[1] : cheio[0][1];
   for (const [tx, ty] of cheio) {
     if (jogo.estradas.has(nk(tx, ty))) { antX = tx; antY = ty; continue; }   // já é rua: de graça
-    if (!podeVirarRua(tx, ty)) {
+    // O sentido vem do próprio desenho: você atravessa o rio se apontar para a
+    // outra margem, e não se ficar rabiscando dentro da água.
+    if (!podeVirarRua(tx, ty, tx - antX, ty - antY)) {
       const b = biomaEm(tx, ty);
-      parouPor = b === B.AGUA ? 'água funda' : ocupado.has(nk(tx, ty)) ? 'uma construção' : 'terreno impossível';
+      parouPor = b === B.AGUA ? 'um vão de água grande demais para ponte'
+               : ocupado.has(nk(tx, ty)) ? 'uma construção' : 'terreno impossível';
       break;
     }
     if (ruaParalelaPerto(tx, ty, tx - antX, ty - antY)) folga++;   // avisa, mas não barra
     tiles.push([tx, ty]);
-    custo += biomaEm(tx, ty) === B.RASO ? 4 : 1;                   // ponte custa mais
+    custo += custoDoTrecho(tx, ty);
     antX = tx; antY = ty;
   }
   return { tiles, custo, folga, parouPor };
@@ -4263,6 +4434,45 @@ function desenharMinimapa() {
   for (const p of jogo.pessoas) {
     const x = MMS / 2 + (p.x / TILE - ptx) / MMP, y = MMS / 2 + (p.y / TILE - pty) / MMP;
     if (x >= 0 && x < MMS && y >= 0 && y < MMS) mmx.fillRect(x, y, 1.5, 1.5);
+  }
+
+  /*
+     MARCADORES. Com a vila espalhada, o minimapa mostrava um borrão amarelo
+     igual para tudo. Agora o que precisa de atenção se distingue: o Centro,
+     as obras abertas e os pedidos esperando resposta.
+  */
+  const noMapa = (tx, ty) => {
+    const x = MMS / 2 + (tx - ptx) / MMP, y = MMS / 2 + (ty - pty) / MMP;
+    return (x >= -2 && x < MMS + 2 && y >= -2 && y < MMS + 2) ? [x, y] : null;
+  };
+  const marcar = (tx, ty, cor, raio) => {
+    const q = noMapa(tx, ty);
+    if (!q) return;
+    mmx.fillStyle = cor;
+    mmx.beginPath(); mmx.arc(q[0], q[1], raio, 0, 6.2832); mmx.fill();
+  };
+
+  // Canteiros de prédio e de rua: laranja.
+  for (const pr of jogo.predios) if (pr.progresso < 1) marcar(pr.tx, pr.ty, '#e0a83c', 2);
+  for (const obra of jogo.obrasEstrada) {
+    const t = obra.tiles[obra.feitos] || obra.tiles[obra.tiles.length - 1];
+    if (t) marcar(t[0], t[1], '#9fb8d8', 1.8);
+  }
+
+  // Pedidos esperando você: piscando, do mesmo amarelo do quadrado no mapa.
+  if (jogo.pedidos.length) {
+    const pulso = 0.45 + Math.sin(agora / 260) * 0.3;
+    for (const ped of jogo.pedidos) marcar(ped.tx, ped.ty, 'rgba(255,214,120,' + pulso.toFixed(2) + ')', 2.6);
+  }
+
+  // O Centro da Vila, para nunca se perder de onde tudo começou.
+  const centro = centroDaVila();
+  if (centro) {
+    const q = noMapa(centro.tx, centro.ty);
+    if (q) {
+      mmx.strokeStyle = '#fff'; mmx.lineWidth = 1.4;
+      mmx.beginPath(); mmx.arc(q[0], q[1], 3, 0, 6.2832); mmx.stroke();
+    }
   }
   mmx.strokeStyle = 'rgba(255,255,255,.5)';
   const vw = (W / cam.z / TILE) / MMP, vh = (H / cam.z / TILE) / MMP;
@@ -4513,9 +4723,10 @@ function abrirProducao() {
   lista.innerHTML = '';
   const pop = popAtual();
 
-  for (const rec in RECURSO) {
+  for (const rec in BEM) {
     const b = balancoDe(rec);
-    const total = Math.max(b.entra, b.sai, 0.01);
+    // Bem que a vila ainda não sabe fabricar não ocupa espaço no painel.
+    if (MANUFATURADO[rec] && !b.entra && !b.sai && !jogo.recursos[rec]) continue;
     const d = document.createElement('div');
     d.className = 'prod' + (b.saldo < 0 ? ' negativo' : '');
 
@@ -4526,7 +4737,7 @@ function abrirProducao() {
 
     let html =
       '<div class="topo">' +
-        '<span class="titulo">' + RECURSO[rec].icone + ' ' + RECURSO[rec].nome + '</span>' +
+        '<span class="titulo">' + BEM[rec].icone + ' ' + BEM[rec].nome + '</span>' +
         '<span class="saldo ' + classe + '">' + sinal + Math.abs(b.saldo).toFixed(1) + '/dia</span>' +
       '</div>' +
       '<div class="estoque">no galpão: ' + estoque + ' de ' + teto +
@@ -4550,6 +4761,43 @@ function abrirProducao() {
     html += '<div class="gente">' + quemProduz(rec) + '</div>';
     d.innerHTML = html;
     lista.appendChild(d);
+  }
+
+  /*
+     A FILA DE OBRAS. Antes só dava para saber o que estava sendo construído
+     andando pelo mapa atrás de canteiro. Aqui está tudo: prédio e rua, com
+     quanto já andou e quem está martelando.
+  */
+  const emObra = jogo.predios.filter(p => p.progresso < 1);
+  if (emObra.length || jogo.obrasEstrada.length) {
+    const o = document.createElement('div');
+    o.className = 'prod';
+    o.style.borderLeftColor = 'rgba(224,180,92,.85)';
+    let h = '<div class="topo"><span class="titulo">🏗️ Obras</span>' +
+            '<span class="saldo">' + (emObra.length + jogo.obrasEstrada.length) + '</span></div>';
+
+    for (const pr of emObra) {
+      const gente = jogo.pessoas.filter(p => p.alvo === pr &&
+        (p.estado === 'construindo' || p.estado === 'indoConstruir')).length;
+      h += '<div class="obra"><div class="cab">' +
+        '<span>' + pr.def.icone + ' ' + pr.def.nome + '</span>' +
+        '<span class="pct">' + Math.round(pr.progresso * 100) + '%' +
+          (gente ? ' · ' + gente + '🔨' : ' · <b>parada</b>') + '</span></div>' +
+        '<div class="tr"><i style="width:' + Math.round(pr.progresso * 100) + '%"></i></div></div>';
+    }
+    for (const obra of jogo.obrasEstrada) {
+      const pct = Math.round(obra.feitos / Math.max(1, obra.tiles.length) * 100);
+      const falta = obra.tiles.length - obra.feitos;
+      h += '<div class="obra rua"><div class="cab">' +
+        '<span>🛣️ Rua</span>' +
+        '<span class="pct">' + pct + '% · faltam ' + falta + ' (' + falta + '⛏)</span></div>' +
+        '<div class="tr"><i style="width:' + pct + '%"></i></div></div>';
+    }
+    if (temNoGalpao('tabua')) {
+      h += '<div class="gente">🟫 com tábua no galpão, tudo isto anda 50% mais rápido</div>';
+    }
+    o.innerHTML = h;
+    lista.appendChild(o);
   }
 
   // Uma linha de contexto: dá para saber se a vila aguenta crescer.
@@ -4590,6 +4838,14 @@ function quemProduz(rec) {
   if (rec === 'pedra') {
     const m = jogo.predios.filter(p => p.def.mina && p.progresso >= 1 && p.trabalhador).length;
     return conta('pedreiro') + ' pedreiro(s) · ' + m + ' mina(s) em atividade';
+  }
+  if (rec === 'tabua') {
+    const s = jogo.predios.filter(p => p.def.serra && p.progresso >= 1 && p.trabalhador).length;
+    return s + ' serraria(s) serrando · a obra anda 50% mais com tábua no galpão';
+  }
+  if (rec === 'ferramenta') {
+    const o = jogo.predios.filter(p => p.def.forja && p.progresso >= 1 && p.trabalhador).length;
+    return o + ' oficina(s) forjando · quem colhe com ferramenta rende 35% mais';
   }
   return '';
 }
@@ -5997,8 +6253,10 @@ function desenhar() {
     let antX = tracado[0][0], antY = tracado[0][1];
     for (const [tx, ty] of tracado) {
       let cor;
+      const b = biomaEm(tx, ty);
       if (jogo.estradas.has(nk(tx, ty))) cor = 'rgba(150,190,255,.35)';
-      else if (!podeVirarRua(tx, ty)) cor = 'rgba(230,80,70,.55)';
+      else if (!podeVirarRua(tx, ty, tx - antX, ty - antY)) cor = 'rgba(230,80,70,.55)';
+      else if (b === B.AGUA || b === B.RASO) cor = 'rgba(120,170,235,.60)';   // ponte
       else if (ruaParalelaPerto(tx, ty, tx - antX, ty - antY)) cor = 'rgba(240,170,60,.55)';
       else cor = 'rgba(130,220,120,.50)';
       ctx.fillStyle = cor;
@@ -6148,6 +6406,9 @@ function gravar() {
       cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
       nome: jogo.nome, velocidade,
+      // A média móvel do livro-caixa também vai no save: sem ela o painel
+      // abria dizendo 'ainda sem movimento' por um minuto depois de recarregar.
+      fluxo: fluxoMedio,
       clima: jogo.clima, mesAnterior: jogo.mesAnterior, diaAnterior: jogo.diaAnterior,
       diaTotal: jogo.diaTotal,
       missoes: jogo.missoes,
@@ -6178,10 +6439,14 @@ function carregar() {
   try {
     SEED = s.seed;
     cam.x = s.cam.x; cam.y = s.cam.y; cam.z = s.cam.z || 1;
+    jogo.recursos = { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 };
     Object.assign(jogo.recursos, s.recursos || {});
+    // Save de antes da cadeia de produção não tem os bens novos.
+    for (const k in MANUFATURADO) if (typeof jogo.recursos[k] !== 'number') jogo.recursos[k] = 0;
     jogo.ano = s.ano || 1; jogo.anoFrac = s.anoFrac || 0; jogo.fome = !!s.fome;
     jogo.nome = s.nome || 'Vila Nova';
     jogo.ancestrais = s.ancestrais || [];
+    if (s.fluxo) for (const k in s.fluxo) fluxoMedio[k] = s.fluxo[k];
     velocidade = VELOCIDADES.includes(s.velocidade) ? s.velocidade : 1;
     jogo.clima = s.clima || 'limpo';
     jogo.mesAnterior = s.mesAnterior !== undefined ? s.mesAnterior : -1;
@@ -6265,7 +6530,7 @@ function novaVila(seed) {
   chunks.clear(); cacheBioma.clear(); restante.clear(); ocupado.clear();
   jogo.predios = []; jogo.pessoas = []; jogo.estradas = new Set(); jogo.obrasEstrada = [];
   jogo.cronica = []; jogo.ancestrais = []; jogo.proxId = 1; proxPredioId = 1;
-  jogo.recursos = { madeira:220, comida:200, pedra:80 };
+  jogo.recursos = { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
   jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.diaAnterior = -1;
   jogo.pedidos = []; jogo.diaTotal = 0;
