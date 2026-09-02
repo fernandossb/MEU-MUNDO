@@ -49,20 +49,24 @@ Suas ordens são atalhos, não obrigação.
 
 ## O tempo, as estações e o clima
 
-Um **dia inteiro leva uma hora** de verdade. O ano tem doze dias, um por mês —
-então um ano de vila leva doze horas, e a história dela se mede em dias, não em
-minutos.
+**Um ano inteiro leva uma hora de verdade.** Existe uma unidade só: o ano.
+Envelhecer, casar, nascer e morrer acontecem uma vez por ano, com as taxas
+anuais cheias. O mês é subdivisão do ano (cinco minutos de verdade cada) e
+serve para o clima, as estações e a feira do mercado.
 
-O calendário mostra **`Dia 35 · Novembro · ano 3`**: o dia é contado desde a fundação
-e sai da própria conta de mês e ano, então os três nunca se contradizem. Antes
-o número do dia *era* o número do mês, e a virada da meia-noite ia de
-"dia 4 / Abril" para "dia 5 / Maio" — parecia defeito. A demografia (envelhecer, casar, nascer, morrer) corre **por dia**, com
-as taxas anuais divididas por doze: o comportamento ao longo do ano é o mesmo,
-só distribuído.
+Antes a hora valia um *dia* e o ano levava doze horas. A civilização quase não
+saía do lugar, e o calendário com dia, mês e ano ao mesmo tempo nunca fechava a
+conta — o número do dia saía do próprio mês, então virar de mês parecia virar
+de dia. Agora o topo da tela mostra **`Ano 6 · Setembro · Primavera`** e pronto.
 
-À noite todo mundo larga o serviço e volta para casa: as ruas esvaziam, as
-janelas acendem. As taxas de coleta foram aumentadas para compensar o
-expediente menor.
+A economia não mudou de ritmo: comida, colheita e obra continuam medidas em
+segundos de verdade, e a hora rende o mesmo tanto de trabalho de sempre. O que
+acelerou doze vezes foi só o relógio da vida.
+
+**Não há mais noite.** Com o ano passando em uma hora, um ciclo de sol dentro
+dele duraria cinco minutos — a vila piscaria entre claro e escuro o tempo todo
+e todo mundo passaria metade da vida dormindo. É sempre dia, e os aldeões
+trabalham sem parar.
 
 As quatro estações (hemisfério sul) e o clima mexem na lavoura:
 
@@ -75,6 +79,8 @@ As quatro estações (hemisfério sul) e o clima mexem na lavoura:
 | 🌧️ Chuva | ×1,35, mas todos andam 10% mais devagar |
 | 🌨️ Neve | ×0,25 e 22% mais devagar |
 | ⛈️ Tempestade | tira o barco da água e atrasa o passo em 28% |
+
+---
 
 ## Você manda, eles pedem
 
@@ -154,7 +160,7 @@ traçava uma reta que quase sempre morria no terceiro bloco pela regra de folga
 
 ## A vila que anda sozinha
 
-**O conselho** reavalia a vila **oito vezes por dia** e decide nesta ordem:
+**O conselho** reavalia a vila **oito vezes por ano** e decide nesta ordem:
 
 1. **Comida**, se a despensa tem menos de 4 dias — cais primeiro, que rende o
    ano todo, depois lavoura
@@ -203,7 +209,14 @@ encomendar correr rente a outra no mesmo sentido, ela é encurtada e o jogo
 avisa. Por isso a vila também começa com uma **esquina** em vez de um anel: o
 anel já nascia com duas vias paralelas a quatro blocos uma da outra.
 
-Quem por algum motivo ficar fora do calçamento — recém-nascido, save antigo,
+**A exceção é a colheita.** Madeira, pedra e comida estão no mato, e exigir que
+o recurso encostasse no calçamento travava a vila: quando acabava o que havia
+na beira da rua, meia dúzia de aldeões ficava rodando sem ter o que fazer. Quem
+vai colher — e quem volta carregado — sai da rua. Lá fora o que barra é o que
+barraria de verdade: água funda, rocha e parede de prédio. A rua continua
+valendo a pena, porque nela se anda 55% mais rápido.
+
+Quem ficar fora do calçamento sem estar colhendo — recém-nascido, save antigo,
 um canto mal resolvido — é trazido de volta para a rua mais próxima.
 
 **As ruas nunca andam na diagonal.** Elas sobem em degraus, sempre ligadas
@@ -363,15 +376,37 @@ Os números não foram inventados:
 | Nem todo adulto trabalha | participação na força de trabalho ~**61%** ([OCDE][oecd], [USAFacts][usa]) |
 | Crescimento de vila em expansão | metrópole que mais cresceu nos EUA: **38,9% numa década** (~3,3%/ano) ([US Census][census]) |
 
-Uma partida típica fica em torno de **25% crianças e 7% idosos**, com ~4,8% de
-crescimento ao ano — na faixa de uma cidade de fronteira em expansão.
+Uma partida típica fica em torno de **30% crianças**, com o resto em idade de
+trabalhar — na faixa de uma cidade de fronteira em expansão.
 
-Outras regras: cada pessoa come **6 de comida por dia**; vira adulta aos **18**
+Outras regras: cada pessoa come **6 de comida por ano**; vira adulta aos **18**
 e morre por volta dos **75**; sem comida, a vila entra em fome, os nascimentos
 param e as mortes aumentam.
 
-A taxa de natalidade foi recalibrada para a escala de tempo nova: com o ano de
-doze horas, o valor antigo dava um filho a cada 54 horas de jogo.
+### O crescimento vem da imigração, não do berço
+
+Com o tick valendo um ano inteiro, a taxa antiga (quase um filho por casal
+**por ano**) dava vinte e sete filhos por casal ao longo da vida fértil. A vila
+virava um berçário: medindo, **71% da população tinha menos de dezoito anos** —
+e criança não trabalha. Era isso que enchia a tela de gente parada.
+
+O número certo sai do próprio censo acima. Numa população que cresce uns 3% ao
+ano, a natalidade bruta precisa cobrir as mortes (1/75) mais o crescimento:
+~4,6% da população por ano. Como as mulheres em idade fértil são perto de 18%
+da vila, dá **0,26 filho por casal por ano** — um filho a cada quatro anos, que
+é ritmo de família de verdade.
+
+Quem faz a vila crescer, então, é a **família que se muda** para cada casa
+nova: duas a cinco pessoas de uma vez, com ~62% de adultos (antes era sempre
+"o casal e o resto criança", o que sozinho já emperrava a pirâmide). Por isso o
+conselho não espera lotar para construir — ele abre teto enquanto a folga for
+pequena diante do tamanho da vila, com o freio de sempre: só ergue casa se a
+lavoura já aguentar as bocas a mais.
+
+Medido depois do ajuste: adultos ficam **ociosos 0,2% do tempo**, e os ofícios
+voltaram a se repartir (lenhador, colhedor, pedreiro, lavoura, postos) em vez
+da monocultura de fazenda que aparecia antes — o teto de "metade dos adultos em
+posto fixo" agora **dispensa** quem sobra, e não só deixa de nomear mais.
 
 ---
 
@@ -402,7 +437,7 @@ o Android mate o processo.
 
 **O relógio anda o tempo exato, não em dias inteiros.** Este era o defeito que
 fazia parecer que nada corria com o app fechado: a recuperação só avançava o
-calendário uma vez por dia cheio, e um dia de vila é uma hora de verdade — logo
+calendário uma vez por unidade cheia, e essa unidade é uma hora de verdade — logo
 sair por cinquenta minutos movia o relógio em zero. Agora o resto do dia entra
 na conta.
 
@@ -474,8 +509,8 @@ por muito tempo.
 ## O que o conselho persegue
 
 A vila tem um objetivo declarado: **crescer sem passar fome**. Ele decide oito
-vezes por dia com base em duas contas — quantos dias a despensa aguenta e qual
-o **saldo real de comida por dia**, medido (não estimado: a conta teórica
+vezes por ano com base em duas contas — quantos anos a despensa aguenta e qual
+o **saldo real de comida por ano**, medido (não estimado: a conta teórica
 ignorava o tempo gasto andando até o recurso e errava cinco vezes para mais).
 
 Só abre teto novo quando a lavoura já sustenta as bocas que vêm junto. Quando
