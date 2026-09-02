@@ -41,6 +41,8 @@ para achar montanha.
 | Ver pedidos pendentes | botão **🧾**, ou tocar no quadrado amarelo do mapa | idem |
 | Ver de onde vem cada recurso | botão **📊** | idem |
 | Acelerar o tempo | tocar no **1×** ao lado da data | idem |
+| Voltar ao Centro da Vila | botão **🏰** | idem |
+| Trocar o nome da vila | botão **☰** → campo *Nome* | idem |
 | Ler a história da vila | botão **📜** | idem |
 
 Você **não precisa** dar ordens. A vila se vira sozinha: quem fica parado
@@ -285,6 +287,38 @@ onde não dava para chegar.
 Com muita gente, quem está fora da tela é atualizado em rodízio, recebendo o
 tempo acumulado de uma vez: anda igual, em passos maiores, e o celular aguenta
 a cidade grande.
+
+## A vila tem nome
+
+Ela nasce com um: o nome sai das duas famílias fundadoras — *Serra dos
+Silveira*, *Porto dos Lopes*. Você troca quando quiser, no **☰**, e ele aparece
+no menu, na crônica e no botão 🏰.
+
+---
+
+## Linhagem: a semente das dinastias
+
+Cada pessoa carrega **pai, mãe, geração e ano de nascimento**. Quem morre não
+some: vai para um cemitério enxuto (`jogo.ancestrais`) com o mesmo registro,
+mais o ano da morte. A ficha de qualquer aldeão já mostra de quem ele é filho,
+quantos filhos teve, e quantos deles já se foram — e o nome do pai continua
+aparecendo depois que o pai morreu.
+
+**Por que isto entrou tão cedo, se a árvore genealógica é a última coisa do
+roteiro:** história só se acumula para frente. Se a captura começasse junto com
+a tela, todo mundo que já viveu nasceria sem pais, e a graça toda era poder
+subir do bisneto até o fundador do ano 1. Com uma vida durando 75 dias de
+verdade, quem jogar dois meses vê três gerações passarem — mas só se estiverem
+gravadas.
+
+A família que se muda já chega com três degraus: os mais velhos são a geração
+1, o casal a 2, as crianças a 3. Assim a árvore não começa rasa nem para quem
+chegou hoje.
+
+O cemitério tem teto de 4000 registros, e a poda derruba primeiro quem **não é
+pai nem mãe de ninguém** — uma limpeza nunca corta o meio de uma linhagem.
+
+---
 
 ## O painel de produção
 

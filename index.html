@@ -240,6 +240,7 @@
 
   <div id="mapwrap" class="panel"><canvas id="minimap" width="92" height="92"></canvas></div>
   <div id="lateral">
+    <div id="btn-centro" class="btn panel">🏰</div>
     <div id="btn-producao" class="btn panel">📊</div>
     <div id="btn-pedidos" class="btn panel">🧾<span id="badge-pedidos" class="badge" style="display:none">0</span></div>
     <div id="btn-missoes" class="btn panel">🎯</div>
@@ -282,9 +283,11 @@
   </div>
 
   <div id="menu" class="folha">
-    <h1>Reino Infinito</h1>
+    <h1 id="menu-titulo">Vila Nova</h1>
+    <p class="hint" style="margin-top:-6px">Reino Infinito</p>
     <p>Uma vila que vive sozinha. As pessoas nascem, crescem, escolhem ofício, casam, envelhecem e morrem — e o conselho da vila decide o que construir mesmo com o jogo fechado.</p>
     <p class="hint">Arraste para mover · pince para zoom · toque numa pessoa para ver a ficha dela · <kbd>WASD</kbd> e roda do mouse no computador</p>
+    <div class="row"><label class="hint">Nome</label><input id="nomein" maxlength="28" placeholder="Vila Nova"></div>
     <div class="row"><label class="hint">Semente</label><input id="seedin" inputmode="numeric"></div>
     <div class="row">
       <div class="btn" id="btn-voltar">Continuar</div>
@@ -322,7 +325,7 @@
   </div>
 
   <div id="cronica" class="folha">
-    <h2>📜 Crônica da vila</h2>
+    <h2 id="cronica-titulo">📜 Crônica da vila</h2>
     <div class="lista" id="cronica-lista"></div>
     <div class="btn" id="cronica-fechar">Fechar</div>
   </div>
@@ -635,12 +638,6 @@ function corTerrenoDe(e, eOeste, eNorte, m, tx, ty) {
   return [r + n, g + n, b + n];
 }
 
-const PASSO_LUZ = 1 / SUB;
-
-function corTerreno(tx, ty) {
-  return corTerrenoDe(elevacao(tx, ty), elevacao(tx - PASSO_LUZ, ty),
-                      elevacao(tx, ty - PASSO_LUZ), umidade(tx, ty), tx, ty);
-}
 
 /* ------------------------------------------------------------- recursos --- */
 
@@ -898,10 +895,56 @@ function criarPessoa(op) {
     dir: 1, passo: 0, ociosoT: 0, travado: 0,
     casaId: null, conjugeId: null, veiculo: null, fazendaId: null,
     ordemManual: false,
+
+    /*
+       LINHAGEM. Estes quatro campos não fazem nada hoje — a árvore
+       genealógica é a última coisa do roteiro. Eles entram AGORA porque
+       história só se acumula para frente: se a captura só começasse junto com
+       a tela, todo mundo que já viveu nasceria sem pais, e a graça toda era
+       poder subir do bisneto até o fundador do ano 1.
+    */
+    paiId: op.paiId || null,
+    maeId: op.maeId || null,
+    geracao: op.geracao || 1,
+    nasceu: jogo.ano - Math.floor(op.idade !== undefined ? op.idade : 25),
   };
   jogo.pessoas.push(p);
   return p;
 }
+
+/*
+   Os que já morreram. Sem guardá-los a árvore não sobe: em duas semanas de
+   jogo o fundador já morreu, e é justamente ele que se quer alcançar.
+
+   O registro é enxuto de propósito — nome, sexo, pais, geração e as duas datas
+   — e o teto derruba primeiro quem NÃO é pai nem mãe de ninguém, para que uma
+   poda nunca corte o meio de uma linhagem.
+*/
+const TETO_ANCESTRAIS = 4000;
+
+function guardarAncestral(p) {
+  jogo.ancestrais.push({
+    id: p.id, n: p.nome, s: p.sobrenome, sx: p.sexo,
+    pa: p.paiId, ma: p.maeId, g: p.geracao,
+    nas: p.nasceu, mor: jogo.ano, of: p.oficio,
+  });
+  if (jogo.ancestrais.length <= TETO_ANCESTRAIS) return;
+
+  const éPai = new Set();
+  for (const a of jogo.ancestrais) { if (a.pa) éPai.add(a.pa); if (a.ma) éPai.add(a.ma); }
+  for (const v of jogo.pessoas)   { if (v.paiId) éPai.add(v.paiId); if (v.maeId) éPai.add(v.maeId); }
+
+  let sobra = jogo.ancestrais.length - TETO_ANCESTRAIS;
+  jogo.ancestrais = jogo.ancestrais.filter(a => {
+    if (sobra > 0 && !éPai.has(a.id)) { sobra--; return false; }
+    return true;
+  });
+}
+
+// Alguém da vila ou do cemitério, por id.
+const alguemPorId = id => jogo.pessoas.find(p => p.id === id)
+  || jogo.ancestrais.find(a => a.id === id) || null;
+const nomeDeAlguem = a => a ? (a.nome || a.n) + ' ' + (a.sobrenome || a.s) : null;
 
 const pessoaPorId = id => jogo.pessoas.find(p => p.id === id) || null;
 
@@ -911,6 +954,7 @@ const jogo = {
   recursos: { madeira:220, comida:200, pedra:80 },
   predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
   cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
+  nome: 'Vila Nova', ancestrais: [],
   clima: 'limpo', mesAnterior: -1, diaAnterior: -1, diaTotal: 0,
   pedidos: [], autoAprovar: true,
   fome: false, salvoEm: Date.now(),
@@ -932,7 +976,6 @@ function popMax() {
   return n;
 }
 const popAtual = () => jogo.pessoas.length;
-const temPredio = c => jogo.predios.some(p => p.chave === c && p.progresso >= 1);
 const obrasAtivas = () => jogo.predios.filter(p => p.progresso < 1).length;
 
 function contarFases() {
@@ -1159,13 +1202,6 @@ const podeSairDaRua = p => ESTADOS_DE_MATO.has(p.estado);
 
 // Qual das duas réguas vale para esta pessoa agora.
 const barraPara = p => (podeSairDaRua(p) ? bloqueadoNoMato : bloqueado);
-
-// Encosta numa rua? Usado para saber o que dá para colher e onde dá para pisar.
-function encostaEmRua(tx, ty) {
-  for (const [dx, dy] of LADOS_4)
-    if (jogo.estradas.has(nk(tx + dx, ty + dy))) return true;
-  return false;
-}
 
 // Centro do tile de rua mais perto — para trazer de volta quem ficou fora.
 function ruaMaisProxima(x, y, maxTiles) {
@@ -2069,19 +2105,37 @@ function chegarFamilia(casa) {
   */
   const adultos = Math.max(2, Math.round(tamanho * 0.62));
   const nomes = [];
+  const chegaram = [];
   for (let i = 0; i < tamanho; i++) {
     const eAdulto = i < adultos;
     const eCasal = i < 2;
+    // A família que chega já vem com três degraus: os mais velhos são a
+    // geração 1, o casal a 2, as crianças a 3. Assim a árvore não começa
+    // rasa mesmo para quem se muda hoje.
     const p = criarPessoa({
       x: casa.cx + entre(-26, 26), y: casa.cy + (casa.def.h * TILE) / 2 + entre(8, 26),
       idade: eCasal ? entre(20, 44) : eAdulto ? entre(46, 70) : entre(1, 14),
       sexo: i === 0 ? 'f' : i === 1 ? 'm' : undefined,
       sobrenome,
+      geracao: eCasal ? 2 : eAdulto ? 1 : 3,
     });
     p.casaId = casa.id;
     casa.moradores.push(p.id);
     if (faseDaIdade(p.idade) === FASE.CRIANCA) p.estado = 'brincando';
     nomes.push(p.nome);
+    chegaram.push(p);
+  }
+
+  // Os avós, se vieram, são pais do casal; as crianças são filhas do casal.
+  const mae = chegaram[0], pai = chegaram[1];
+  const avo = chegaram.find((p, i) => i >= 2 && faseDaIdade(p.idade) !== FASE.CRIANCA);
+  if (avo && mae) {
+    if (avo.sexo === 'f') mae.maeId = avo.id; else mae.paiId = avo.id;
+  }
+  for (const c of chegaram) {
+    if (faseDaIdade(c.idade) !== FASE.CRIANCA) continue;
+    if (mae) c.maeId = mae.id;
+    if (pai) c.paiId = pai.id;
   }
   if (tamanho >= 2) {
     const a = pessoaPorId(casa.moradores[casa.moradores.length - tamanho]);
@@ -2091,27 +2145,6 @@ function chegarFamilia(casa) {
   crônica('A família ' + sobrenome + ' se mudou para a vila: ' + nomes.join(', ') + '.', true);
 }
 
-function planejarEstradaAte(pr) {
-  // Liga o prédio novo ao prédio pronto mais próximo, se valer a caminhada.
-  let alvo = null, d0 = Infinity;
-  for (const o of jogo.predios) {
-    if (o === pr || o.progresso < 1) continue;
-    const d = (o.cx - pr.cx) ** 2 + (o.cy - pr.cy) ** 2;
-    if (d < d0) { d0 = d; alvo = o; }
-  }
-  if (!alvo) return;
-  const dist = Math.sqrt(d0) / TILE;
-  if (dist < 2 || dist > 26) return;
-
-  const tiles = [];
-  const de = [Math.floor(pr.cx / TILE), Math.floor(pr.cy / TILE)];
-  const ate = [Math.floor(alvo.cx / TILE), Math.floor(alvo.cy / TILE)];
-  for (const [x0, y0] of linhaDeTiles(de[0], de[1], ate[0], ate[1], 80)) {
-    const k = nk(x0, y0);
-    if (!ocupado.has(k) && !jogo.estradas.has(k) && !SOLIDO[biomaEm(x0, y0)]) tiles.push([x0, y0]);
-  }
-  if (tiles.length >= 2) jogo.obrasEstrada.push({ tiles, feitos: 0, t: 0 });
-}
 
 function atualizarProducao(dt) {
   for (const pr of jogo.predios) {
@@ -2555,13 +2588,6 @@ function responderPedido(sim, id) {
   if (jogo.pedidos.length) mostrarPedido(); else esconderPedido();
   if (el('pedidos').classList.contains('on')) abrirPedidos();
   salvar();
-}
-
-function temEstradaPerto(pr) {
-  for (let y = -1; y <= pr.def.h; y++)
-    for (let x = -1; x <= pr.def.w; x++)
-      if (jogo.estradas.has(nk(pr.tx + x, pr.ty + y))) return true;
-  return false;
 }
 
 // As pessoas trocam de ofício conforme a vila precisa (item 9: conseguir
@@ -3066,6 +3092,8 @@ function tickDia() {
       const bebe = criarPessoa({
         x: mae.x + entre(-12, 12), y: mae.y + entre(-12, 12),
         idade: 0, sobrenome: mae.sobrenome,
+        maeId: mae.id, paiId: pai ? pai.id : null,
+        geracao: Math.max(mae.geracao || 1, pai ? pai.geracao || 1 : 1) + 1,
       });
       bebe.casaId = casa.id; casa.moradores.push(bebe.id);
       bebe.instruido = temEscola();   // quem nasce com escola aberta rende mais
@@ -3114,6 +3142,7 @@ function tickDia() {
 }
 
 function removerPessoa(p) {
+  guardarAncestral(p);
   const i = jogo.pessoas.indexOf(p);
   if (i >= 0) jogo.pessoas.splice(i, 1);
   soltarPostos(p);
@@ -4061,7 +4090,21 @@ function fecharFolhas() {
 }
 const folhaAberta = () => !!document.querySelector('.folha.on');
 
-el('btn-menu').onclick = () => { fecharFolhas(); el('seedin').value = SEED; el('menu').classList.add('on'); };
+el('btn-menu').onclick = () => {
+  fecharFolhas();
+  el('seedin').value = SEED;
+  el('nomein').value = jogo.nome;
+  el('menu-titulo').textContent = jogo.nome;
+  el('menu').classList.add('on');
+};
+
+// O nome vale assim que você para de digitar; não precisa confirmar nada.
+el('nomein').oninput = e => {
+  const novo = e.target.value.trim();
+  jogo.nome = novo || 'Vila Nova';
+  el('menu-titulo').textContent = jogo.nome;
+  salvar();
+};
 el('btn-voltar').onclick = fecharFolhas;
 el('btn-novo').onclick = () => {
   const v = parseInt(el('seedin').value, 10);
@@ -4074,6 +4117,7 @@ el('btn-apagar').onclick = () => {
 };
 
 el('btn-cronica').onclick = () => {
+  el('cronica-titulo').textContent = '📜 Crônica de ' + jogo.nome;
   const lista = el('cronica-lista');
   lista.innerHTML = '';
   const evs = jogo.cronica.slice(-80).reverse();
@@ -4088,6 +4132,15 @@ el('btn-cronica').onclick = () => {
   fecharFolhas(); el('cronica').classList.add('on');
 };
 el('cronica-fechar').onclick = fecharFolhas;
+// Com a vila espalhada por duzentos tiles, achar o Centro de novo virava
+// caçada. Um toque traz a câmera de volta.
+el('btn-centro').onclick = () => {
+  const c = centroDaVila();
+  if (!c) return;
+  cam.x = c.cx; cam.y = c.cy;
+  fecharFolhas();
+  aviso('🏰 ' + jogo.nome);
+};
 el('btn-producao').onclick = abrirProducao;
 el('producao-fechar').onclick = fecharFolhas;
 el('btn-missoes').onclick = abrirMissoes;
@@ -4108,12 +4161,42 @@ function abrirFicha(p) {
   el('ficha-corpo').innerHTML =
     '<div style="font-size:17px;font-weight:600;margin-bottom:6px">' + nomeCompleto(p) + '</div>' +
     '<div>' + Math.floor(p.idade) + ' anos · ' + rotulo + '</div>' +
-    '<div>ofício: ' + OFICIO[p.oficio].icone + ' ' + OFICIO[p.oficio].nome + '</div>' +
+    '<div>' + (p.oficio === 'nenhum' ? 'sem ofício por enquanto'
+                              : 'ofício: ' + OFICIO[p.oficio].icone + ' ' + OFICIO[p.oficio].nome) + '</div>' +
     '<div>jeito: ' + p.traco + '</div>' +
     (p.veiculo ? '<div>anda com: ' + (p.veiculo === 'carroca' ? '🛞 carroça' : '🐴 cavalo') + '</div>' : '') +
     (conj ? '<div>casado(a) com ' + nomeCompleto(conj) + '</div>' : '<div style="opacity:.6">sem par</div>') +
-    (casa ? '<div>mora numa casa com ' + casa.moradores.length + ' pessoa(s)</div>' : '<div style="opacity:.6">sem casa</div>');
+    (casa ? '<div>mora numa casa com ' + casa.moradores.length + ' pessoa(s)</div>' : '<div style="opacity:.6">sem casa</div>') +
+    linhagemDe(p);
   fecharFolhas(); el('ficha').classList.add('on');
+}
+
+/*
+   A linhagem na ficha. É pouco — pais, filhos, geração — mas é a prova de que
+   a captura está gravando, e o degrau de onde a árvore genealógica vai sair.
+*/
+function linhagemDe(p) {
+  const pai = alguemPorId(p.paiId), mae = alguemPorId(p.maeId);
+  const filhos = jogo.pessoas.filter(f => f.paiId === p.id || f.maeId === p.id);
+  const idos = jogo.ancestrais.filter(f => f.pa === p.id || f.ma === p.id);
+  const pais = [pai, mae].filter(Boolean).map(nomeDeAlguem);
+
+  let s = '<div style="margin-top:8px;padding-top:7px;border-top:1px solid rgba(255,255,255,.14)">';
+  // Fundador e imigrante nasceram antes de a vila existir: o ano deles é
+  // negativo, e 'nasceu no ano −24' não quer dizer nada para quem lê.
+  const quando = p.nasceu === undefined ? ''
+    : p.nasceu < 1 ? ' · nasceu antes da fundação'
+    : ' · nasceu no ano ' + p.nasceu;
+  s += '<div style="opacity:.6;font-size:11.5px">geração ' + (p.geracao || 1) + quando + '</div>';
+  s += pais.length ? '<div>filho(a) de ' + pais.join(' e ') + '</div>'
+                   : '<div style="opacity:.6">chegou de fora</div>';
+  const total = filhos.length + idos.length;
+  if (total) {
+    s += '<div>' + total + ' filho(s)' +
+      (filhos.length ? ': ' + filhos.map(f => f.nome).join(', ') : '') +
+      (idos.length ? (filhos.length ? ' · ' : ': ') + idos.length + ' já se foram' : '') + '</div>';
+  }
+  return s + '</div>';
 }
 
 function mostrarRelatorio(rel) {
@@ -6064,7 +6147,7 @@ function gravar() {
       v: 2, seed: SEED, salvoEm: jogo.salvoEm,
       cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
-      velocidade,
+      nome: jogo.nome, velocidade,
       clima: jogo.clima, mesAnterior: jogo.mesAnterior, diaAnterior: jogo.diaAnterior,
       diaTotal: jogo.diaTotal,
       missoes: jogo.missoes,
@@ -6074,7 +6157,9 @@ function gravar() {
       proxPredioId, proxId: jogo.proxId,
       pessoas: jogo.pessoas.map(p => ({ id:p.id, n:p.nome, s:p.sobrenome, sx:p.sexo,
         i:+p.idade.toFixed(2), vm:+p.vidaMax.toFixed(1), tr:p.traco,
-        x:Math.round(p.x), y:Math.round(p.y), of:p.oficio, ca:p.casaId, co:p.conjugeId, ve:p.veiculo })),
+        x:Math.round(p.x), y:Math.round(p.y), of:p.oficio, ca:p.casaId, co:p.conjugeId, ve:p.veiculo,
+        pa:p.paiId, ma:p.maeId, g:p.geracao, nas:p.nasceu })),
+      ancestrais: jogo.ancestrais,
       estradas: [...jogo.estradas],
       obrasEstrada: jogo.obrasEstrada.map(o => ({ t:o.tiles, f:o.feitos })),
       nos: [...restante.entries()].slice(-4000),
@@ -6095,6 +6180,8 @@ function carregar() {
     cam.x = s.cam.x; cam.y = s.cam.y; cam.z = s.cam.z || 1;
     Object.assign(jogo.recursos, s.recursos || {});
     jogo.ano = s.ano || 1; jogo.anoFrac = s.anoFrac || 0; jogo.fome = !!s.fome;
+    jogo.nome = s.nome || 'Vila Nova';
+    jogo.ancestrais = s.ancestrais || [];
     velocidade = VELOCIDADES.includes(s.velocidade) ? s.velocidade : 1;
     jogo.clima = s.clima || 'limpo';
     jogo.mesAnterior = s.mesAnterior !== undefined ? s.mesAnterior : -1;
@@ -6128,6 +6215,10 @@ function carregar() {
       const p = criarPessoa({ x:d.x, y:d.y, idade:d.i, sexo:d.sx, nome:d.n, sobrenome:d.s });
       p.id = d.id; p.vidaMax = d.vm; p.traco = d.tr; p.oficio = d.of || 'nenhum';
       p.casaId = d.ca; p.conjugeId = d.co; p.veiculo = d.ve || null;
+      // Save antigo não tem linhagem: quem veio de lá é fundador, sem pais.
+      p.paiId = d.pa || null; p.maeId = d.ma || null;
+      p.geracao = d.g || 1;
+      p.nasceu = d.nas !== undefined ? d.nas : Math.max(1, jogo.ano - Math.floor(p.idade));
       p.estado = faseDaIdade(p.idade) === FASE.CRIANCA ? 'brincando' : 'ocioso';
     }
     // Reatribui os postos de fazenda pelos ids salvos.
@@ -6173,7 +6264,7 @@ function novaVila(seed) {
   sorteio = (SEED ^ 0x9e3779b9) >>> 0;
   chunks.clear(); cacheBioma.clear(); restante.clear(); ocupado.clear();
   jogo.predios = []; jogo.pessoas = []; jogo.estradas = new Set(); jogo.obrasEstrada = [];
-  jogo.cronica = []; jogo.proxId = 1; proxPredioId = 1;
+  jogo.cronica = []; jogo.ancestrais = []; jogo.proxId = 1; proxPredioId = 1;
   jogo.recursos = { madeira:220, comida:200, pedra:80 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
   jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.diaAnterior = -1;
@@ -6214,7 +6305,11 @@ function novaVila(seed) {
   const casa = primeiraCasa || centro;
   for (const f of [a, b, e]) { f.casaId = casa.id; casa.moradores.push(f.id); }
   for (const f of [c, d]) { f.casaId = centro.id; centro.moradores.push(f.id); }
-  crônica('As famílias ' + sn1 + ' e ' + sn2 + ' fundaram a vila.', true);
+  // O nome sai das duas famílias que chegaram primeiro. Você troca quando
+  // quiser, no menu — mas a vila nasce com nome, não como "a vila".
+  jogo.nome = escolher(['Vila', 'Porto', 'Campo', 'Serra', 'Vale', 'Alto']) + ' d' +
+    (rnd() < 0.5 ? 'os ' + sn1 : 'e ' + sn2);
+  crônica('As famílias ' + sn1 + ' e ' + sn2 + ' fundaram ' + jogo.nome + '.', true);
 
   atualizarHUD(); desenharMinimapa(); gravar();
 }
