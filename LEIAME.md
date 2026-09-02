@@ -320,6 +320,70 @@ pai nem mãe de ninguém** — uma limpeza nunca corta o meio de uma linhagem.
 
 ---
 
+## Bairros
+
+O botão **🗺️ Bairro**, na barra de construção, trava o mapa sob um dedo e deixa
+você pintar o chão: **🏠 moradia** ou **🌾 produção**. O conselho passa a
+preferir aqueles pedaços na hora de escolher o lote.
+
+Até aqui o seu papel era aprovar ou recusar o que a vila pedia — o lugar era
+sempre escolha dela. A zona inverte isso sem tirar a autonomia: o conselho
+continua decidindo **o que** e **quando**; você diz **onde**.
+
+É preferência, não cerca. Sem lote na zona certa, a vila constrói fora dela em
+vez de parar — regra que trava é regra que quebra o jogo, e este já teve becos
+demais. Os bairros só aparecem na tela dentro do modo bairro; fora dele a
+cidade fica limpa.
+
+---
+
+## As estações no chão
+
+Elas mexiam na lavoura desde sempre, mas o mapa era o mesmo o ano inteiro. Agora
+o terreno muda: o **inverno** branqueia a terra (rasa no campo, funda no morro),
+o **outono** puxa o verde para o ocre, a **primavera** satura, o **verão**
+resseca de leve. A água não muda — lago congelado seria outra história, e
+mexer nela confundiria a leitura do que é navegável.
+
+O mapa é assado em pedaços e guardado. Se cada pedaço lesse o mês na hora, um
+assado em Junho e outro em Setembro ficariam de cores diferentes lado a lado —
+então todos são pintados com o mesmo mês, e o mapa inteiro se refaz quando a
+**estação** vira: quatro remontagens por ano de jogo, uma a cada seis horas de
+verdade.
+
+---
+
+## As dinastias
+
+Esta é a última peça do roteiro, e a única que **não precisou de código novo
+para existir**: a linhagem vinha sendo gravada desde a Fase 2 exatamente para
+este momento.
+
+O botão **🌳 Linhagem**, na ficha de qualquer aldeão, abre a árvore: de quem ele
+veio, subindo até o fundador, e quem veio dele, descendo até os bisnetos. Os
+mortos aparecem em cinza, com as duas datas; tocar num deles abre a árvore
+dele, tocar num vivo abre a ficha.
+
+O desenho é lista indentada, não diagrama: numa tela de celular a árvore larga
+vira emaranhado, e o que se quer saber é *"de quem eu venho e quem veio de
+mim"*, que a lista responde melhor.
+
+> Numa vila pequena os ramos se cruzam — o mesmo bisavô chega pelo lado do pai e
+> pelo da mãe. A árvore guarda quem já entrou e fica com a aparição mais
+> próxima, senão ele apareceria duas vezes.
+
+## A linha do tempo
+
+O filtro **⏳ história** da crônica troca a lista por um gráfico: moradores,
+construções e ruas ao longo dos anos, com **faixa vermelha em cada ano de crise
+ou de fome** — que é onde as curvas dobram. Abaixo, os anos em que a vila mais
+mudou.
+
+Como a linhagem, a história só acumula para frente: um retrato por ano, quatro
+números, seiscentos anos de teto.
+
+---
+
 ## Crises
 
 A única adversidade era a fome — e fome é consequência de má administração, não

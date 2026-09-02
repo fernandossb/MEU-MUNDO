@@ -168,6 +168,32 @@
   #relatorio .linhas { display:flex; flex-direction:column; gap:6px; font-size:13.5px; }
   #ficha .cartao { width:min(360px,92vw); text-align:left; font-size:13px; line-height:1.6; }
 
+  /* Linha do tempo */
+  #tempo canvas { width:min(460px,92vw); height:200px; border-radius:10px;
+    background:rgba(255,255,255,.04); display:block; }
+  #tempo .legenda { display:flex; gap:14px; justify-content:center; font-size:11.5px;
+    opacity:.8; margin-top:2px; flex-wrap:wrap; }
+  #tempo .legenda i { display:inline-block; width:9px; height:3px; border-radius:2px;
+    margin-right:5px; vertical-align:middle; }
+  #tempo .marco { width:min(460px,92vw); max-height:24vh; overflow-y:auto; text-align:left;
+    display:flex; flex-direction:column; gap:3px; font-size:12px; }
+  #tempo .marco div { padding:5px 9px; border-radius:7px; background:rgba(255,255,255,.05); }
+
+  /* Árvore genealógica */
+  #linhagem .lista { width:min(460px,92vw); max-height:62vh; overflow-y:auto; text-align:left;
+    display:flex; flex-direction:column; gap:3px; }
+  .lin { display:flex; align-items:baseline; gap:7px; padding:6px 9px; border-radius:8px;
+    background:rgba(255,255,255,.04); font-size:12.5px; cursor:pointer; }
+  .lin:active { background:rgba(255,255,255,.12); }
+  .lin.eu { background:rgba(220,190,120,.20); border-left:3px solid rgba(255,214,120,.9); }
+  .lin.morto { opacity:.62; }
+  .lin .g { font-size:10.5px; opacity:.5; min-width:22px; font-variant-numeric:tabular-nums; }
+  .lin .nome { font-weight:600; }
+  .lin .quando { font-size:11px; opacity:.6; margin-left:auto; white-space:nowrap;
+    font-variant-numeric:tabular-nums; }
+  #linhagem .titulo-bloco { font-size:11px; opacity:.55; text-transform:uppercase;
+    letter-spacing:.1em; margin:9px 0 2px; }
+
   /* Painel de produção: de onde vem e para onde vai cada recurso */
   #producao .lista { width:min(460px,92vw); max-height:62vh; overflow-y:auto; text-align:left;
     display:flex; flex-direction:column; gap:10px; }
@@ -225,6 +251,13 @@
 
   /* Barra do modo rua: traçado à mão (item 5) */
   #ruamodo .conta { font-size:11.5px; opacity:.72; font-variant-numeric:tabular-nums; }
+  #zonamodo {
+    display:none; flex-direction:column; align-items:center; gap:8px;
+    padding:11px 14px; font-size:13px; max-width:min(420px,94vw); text-align:center;
+  }
+  #zonamodo.on { display:flex; }
+  #zonamodo .linha { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }
+  #zonamodo .conta { font-size:11.5px; opacity:.72; }
 </style>
 </head>
 <body>
@@ -280,6 +313,21 @@
       <label id="pedido-auto"><input type="checkbox" id="pedido-check"> não perguntar mais</label>
     </div>
 
+    <div id="zonamodo" class="panel">
+      <div>🗺️ Pinte o bairro com o dedo</div>
+      <div class="conta" id="zona-conta">nenhum bairro desenhado ainda</div>
+      <div class="linha" id="zona-pinceis">
+        <div class="btn" data-zona="moradia">🏠 Moradia</div>
+        <div class="btn" data-zona="producao">🌾 Produção</div>
+        <div class="btn" data-zona="apagar">✕ Apagar</div>
+      </div>
+      <div class="linha">
+        <div class="btn" id="zona-limpar">↺ Limpar tudo</div>
+        <div class="btn" id="zona-sair">Sair</div>
+      </div>
+      <div class="conta" style="opacity:.5">é preferência, não cerca: sem lote na zona, a vila constrói fora</div>
+    </div>
+
     <div id="ruamodo" class="panel">
       <div>🛣️ Arraste o dedo no mapa para desenhar a rua</div>
       <div class="conta" id="rua-conta">nenhum trecho traçado</div>
@@ -323,6 +371,27 @@
     <div class="btn" id="missoes-fechar">Fechar</div>
   </div>
 
+  <div id="tempo" class="folha">
+    <h2>⏳ A história de <span id="tempo-nome"></span></h2>
+    <p class="hint" id="tempo-sub"></p>
+    <canvas id="tempo-grafico" width="920" height="400"></canvas>
+    <div class="legenda">
+      <span><i style="background:#8fd07a"></i>moradores</span>
+      <span><i style="background:#e0b45c"></i>construções</span>
+      <span><i style="background:#9fb8d8"></i>ruas</span>
+      <span><i style="background:#e0785a"></i>ano de crise</span>
+    </div>
+    <div class="marco" id="tempo-marcos"></div>
+    <div class="btn" id="tempo-fechar">Fechar</div>
+  </div>
+
+  <div id="linhagem" class="folha">
+    <h2 id="linhagem-titulo">🌳 Linhagem</h2>
+    <p class="hint" id="linhagem-sub"></p>
+    <div class="lista" id="linhagem-lista"></div>
+    <div class="btn" id="linhagem-fechar">Fechar</div>
+  </div>
+
   <div id="producao" class="folha">
     <h2>📊 Produção da vila</h2>
     <p class="hint">Medido, não estimado: cada entrada e saída é anotada quando acontece. Os números são por dia de jogo.</p>
@@ -360,6 +429,7 @@
   <div id="ficha" class="folha">
     <div class="cartao panel" id="ficha-corpo" style="padding:16px 18px"></div>
     <div class="row">
+      <div class="btn" id="ficha-arvore">🌳 Linhagem</div>
       <div class="btn" id="ficha-seguir">👁 Seguir</div>
       <div class="btn" id="ficha-fechar">Fechar</div>
     </div>
@@ -437,11 +507,15 @@ const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
 // O calendário normal, sem bissexto. Soma 365.
 const DIAS_DO_MES = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
+/*
+   A tinta translúcida por cima da tela ficou mais discreta: quem conta a
+   estação agora é o próprio chão, e as duas somadas exageravam.
+*/
 const ESTACAO = {
-  verao:     { nome:'Verão',     icone:'☀️', lavoura:1.00, luz:[255, 246, 214], tinta:'rgba(255,214,120,.05)' },
-  outono:    { nome:'Outono',    icone:'🍂', lavoura:0.85, luz:[255, 226, 180], tinta:'rgba(214,138, 54,.13)' },
-  inverno:   { nome:'Inverno',   icone:'❄️', lavoura:0.40, luz:[214, 232, 255], tinta:'rgba(150,180,220,.14)' },
-  primavera: { nome:'Primavera', icone:'🌸', lavoura:1.25, luz:[248, 255, 226], tinta:'rgba(120,220,140,.06)' },
+  verao:     { nome:'Verão',     icone:'☀️', lavoura:1.00, luz:[255, 246, 214], tinta:'rgba(255,214,120,.03)' },
+  outono:    { nome:'Outono',    icone:'🍂', lavoura:0.85, luz:[255, 226, 180], tinta:'rgba(214,138, 54,.06)' },
+  inverno:   { nome:'Inverno',   icone:'❄️', lavoura:0.40, luz:[214, 232, 255], tinta:'rgba(150,180,220,.07)' },
+  primavera: { nome:'Primavera', icone:'🌸', lavoura:1.25, luz:[248, 255, 226], tinta:'rgba(120,220,140,.03)' },
 };
 
 // Hemisfério sul.
@@ -645,6 +719,26 @@ function corDaRampa(e) {
 // A altura do vizinho vem de um buffer montado uma vez por chunk (ver
 // montarChunk). Calcular elevação três vezes por pixel triplicava o custo do
 // terreno, que é a parte mais cara do jogo.
+/*
+   AS ESTAÇÕES NO CHÃO.
+
+   Elas mexiam na lavoura desde sempre, mas o mapa era o mesmo o ano inteiro —
+   só uma tinta translúcida por cima da tela, igual em toda parte. Agora o
+   terreno em si muda: o inverno branqueia a terra alta antes da baixa (a neve
+   pega primeiro no morro), o outono puxa o verde para o ocre, a primavera
+   satura, e o verão resseca de leve.
+
+   A água não muda de cor: lago congelado seria outra história, e mexer nela
+   confundiria a leitura do que é navegável.
+*/
+const TINTA_DA_ESTACAO = {
+  //            branco  ocre   viço   seca
+  inverno:   { neve: 0.62, ocre: 0.00, vico: -0.10, seca: 0.00 },
+  outono:    { neve: 0.00, ocre: 0.46, vico: -0.20, seca: 0.14 },
+  primavera: { neve: 0.00, ocre: 0.00, vico: 0.30,  seca: 0.00 },
+  verao:     { neve: 0.00, ocre: 0.10, vico: -0.04, seca: 0.16 },
+};
+
 function corTerrenoDe(e, eOeste, eNorte, m, tx, ty) {
   let [r, g, b] = corDaRampa(e);
 
@@ -657,8 +751,48 @@ function corTerrenoDe(e, eOeste, eNorte, m, tx, ty) {
     const k = Math.max(-46, Math.min(46, luz));
     r += k; g += k; b += k * 0.86;
   }
+
+  // Só o chão firme veste a estação; água e areia de praia ficam como estão.
+  if (e > 0.40) {
+    const t = TINTA_DA_ESTACAO[ESTACAO_DO_MES[mesDaPintura]] || TINTA_DA_ESTACAO.verao;
+
+    if (t.neve) {
+      /*
+         A neve sobe com a altitude, mas cai em todo lugar. Amarrar tudo à
+         altitude deixava a vila — que nasce em terreno baixo, de propósito —
+         com 10% de branco: o inverno ficava indistinguível do verão na tela.
+         Agora há um piso de 45%, e o morro é que fica coberto de vez.
+      */
+      const alto = Math.min(1, Math.max(0, (e - 0.40) * 3.4));
+      const quanto = t.neve * (0.45 + 0.55 * alto);
+      r += (243 - r) * quanto; g += (247 - g) * quanto; b += (255 - b) * quanto;
+    }
+    if (t.ocre) { r += (196 - r) * t.ocre; g += (150 - g) * t.ocre * 0.75; b += (78 - b) * t.ocre; }
+    if (t.vico) { g += t.vico > 0 ? (176 - g) * t.vico : g * t.vico; }
+    if (t.seca) { r += 12 * t.seca; g -= 8 * t.seca; b -= 14 * t.seca; }
+  }
+
   const n = (hash2(Math.round(tx * SUB), Math.round(ty * SUB), SEED + 31) - 0.5) * 11;
   return [r + n, g + n, b + n];
+}
+
+/*
+   Que mês o terreno está pintado. Os pedaços do mapa são assados uma vez e
+   guardados; se lessem 'mesAtual()' direto, um pedaço assado em Junho e outro
+   em Setembro ficariam de cores diferentes lado a lado. Assar tudo com o mesmo
+   mês e refazer quando a ESTAÇÃO vira resolve — são quatro remontagens por ano
+   de jogo, uma a cada seis horas de verdade.
+*/
+let mesDaPintura = 0;
+let estacaoPintada = null;
+
+function conferirEstacaoPintada() {
+  const agora = ESTACAO_DO_MES[mesAtual()];
+  if (agora === estacaoPintada) return;
+  estacaoPintada = agora;
+  mesDaPintura = mesAtual();
+  chunks.clear();          // o mapa inteiro se repinta com a estação nova
+  mmTerreno = null;        // e o minimapa também
 }
 
 
@@ -1046,7 +1180,7 @@ const jogo = {
   recursos: { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 },
   predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
   cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
-  nome: 'Vila Nova', ancestrais: [], crise: null,
+  nome: 'Vila Nova', ancestrais: [], crise: null, zonas: {}, historia: [],
   clima: 'limpo', mesAnterior: -1, diaAnterior: -1, diaTotal: 0,
   pedidos: [], autoAprovar: true,
   fome: false, salvoEm: Date.now(),
@@ -2397,21 +2531,74 @@ function escolherLote(def) {
   }
   ruas.sort((a, b) => a[0] - b[0]);
 
-  for (const [, rx, ry] of ruas) {
-    for (const [dx, dy] of LADOS) {
-      // Desliza o lote ao longo da testada, procurando onde ele cabe.
-      for (let off = 0; off < Math.max(def.w, def.h); off++) {
-        const tx = dx !== 0 ? (dx > 0 ? rx + 1 : rx - def.w) : rx - off;
-        const ty = dy !== 0 ? (dy > 0 ? ry + 1 : ry - def.h) : ry - off;
-        if (!areaValida(tx, ty, def.w, def.h)) continue;
-        if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
-        if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
-        return { tx, ty };
+  /*
+     Duas passadas quando há bairro desenhado: primeiro só o que cai na zona
+     certa, depois o que cai em terreno sem zona. Lote em zona errada é o
+     último recurso — a preferência é forte, mas não é cerca.
+  */
+  const passadas = temZonaDesenhada() ? [2, 1, 0] : [1, 0, 2];
+  for (const nota of passadas) {
+    for (const [, rx, ry] of ruas) {
+      for (const [dx, dy] of LADOS) {
+        // Desliza o lote ao longo da testada, procurando onde ele cabe.
+        for (let off = 0; off < Math.max(def.w, def.h); off++) {
+          const tx = dx !== 0 ? (dx > 0 ? rx + 1 : rx - def.w) : rx - off;
+          const ty = dy !== 0 ? (dy > 0 ? ry + 1 : ry - def.h) : ry - off;
+          if (!areaValida(tx, ty, def.w, def.h)) continue;
+          if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
+          if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
+          if (notaDaZona(def, tx, ty) !== nota) continue;
+          return { tx, ty };
+        }
       }
     }
   }
   return null;
 }
+
+/* ------------------------------------------------------------ zoneamento -- */
+/*
+   Você desenha bairros; o conselho constrói dentro deles.
+
+   Até aqui o seu papel era aprovar ou recusar o que a vila pedia. O lote era
+   sempre escolhido por ela, de dentro para fora, e você via a cidade nascer
+   sem poder dizer onde. A zona inverte isso sem tirar a autonomia dela: o
+   conselho continua decidindo O QUE construir e QUANDO — você diz ONDE.
+
+   A zona é uma PREFERÊNCIA, não uma cerca. Se não houver lote na zona certa, a
+   vila constrói fora dela em vez de parar: regra que trava é regra que quebra
+   o jogo, e este já teve becos demais.
+*/
+const ZONAS = {
+  moradia:  { nome: 'Moradia',  icone: '🏠', cor: 'rgba(120,190,255,.22)', borda: 'rgba(150,210,255,.55)' },
+  producao: { nome: 'Produção', icone: '🌾', cor: 'rgba(230,190,90,.22)',  borda: 'rgba(245,210,120,.55)' },
+};
+
+// tile -> nome da zona
+const zonaEm = (tx, ty) => jogo.zonas[nk(tx, ty)] || null;
+
+// Que zona um lote pede? Moradia é moradia; o resto é produção.
+const zonaDoPredio = def => def.moradia ? 'moradia' : 'producao';
+
+/*
+   Quanto este lote agrada. 2 = está na zona certa, 1 = não há zona nenhuma por
+   ali (terreno livre, vale), 0 = está na zona errada.
+*/
+function notaDaZona(def, tx, ty) {
+  const quer = zonaDoPredio(def);
+  let certa = 0, errada = 0;
+  for (let y = 0; y < def.h; y++)
+    for (let x = 0; x < def.w; x++) {
+      const z = zonaEm(tx + x, ty + y);
+      if (!z) continue;
+      if (z === quer) certa++; else errada++;
+    }
+  if (certa) return 2;
+  if (errada) return 0;
+  return 1;
+}
+
+const temZonaDesenhada = () => Object.keys(jogo.zonas).length > 0;
 
 /* --------------------------------------------------------- traçado das ruas */
 
@@ -2917,6 +3104,27 @@ function distribuirOficios() {
 // O conselho decide sozinho o que a vila precisa (item 7). A regra de ouro
 // agora é urbana: prédio nenhum sai do papel longe da rua, então quando falta
 // lote com testada, a vila abre rua antes de mais nada.
+/* ---------------------------------------------------------- a história --- */
+/*
+   Um retrato da vila por ano. Quatro números e nada mais: é o bastante para
+   desenhar a curva e barato o suficiente para caber no save por séculos.
+
+   Como a linhagem, isto só acumula para frente — quem já jogava começa a
+   história de hoje. Não há como inventar o passado que não foi gravado.
+*/
+const TETO_HISTORIA = 600;      // seiscentos anos de vila
+
+function anotarAno() {
+  jogo.historia.push({
+    a: jogo.ano,
+    p: popAtual(),
+    e: jogo.predios.filter(x => x.progresso >= 1).length,
+    r: jogo.estradas.size,
+    c: jogo.crise ? jogo.crise.id : (jogo.fome ? 'fome' : null),
+  });
+  if (jogo.historia.length > TETO_HISTORIA) jogo.historia.shift();
+}
+
 /* --------------------------------------------------------------- crises -- */
 /*
    A única adversidade era a fome, e fome é consequência de má administração,
@@ -3287,6 +3495,7 @@ function casaComVaga() {
    corria doze vezes por ano em vez de uma.
 */
 function virouMes() {
+  conferirEstacaoPintada();
   const climaAntes = jogo.clima;
   sortearClima();
   if (jogo.clima !== climaAntes && !emRecuperacao) {
@@ -3615,7 +3824,9 @@ function recuperarOffline(segundos) {
     conselho();                              // o conselho decide algumas vezes por dia
     const r = tickDia();
     rel.nascidos += r.nascidos; rel.mortos += r.mortos;
+    const anoAntes = jogo.ano;
     avancarRelogio(ANO_DIA);
+    if (jogo.ano !== anoAntes) anotarAno();   // a curva não fica com buraco
   }
   const resto = s - dias * ANO_DIA;
   render(resto);
@@ -3623,6 +3834,7 @@ function recuperarOffline(segundos) {
   avancarRelogio(resto);
   jogo.mesAnterior = mesAtual();
   jogo.diaAnterior = diaDoAno();
+  conferirEstacaoPintada();
 
   emRecuperacao = false;
   for (const k in inicio) rel[k] = Math.round(jogo.recursos[k] - inicio[k]);
@@ -3687,10 +3899,12 @@ cv.addEventListener('touchstart', e => {
     arraste = { x0:t.clientX, y0:t.clientY, x:t.clientX, y:t.clientY, dist:0, t0:performance.now(), id:t.identifier };
     // ITEM 5: no modo rua o mapa trava sob um dedo e o dedo desenha.
     if (modoRua) { desenhandoRua = true; tracarAte(t.clientX, t.clientY); }
+    else if (modoZona) { pintandoZona = true; ultimoPincel = null; pintarAte(t.clientX, t.clientY); }
     else iniciarToqueLongo(t.clientX, t.clientY);
   } else if (toques.size === 2) {
     cancelarToqueLongo();
     desenhandoRua = false;
+    pintandoZona = false;
     const [a, b] = [...toques.values()];
     pinca = { d0: Math.hypot(a.x - b.x, a.y - b.y), z0: cam.z };
     arraste = null;
@@ -3705,6 +3919,9 @@ cv.addEventListener('touchmove', e => {
   } else if (desenhandoRua) {
     const t = [...e.changedTouches].find(t => t.identifier === (arraste && arraste.id));
     if (t) tracarAte(t.clientX, t.clientY);
+  } else if (pintandoZona) {
+    const t = [...e.changedTouches].find(t => t.identifier === (arraste && arraste.id));
+    if (t) pintarAte(t.clientX, t.clientY);
   } else if (arraste) {
     const t = [...e.changedTouches].find(t => t.identifier === arraste.id);
     if (t) {
@@ -3723,10 +3940,11 @@ cv.addEventListener('touchend', e => {
   cancelarToqueLongo();
   if (arraste && [...e.changedTouches].some(t => t.identifier === arraste.id)) {
     if (desenhandoRua) desenhandoRua = false;
+    else if (pintandoZona) { pintandoZona = false; salvar(); }
     else if (arraste.dist < 12 && performance.now() - arraste.t0 < 450) toque(arraste.x0, arraste.y0);
     arraste = null;
   }
-  if (!toques.size) desenhandoRua = false;
+  if (!toques.size) { desenhandoRua = false; pintandoZona = false; }
 }, { passive:true });
 cv.addEventListener('touchcancel', () => {
   toques.clear(); arraste = null; pinca = null; desenhandoRua = false; cancelarToqueLongo();
@@ -3736,11 +3954,13 @@ let mouseArr = null;
 cv.addEventListener('mousedown', e => {
   mouseArr = { x0:e.clientX, y0:e.clientY, x:e.clientX, y:e.clientY, dist:0 };
   if (modoRua) { desenhandoRua = true; tracarAte(e.clientX, e.clientY); }
+  else if (modoZona) { pintandoZona = true; ultimoPincel = null; pintarAte(e.clientX, e.clientY); }
   else iniciarToqueLongo(e.clientX, e.clientY);
 });
 addEventListener('mousemove', e => {
   if (!mouseArr) return;
   if (desenhandoRua) { tracarAte(e.clientX, e.clientY); return; }
+  if (pintandoZona) { pintarAte(e.clientX, e.clientY); return; }
   cam.x -= (e.clientX - mouseArr.x) / cam.z; cam.y -= (e.clientY - mouseArr.y) / cam.z;
   mouseArr.dist += Math.hypot(e.clientX - mouseArr.x, e.clientY - mouseArr.y);
   mouseArr.x = e.clientX; mouseArr.y = e.clientY;
@@ -3749,6 +3969,7 @@ addEventListener('mousemove', e => {
 addEventListener('mouseup', () => {
   cancelarToqueLongo();
   if (desenhandoRua) desenhandoRua = false;
+  else if (pintandoZona) { pintandoZona = false; salvar(); }
   else if (mouseArr && mouseArr.dist < 6) toque(mouseArr.x0, mouseArr.y0);
   mouseArr = null;
 });
@@ -3789,7 +4010,7 @@ function pedidoEm(wx, wy) {
 function toque(sx, sy) {
   if (colocando) return;
   const w = telaParaMundo(sx, sy);
-  if (modoRua) return;                      // no modo rua o toque desenha, não seleciona
+  if (modoRua || modoZona) return;          // nesses modos o dedo desenha, não seleciona
 
   // ITEM 2: o quadrado amarelo é um botão. Tocar nele traz o pedido de volta.
   const ped = pedidoEm(w.x, w.y);
@@ -4182,7 +4403,7 @@ function atualizarHUD() {
 // ocupava duas fileiras e comia a tela do celular; agrupada por categoria, dá
 // para achar o que se procura sem ler tudo.
 const CATEGORIAS = [
-  { nome: 'Vias',    itens: ['__rua__'] },
+  { nome: 'Vias',    itens: ['__rua__', '__zona__'] },
   { nome: 'Moradia', itens: ['casa', 'sobrado', 'predio', 'centro'] },
   { nome: 'Comida',  itens: ['fazenda', 'fazendaGrande', 'cais'] },
   { nome: 'Trabalho',itens: ['deposito', 'mina', 'oficina', 'serraria', 'estabulo'] },
@@ -4197,6 +4418,7 @@ function desenharBarra() {
   // reconstrói quando muda o que dá para pagar.
   const assinatura = CATEGORIAS.map(c => c.itens.map(k =>
     k === '__rua__' ? (jogo.estradas.size ? 1 : 0)
+    : k === '__zona__' ? 1
                     : (PREDIO[k] && podePagar(PREDIO[k].custo) ? 1 : 0)).join('')).join('|');
   if (assinatura === assinaturaBarra && barEl.children.length) return;
   assinaturaBarra = assinatura;
@@ -4215,6 +4437,10 @@ function desenharBarra() {
         b.className = 'btn' + (jogo.estradas.size ? '' : ' off');
         b.innerHTML = '<span class="ic">🛣️</span><span>Rua</span><span class="cost">1⛏/trecho</span>';
         b.onclick = entrarModoRua;
+      } else if (chave === '__zona__') {
+        b.className = 'btn';
+        b.innerHTML = '<span class="ic">🗺️</span><span>Bairro</span><span class="cost">de graça</span>';
+        b.onclick = entrarModoZona;
       } else {
         const def = PREDIO[chave];
         if (!def) continue;
@@ -4233,6 +4459,7 @@ function desenharBarra() {
 
 const pedidoEl = el('pedido');
 const ruaModoEl = el('ruamodo');
+const zonaModoEl = el('zonamodo');
 let modoRua = false;
 
 // Qual pedido o cartão de baixo está mostrando: o primeiro da fila, ou o que
@@ -4472,7 +4699,77 @@ function confirmarRua() {
   salvar();
 }
 
+/* ------------------------------------------------ modo bairro (item 18) --- */
+/*
+   Mesmo gesto do modo rua: o mapa trava sob um dedo e o dedo pinta. Dois dedos
+   continuam movendo. O que muda é que aqui a tinta vale na hora — não há obra
+   para encomendar, é só dizer para que serve aquele pedaço de chão.
+*/
+let modoZona = false;
+let zonaPincel = 'moradia';       // 'moradia' | 'producao' | 'apagar'
+let pintandoZona = false;
+
+function entrarModoZona() {
+  cancelarColocacao();
+  if (modoRua) sairModoRua();
+  modoZona = true;
+  zonaModoEl.classList.add('on');
+  barEl.classList.add('escondido');
+  atualizarPincelZona();
+  aviso('Pinte o bairro com o dedo · dois dedos movem o mapa');
+}
+function sairModoZona() {
+  modoZona = false;
+  pintandoZona = false;
+  assinaturaBarra = '';
+  zonaModoEl.classList.remove('on');
+  barEl.classList.remove('escondido');
+  desenharBarra();
+  salvar();
+}
+
+function atualizarPincelZona() {
+  for (const b of el('zona-pinceis').children) {
+    b.classList.toggle('sel', b.dataset.zona === zonaPincel);
+  }
+  const n = Object.keys(jogo.zonas).length;
+  el('zona-conta').textContent = n ? n + ' bloco(s) zoneado(s)' : 'nenhum bairro desenhado ainda';
+}
+
+function pintarZona(sx, sy) {
+  const w = telaParaMundo(sx, sy);
+  const tx = Math.floor(w.x / TILE), ty = Math.floor(w.y / TILE);
+  const k = nk(tx, ty);
+  if (zonaPincel === 'apagar') delete jogo.zonas[k];
+  else jogo.zonas[k] = zonaPincel;
+  atualizarPincelZona();
+}
+
+// O dedo anda mais rápido que os eventos: liga o ponto anterior ao novo.
+let ultimoPincel = null;
+function pintarAte(sx, sy) {
+  const w = telaParaMundo(sx, sy);
+  const tx = Math.floor(w.x / TILE), ty = Math.floor(w.y / TILE);
+  if (ultimoPincel && (ultimoPincel[0] !== tx || ultimoPincel[1] !== ty)) {
+    for (const [x, y] of linhaDeTiles(ultimoPincel[0], ultimoPincel[1], tx, ty, 200)) {
+      const k = nk(x, y);
+      if (zonaPincel === 'apagar') delete jogo.zonas[k]; else jogo.zonas[k] = zonaPincel;
+    }
+  }
+  ultimoPincel = [tx, ty];
+  pintarZona(sx, sy);
+}
+
 el('rua-sair').onclick = sairModoRua;
+el('zona-sair').onclick = sairModoZona;
+el('zona-limpar').onclick = () => {
+  jogo.zonas = {};
+  atualizarPincelZona();
+  aviso('Bairros apagados — a vila volta a escolher sozinha');
+};
+for (const b of el('zona-pinceis').children) {
+  b.onclick = () => { zonaPincel = b.dataset.zona; atualizarPincelZona(); };
+}
 el('rua-ok').onclick = confirmarRua;
 el('rua-limpar').onclick = () => { limparTracado(); aviso('Traçado apagado'); };
 
@@ -4533,6 +4830,7 @@ const FILTROS_CRONICA = [
   { id: 'crise', nome: '⚠️ crises' },
   { id: 'vila',  nome: '🏘️ vila' },
   { id: 'notaveis', nome: '⭐ notáveis' },
+  { id: 'tempo',    nome: '⏳ história' },
 ];
 let filtroCronica = 'tudo';
 
@@ -4553,6 +4851,7 @@ function montarCronica() {
   lista.innerHTML = '';
 
   if (filtroCronica === 'notaveis') { montarNotaveis(lista); fecharFolhas(); el('cronica').classList.add('on'); return; }
+  if (filtroCronica === 'tempo') { filtroCronica = 'tudo'; abrirLinhaDoTempo(); return; }
 
   const todos = jogo.cronica.filter(e => filtroCronica === 'tudo' || (e.t || 'vila') === filtroCronica);
   const evs = todos.slice(-80).reverse();
@@ -4638,6 +4937,9 @@ el('missoes-fechar').onclick = fecharFolhas;
 el('predio-menu-fechar').onclick = fecharFolhas;
 el('relatorio-fechar').onclick = fecharFolhas;
 el('ficha-fechar').onclick = fecharFolhas;
+el('linhagem-fechar').onclick = fecharFolhas;
+el('tempo-fechar').onclick = fecharFolhas;
+el('ficha-arvore').onclick = () => { if (fichaAberta) abrirLinhagem(fichaAberta); };
 el('ficha-seguir').onclick = () => {
   if (!fichaAberta) return;
   if (seguindo === fichaAberta) soltarSeguimento(); else seguirPessoa(fichaAberta);
@@ -4702,6 +5004,239 @@ function linhagemDe(p) {
       (idos.length ? (filhos.length ? ' · ' : ': ') + idos.length + ' já se foram' : '') + '</div>';
   }
   return s + '</div>';
+}
+
+/* ------------------------------------------------------- as dinastias ---- */
+/*
+   A ÁRVORE GENEALÓGICA.
+
+   Esta é a última peça do roteiro, e a única que não precisou de código novo
+   para existir: a linhagem vem sendo gravada desde a Fase 2 justamente para
+   este momento. Pai, mãe, geração e ano de nascimento em cada pessoa; e quem
+   morre não some, vai para o cemitério com o ano da morte. Se a captura
+   tivesse começado hoje, esta tela abriria vazia para todo mundo que já viveu.
+
+   Com uma vida durando 75 dias de verdade, quem joga dois meses vê três
+   gerações passarem — e aqui elas ficam à vista, do bisneto até o fundador.
+
+   O desenho é lista indentada, não diagrama: numa tela de celular a árvore
+   larga vira um emaranhado ilegível, e o que se quer saber é "de quem eu venho
+   e quem veio de mim", que a lista responde melhor.
+*/
+const vivoOuMorto = id => alguemPorId(id);
+const ehMorto = a => a && a.n !== undefined;      // registro do cemitério tem 'n'
+const anoNasc = a => (a.nasceu !== undefined ? a.nasceu : a.nas);
+const geracaoDe = a => a.geracao !== undefined ? a.geracao : a.g;
+const paiDe = a => a.paiId !== undefined ? a.paiId : a.pa;
+const maeDe = a => a.maeId !== undefined ? a.maeId : a.ma;
+
+// Sobe pela linhagem, um degrau por vez, até o fundador.
+function ancestraisDe(a, limite) {
+  /*
+     Numa vila pequena os ramos se cruzam: o mesmo bisavô chega pelo lado do
+     pai e pelo da mãe, e sem controle ele aparecia duas vezes na lista. Guarda
+     quem já entrou e fica com a aparição MAIS PRÓXIMA, que é a que descreve
+     melhor o parentesco.
+  */
+  const vistos = new Map();
+  const visitar = (id, nivel) => {
+    if (!id || nivel > (limite || 6)) return;
+    const p = vivoOuMorto(id);
+    if (!p) return;
+    const antes = vistos.get(id);
+    if (antes !== undefined && antes <= nivel) return;   // já veio por um caminho mais curto
+    vistos.set(id, nivel);
+    visitar(paiDe(p), nivel + 1);
+    visitar(maeDe(p), nivel + 1);
+  };
+  visitar(paiDe(a), 1);
+  visitar(maeDe(a), 1);
+  return [...vistos.entries()]
+    .map(([id, nivel]) => ({ pessoa: vivoOuMorto(id), nivel }))
+    .filter(x => x.pessoa)
+    .sort((x, y) => y.nivel - x.nivel || geracaoDe(x.pessoa) - geracaoDe(y.pessoa));
+}
+
+// Desce: filhos, netos, bisnetos.
+function descendentesDe(a, limite) {
+  const saida = [];
+  const filhosDe = id => [
+    ...jogo.pessoas.filter(p => p.paiId === id || p.maeId === id),
+    ...jogo.ancestrais.filter(p => p.pa === id || p.ma === id),
+  ];
+  const vistos = new Set();
+  const descer = (id, nivel) => {
+    if (nivel > (limite || 4)) return;
+    for (const f of filhosDe(id)) {
+      if (vistos.has(f.id)) continue;      // irmãos completos apareceriam duas vezes
+      vistos.add(f.id);
+      saida.push({ pessoa: f, nivel });
+      descer(f.id, nivel + 1);
+    }
+  };
+  descer(a.id, 1);
+  return saida;
+}
+
+function abrirLinhagem(a) {
+  const lista = el('linhagem-lista');
+  lista.innerHTML = '';
+
+  const acima = ancestraisDe(a);
+  const abaixo = descendentesDe(a);
+  const raiz = acima.length ? acima[0].pessoa : a;
+
+  el('linhagem-titulo').textContent = '🌳 ' + (nomeDeAlguem(a) || 'Linhagem');
+  el('linhagem-sub').textContent =
+    acima.length
+      ? 'Da geração ' + geracaoDe(raiz) + ' até aqui · ' + abaixo.length + ' descendente(s)'
+      : (abaixo.length ? 'Começo de linhagem · ' + abaixo.length + ' descendente(s)'
+                       : 'Chegou de fora e ainda não teve filhos.');
+
+  const linha = (p, nivel, eu) => {
+    const morto = ehMorto(p);
+    const d = document.createElement('div');
+    d.className = 'lin' + (eu ? ' eu' : '') + (morto ? ' morto' : '');
+    d.style.marginLeft = Math.min(nivel, 5) * 14 + 'px';
+    const nasc = anoNasc(p);
+    const quando = morto
+      ? (nasc < 1 ? 'antes da fundação' : 'ano ' + nasc) + ' – ' + p.mor
+      : (nasc < 1 ? 'antes da fundação' : 'nasceu no ano ' + nasc);
+    d.innerHTML =
+      '<span class="g">g' + (geracaoDe(p) || 1) + '</span>' +
+      '<span class="nome">' + (nomeDeAlguem(p) || '?') + '</span>' +
+      (morto ? '' : '<span style="opacity:.6">· ' + Math.floor(p.idade) + ' anos</span>') +
+      '<span class="quando">' + quando + '</span>';
+    // Tocar num antepassado abre a árvore dele; num vivo, a ficha.
+    d.onclick = () => { if (morto) abrirLinhagem(p); else { fecharFolhas(); abrirFicha(p); } };
+    return d;
+  };
+
+  const bloco = texto => {
+    const h = document.createElement('div');
+    h.className = 'titulo-bloco';
+    h.textContent = texto;
+    return h;
+  };
+
+  if (acima.length) {
+    lista.appendChild(bloco('de quem veio'));
+    // Do mais antigo para o mais recente, indentando ao descer.
+    const fundo = acima[0].nivel;
+    for (const { pessoa, nivel } of acima) lista.appendChild(linha(pessoa, fundo - nivel, false));
+  }
+
+  lista.appendChild(bloco(acima.length ? 'aqui' : 'começa aqui'));
+  lista.appendChild(linha(a, acima.length ? acima[0].nivel : 0, true));
+
+  if (abaixo.length) {
+    lista.appendChild(bloco('quem veio dele(a)'));
+    const base = acima.length ? acima[0].nivel : 0;
+    for (const { pessoa, nivel } of abaixo) lista.appendChild(linha(pessoa, base + nivel, false));
+  }
+
+  fecharFolhas();
+  el('linhagem').classList.add('on');
+}
+
+/*
+   A LINHA DO TEMPO. A crônica conta o que aconteceu; isto mostra o que a vila
+   virou. Três curvas no mesmo gráfico — gente, construção e rua — e uma faixa
+   vermelha em cada ano de crise ou de fome, que é onde as curvas dobram.
+*/
+function abrirLinhaDoTempo() {
+  const h = jogo.historia;
+  el('tempo-nome').textContent = jogo.nome;
+
+  if (h.length < 2) {
+    el('tempo-sub').textContent =
+      'A vila ainda não completou dois anos. A curva começa a se desenhar no ano ' +
+      (jogo.ano + (h.length ? 1 : 0)) + '.';
+    el('tempo-marcos').innerHTML = '';
+    const g = el('tempo-grafico').getContext('2d');
+    g.clearRect(0, 0, 920, 400);
+    fecharFolhas(); el('tempo').classList.add('on');
+    return;
+  }
+
+  el('tempo-sub').textContent =
+    'Ano ' + h[0].a + ' até ' + h[h.length - 1].a + ' · ' + h.length + ' anos registrados';
+
+  const cv2 = el('tempo-grafico'), g = cv2.getContext('2d');
+  const L = cv2.width, A = cv2.height, m = 26;
+  g.clearRect(0, 0, L, A);
+
+  const maxP = Math.max(4, ...h.map(x => x.p));
+  const maxE = Math.max(4, ...h.map(x => x.e));
+  const maxR = Math.max(4, ...h.map(x => x.r));
+  const px = i => m + (L - m * 2) * (h.length === 1 ? 0.5 : i / (h.length - 1));
+  const py = (v, max) => A - m - (A - m * 2) * (v / max);
+
+  // Anos de crise: faixa de fundo, para dar a causa das dobras.
+  for (let i = 0; i < h.length; i++) {
+    if (!h[i].c) continue;
+    const larg = Math.max(3, (L - m * 2) / Math.max(1, h.length - 1));
+    g.fillStyle = h[i].c === 'fome' ? 'rgba(224,90,60,.20)' : 'rgba(224,120,90,.16)';
+    g.fillRect(px(i) - larg / 2, m, larg, A - m * 2);
+  }
+
+  // Chão e teto.
+  g.strokeStyle = 'rgba(255,255,255,.16)'; g.lineWidth = 1.5;
+  g.beginPath(); g.moveTo(m, A - m); g.lineTo(L - m, A - m); g.stroke();
+
+  const curva = (campo, max, cor, grossura) => {
+    g.strokeStyle = cor; g.lineWidth = grossura; g.lineJoin = 'round';
+    g.beginPath();
+    h.forEach((x, i) => { const X = px(i), Y = py(x[campo], max); i ? g.lineTo(X, Y) : g.moveTo(X, Y); });
+    g.stroke();
+  };
+  curva('r', maxR, '#9fb8d8', 2.5);
+  curva('e', maxE, '#e0b45c', 2.5);
+  curva('p', maxP, '#8fd07a', 3.5);
+
+  // Os três números do fim, escritos onde a curva termina.
+  g.font = '600 20px system-ui, sans-serif'; g.textAlign = 'right';
+  const ult = h[h.length - 1];
+  const rotulo = (v, max, cor) => { g.fillStyle = cor; g.fillText(v, L - m - 4, Math.max(m + 16, py(v, max) - 8)); };
+  rotulo(ult.r, maxR, '#9fb8d8');
+  rotulo(ult.e, maxE, '#e0b45c');
+  rotulo(ult.p, maxP, '#8fd07a');
+
+  g.font = '15px system-ui, sans-serif'; g.textAlign = 'left';
+  g.fillStyle = 'rgba(255,255,255,.45)';
+  g.fillText('ano ' + h[0].a, m, A - 7);
+  g.textAlign = 'right';
+  g.fillText('ano ' + ult.a, L - m, A - 7);
+
+  /*
+     Os marcos: os anos em que a vila mais mudou. Vinte anos de lista viram
+     ruído; três saltos e as crises contam a história melhor.
+  */
+  const marcos = [];
+  for (let i = 1; i < h.length; i++) {
+    const d = h[i].p - h[i - 1].p;
+    if (d !== 0) marcos.push({ ano: h[i].a, d, crise: h[i].c });
+  }
+  marcos.sort((a, b) => Math.abs(b.d) - Math.abs(a.d));
+  const escolhidos = marcos.slice(0, 4)
+    .concat(marcos.filter(x => x.crise).slice(0, 3))
+    .filter((x, i, arr) => arr.findIndex(y => y.ano === x.ano) === i)
+    .sort((a, b) => a.ano - b.ano);
+
+  const lista = el('tempo-marcos');
+  lista.innerHTML = '';
+  for (const mk of escolhidos) {
+    const d = document.createElement('div');
+    d.innerHTML = '<b>ano ' + mk.ano + '</b> · ' +
+      (mk.d > 0 ? '+' + mk.d + ' morador(es)' : mk.d + ' morador(es)') +
+      (mk.crise ? ' · <span style="color:#e8886a">' +
+        (mk.crise === 'fome' ? 'fome' : (CRISES[mk.crise] ? CRISES[mk.crise].nome : mk.crise)) +
+        '</span>' : '');
+    lista.appendChild(d);
+  }
+
+  fecharFolhas();
+  el('tempo').classList.add('on');
 }
 
 function mostrarRelatorio(rel) {
@@ -6474,7 +7009,7 @@ function passo(dt) {
   }
 
   jogo.anoFrac += dt / ANO;
-  while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
+  while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; anotarAno(); }
 
   // A vida corre por DIA; o clima e a feira, por mês.
   const dia = diaDoAno();
@@ -6582,6 +7117,25 @@ function desenhar() {
     ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,.9)';
     ctx.fillText(d.icone + ' toque para decidir', px + d.w * TILE / 2, py - 5);
+  }
+
+  /*
+     Os bairros. Só aparecem no modo bairro — fora dele a cidade fica limpa,
+     porque zona é ferramenta de planejamento e não parte da paisagem.
+  */
+  if (modoZona) {
+    for (const k in jogo.zonas) {
+      const [tx, ty] = k.split(',').map(Number);
+      const px = tx * TILE, py = ty * TILE;
+      if (px > camX + vw + 40 || px + TILE < camX - 40) continue;
+      if (py > camY + vh + 40 || py + TILE < camY - 40) continue;
+      const z = ZONAS[jogo.zonas[k]];
+      if (!z) continue;
+      ctx.fillStyle = z.cor;
+      ctx.fillRect(px, py, TILE, TILE);
+      ctx.strokeStyle = z.borda; ctx.lineWidth = 0.8;
+      ctx.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
+    }
   }
 
   // Traçado da rua que você está desenhando (item 5).
@@ -6741,7 +7295,8 @@ function gravar() {
       v: 2, seed: SEED, salvoEm: jogo.salvoEm,
       cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
-      nome: jogo.nome, velocidade, crise: jogo.crise,
+      nome: jogo.nome, velocidade, crise: jogo.crise, zonas: jogo.zonas,
+      historia: jogo.historia,
       // A média móvel do livro-caixa também vai no save: sem ela o painel
       // abria dizendo 'ainda sem movimento' por um minuto depois de recarregar.
       fluxo: fluxoMedio,
@@ -6784,6 +7339,8 @@ function carregar() {
     jogo.nome = s.nome || 'Vila Nova';
     jogo.ancestrais = s.ancestrais || [];
     jogo.crise = s.crise && CRISES[s.crise.id] ? s.crise : null;
+    jogo.zonas = s.zonas || {};
+    jogo.historia = s.historia || [];
     if (s.fluxo) for (const k in s.fluxo) fluxoMedio[k] = s.fluxo[k];
     velocidade = VELOCIDADES.includes(s.velocidade) ? s.velocidade : 1;
     jogo.clima = s.clima || 'limpo';
@@ -6871,13 +7428,14 @@ function novaVila(seed) {
   sorteio = (SEED ^ 0x9e3779b9) >>> 0;
   chunks.clear(); cacheBioma.clear(); restante.clear(); ocupado.clear();
   jogo.predios = []; jogo.pessoas = []; jogo.estradas = new Set(); jogo.obrasEstrada = [];
-  jogo.cronica = []; jogo.ancestrais = []; jogo.crise = null; jogo.proxId = 1; proxPredioId = 1;
+  jogo.cronica = []; jogo.ancestrais = []; jogo.crise = null; jogo.zonas = {}; jogo.historia = [];
+  jogo.proxId = 1; proxPredioId = 1;
   jogo.recursos = { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
   jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.diaAnterior = -1;
   jogo.pedidos = []; jogo.diaTotal = 0;
   jogo.missoes = {}; jogo.saldoComida = undefined; jogo.comidaAnterior = undefined;
-  esconderPedido(); sairModoRua();
+  esconderPedido(); sairModoRua(); if (modoZona) sairModoZona();
   colocando = null; placeEl.classList.remove('on'); barEl.classList.remove('escondido'); selecao = [];
 
   const ini = acharInicio();
@@ -6925,6 +7483,7 @@ function novaVila(seed) {
 
 redimensionar();
 const salvoEm = carregar();
+conferirEstacaoPintada();     // o mapa nasce na estação certa
 if (!salvoEm || !jogo.predios.length) {
   novaVila(SEMENTE_PADRAO);
 } else {
