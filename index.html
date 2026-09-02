@@ -322,21 +322,29 @@ const CHUNK = 24;
 const CPX   = CHUNK * TILE;
 const SUB   = 2;            // amostras de terreno por tile (suavização)
 /*
-   UM ANO INTEIRO LEVA UMA HORA DE VERDADE.
+   UM DIA DE VERDADE = UM ANO DE JOGO.
 
-   Antes a hora valia um ANO e o ano levava doze horas — a civilização quase não
-   saía do lugar, e o calendário com dia, mês e ano ao mesmo tempo nunca fechava
-   a conta. Agora existe uma unidade só: o ano. Envelhecer, casar, nascer e
-   morrer acontecem uma vez por ano, com as taxas anuais inteiras.
+   O calendário é o de sempre: 365 dias, doze meses com o número certo de dias
+   cada, sem ano bissexto. Um dia de jogo passa em uns quatro minutos.
 
-   A economia não mudou de ritmo: comida, colheita e obra continuam medidas em
-   segundos de verdade, e a hora continua valendo o mesmo tanto de trabalho. O
-   que acelerou doze vezes foi só o relógio da vida.
+   Daí sai o resto: quem morre aos 75 anos vive 75 dias de verdade — dois meses
+   e meio de vila, que é o ritmo de um mundo para se acompanhar todo dia, não
+   de uma partida de uma tarde.
+
+   Envelhecer, casar, nascer e morrer acontecem uma vez por DIA de jogo, com as
+   taxas anuais divididas por 365: o comportamento ao longo do ano é o mesmo,
+   só distribuído em vez de dar um salto anual.
+
+   A economia continua medida em segundos de verdade — colher, construir e
+   comer rendem o mesmo por minuto de jogo que sempre renderam.
 */
-const ANO   = 3600;
-// Com o dia valendo uma hora, o teto precisa ser maior para uma noite de sono
-// ainda mexer na vila: 24 h fora = 24 dias = dois anos de vila.
-const OFFLINE_MAX = 24 * 3600;
+const ANO   = 86400;              // um ano de jogo = um dia de verdade
+const DIAS_NO_ANO = 365;          // calendário normal, sem bissexto
+const ANO_DIA = ANO / DIAS_NO_ANO;  // ~237 s: um dia de jogo em segundos reais
+
+// Três dias fora ainda contam. Além disso a vila teria de simular anos de uma
+// vez, e o que você encontraria ao voltar não seria mais a sua vila.
+const OFFLINE_MAX = 3 * ANO;
 
 // Se não houver save, o mundo nasce SEMPRE desta semente. Sorteio aqui faria
 // o mapa mudar a cada abertura em qualquer aparelho que bloqueie armazenamento.
@@ -344,12 +352,10 @@ const SEMENTE_PADRAO = 20260831;
 
 /* --------------------------------------------------- calendário e clima --- */
 
-// O ano continua em 5 minutos, como estava. Para o dia e a noite serem
-// assistíveis, o ciclo do sol precisa de uns 25 segundos — o que dá
-// exatamente 12 ciclos por ano. Então cada mês passa como um dia completo:
-// o relógio marca a hora, a data anda de mês em mês.
 const MESES = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
                'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+// O calendário normal, sem bissexto. Soma 365.
+const DIAS_DO_MES = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 const ESTACAO = {
   verao:     { nome:'Verão',     icone:'☀️', lavoura:1.00, luz:[255, 246, 214], tinta:'rgba(255,214,120,.05)' },
@@ -370,13 +376,25 @@ const CLIMA = {
   tempestade:{nome:'tempestade',icone:'⛈️', lavoura:1.10, passo:0.72 },
 };
 
-// Um dia de jogo (uma hora de verdade) é um mês do calendário: doze dias
-// fazem um ano. O contador de dias sai daí, então mês, ano e dia nunca se
-// contradizem — era o que fazia o dia 4 de Abril virar dia 5 de Maio.
-const mesAtual  = () => Math.min(11, Math.floor(jogo.anoFrac * 12));
-// Quanto já andou do mês corrente. Sem noite, isto não é mais hora do dia —
-// serve só para o clima e a lavoura saberem onde estão dentro do mês.
-const fracaoDoMes = () => (jogo.anoFrac * 12) % 1;
+/*
+   A data sai do calendário de verdade, não de uma fração do ano. Antes o mês
+   era 'anoFrac × 12' e o dia era o número do mês — por isso a data andava
+   01/Janeiro, 02/Fevereiro, 03/Março: dia e mês eram a mesma coisa com nomes
+   diferentes. Agora o dia do ano (0 a 364) é repartido pelos meses com o
+   número certo de dias em cada um.
+*/
+const diaDoAno = () => Math.min(DIAS_NO_ANO - 1, Math.floor(jogo.anoFrac * DIAS_NO_ANO));
+
+function dataDoJogo() {
+  let d = diaDoAno(), m = 0;
+  while (m < 11 && d >= DIAS_DO_MES[m]) { d -= DIAS_DO_MES[m]; m++; }
+  return { dia: d + 1, mes: m };
+}
+const mesAtual = () => dataDoJogo().mes;
+const dataTexto = () => {
+  const { dia, mes } = dataDoJogo();
+  return String(dia).padStart(2, '0') + ' de ' + MESES[mes];
+};
 const estacaoAtual = () => ESTACAO[ESTACAO_DO_MES[mesAtual()]];
 const climaAtual = () => CLIMA[jogo.clima] || CLIMA.limpo;
 
@@ -814,7 +832,7 @@ const jogo = {
   recursos: { madeira:220, comida:200, pedra:80 },
   predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
   cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
-  clima: 'limpo', mesAnterior: -1, diaTotal: 0,
+  clima: 'limpo', mesAnterior: -1, diaAnterior: -1, diaTotal: 0,
   pedidos: [], autoAprovar: true,
   fome: false, salvoEm: Date.now(),
 };
@@ -1523,9 +1541,19 @@ function procurarTrabalho(p) {
     p.oficio = fz.def.posto || (fz.def.pesca ? 'pescador' : 'fazendeiro');
     p.estado = 'indoFazenda'; p.alvo = fz; return;
   }
-  // Senão, coleta o recurso mais escasso que existir por perto.
+  /*
+     Coleta. O ofício dele vem primeiro, e com raio LARGO.
+
+     Com raio curto para os dois, quem era pedreiro não achava pedra em
+     dezesseis tiles, caía no "qualquer recurso", encontrava uma árvore e
+     virava lenhador. O conselho nomeava pedreiros a cada rodada e eles se
+     desfaziam antes da rodada seguinte: setenta e seis lenhadores, nenhum
+     pedreiro, e a pedra parada em três enquanto a madeira batia no teto do
+     galpão. Como agora se pode andar no mato (item 4), procurar longe o
+     próprio material é barato — e a pedra costuma estar mesmo no morro, longe.
+  */
   const rec = OFICIO[p.oficio] && OFICIO[p.oficio].rec ? OFICIO[p.oficio].rec : recursoMaisNecessario();
-  let no = acharNo(p.x, p.y, rec, 16) || acharNo(p.x, p.y, null, 16);
+  let no = acharNo(p.x, p.y, rec, 45) || acharNo(p.x, p.y, null, 16);
   if (no) {
     p.oficio = no.tipo === 'madeira' ? 'lenhador' : no.tipo === 'comida' ? 'colhedor' : 'pedreiro';
     p.estado = 'indoColetar';
@@ -1577,7 +1605,7 @@ function pedirObraParaTrabalhar(p) {
       if (acharNo(p.x, p.y, tipo, 22)) continue;
       const longe = acharNo(centro.cx, centro.cy, tipo, 45, true);
       if (longe && crescerRuaRumo(longe.tx, longe.ty, 12)) {
-        jogo.proximoPedidoDeTrabalho = jogo.tempo + ANO / 8;
+        jogo.proximoPedidoDeTrabalho = jogo.tempo + 450;
         crônica(nomeCompleto(p) + ' ficou sem ' + RECURSO[tipo].nome + ' por perto: abriram rua até a mata.');
         return true;
       }
@@ -1587,7 +1615,7 @@ function pedirObraParaTrabalhar(p) {
   // Só entra na lista o que DÁ EMPREGO. Pedir depósito não resolve a vida de
   // quem está parado — galpão não emprega ninguém, e a vila enchia de galpão.
   const lista = (OBRA_DO_OFICIO[p.oficio] || []).slice();
-  if (anosDeComida() < 14 || saldoComidaPorAno() < 10) lista.push('fazendaGrande', 'fazenda', 'cais');
+  if (diasDeComida() < 210 || saldoComidaPorAno() < 240) lista.push('fazendaGrande', 'fazenda', 'cais');
   lista.push('fazenda', 'serraria', 'mercado', 'escola', 'cais');
 
   const POP_MINIMA = { fazenda: 1, cais: 1, fazendaGrande: 14, serraria: 12,
@@ -1604,7 +1632,7 @@ function pedirObraParaTrabalhar(p) {
     const lote = escolherLote(def);
     if (!lote) continue;
 
-    jogo.proximoPedidoDeTrabalho = jogo.tempo + ANO / 3;
+    jogo.proximoPedidoDeTrabalho = jogo.tempo + 1200;
     if (jogo.autoAprovar) {
       if (!erguerPredio(chave, lote.tx, lote.ty)) return false;
       crônica(nomeCompleto(p) + ' estava sem trabalho: a vila abriu ' + def.nome + '.');
@@ -1616,7 +1644,7 @@ function pedirObraParaTrabalhar(p) {
 
   // Nem lote sobrou: o que falta, então, é rua.
   if (crescerRua()) {
-    jogo.proximoPedidoDeTrabalho = jogo.tempo + ANO / 4;
+    jogo.proximoPedidoDeTrabalho = jogo.tempo + 900;
     crônica(nomeCompleto(p) + ' pediu rua nova: não sobrou lote para trabalhar.');
     return true;
   }
@@ -1635,7 +1663,7 @@ function obraDeRuaAlcancavel(p) {
 
 function recursoMaisNecessario() {
   const r = jogo.recursos;
-  const consumo = popAtual() * 6;                 // comida por ano
+  const consumo = popAtual() * COMIDA_POR_ANO;    // comida por ano
   if (r.comida < consumo * 0.8) return 'comida';
   if (r.madeira < 120) return 'madeira';
   if (r.pedra < 60) return 'pedra';
@@ -2418,10 +2446,15 @@ function distribuirOficios() {
   // pedreiro sem pedra ao alcance só produz gente andando à toa (e enchia a
   // crônica de 'fulano virou pedreiro' toda hora).
   const base = centroDaVila();
+  /* 45 tiles, não 26: agora que se pode entrar no mato (item 4), a pedra do
+     morro conta como alcançável. Com o raio curto, o distribuidor zerava o peso
+     do pedreiro assim que a pedra perto do centro acabava — e como pedra não
+     rebrota, ninguém mais era mandado buscar, nunca. A vila ficava com a
+     madeira no teto do galpão e zero de pedra, sem conseguir abrir rua. */
   const alcancavel = {
-    colhedor: !base || !!acharNo(base.cx, base.cy, 'comida', 26),
-    lenhador: !base || !!acharNo(base.cx, base.cy, 'madeira', 26),
-    pedreiro: !base || !!acharNo(base.cx, base.cy, 'pedra', 26),
+    colhedor: !base || !!acharNo(base.cx, base.cy, 'comida', 45),
+    lenhador: !base || !!acharNo(base.cx, base.cy, 'madeira', 45),
+    pedreiro: !base || !!acharNo(base.cx, base.cy, 'pedra', 45),
   };
   const peso = {
     colhedor: 1.0 * (r.comida < pop * 8 ? 2.4 : r.comida > pop * 30 ? 0.5 : 1),
@@ -2468,22 +2501,32 @@ function distribuirOficios() {
    responder um pedido. Por isso a civilização quase não andava.
 */
 
-const INTERVALO_CONSELHO = ANO / 8;       // oito decisões por dia
+// Ritmos medidos em segundos de VERDADE: são eles que dão o compasso do que
+// você vê na tela, e não mudam quando a escala do calendário muda.
+const INTERVALO_CONSELHO = 450;           // o conselho decide a cada 7min30
 const OBRAS_AO_MESMO_TEMPO = 3;
 
 // Quantos dias a despensa aguenta com a população atual.
 // Quantos ANOS a despensa aguenta com a população atual. Era "dias" quando o
 // dia era a unidade; o número por tempo real é exatamente o mesmo.
-function anosDeComida() {
-  const consumo = popAtual() * 6;
-  return consumo > 0 ? jogo.recursos.comida / consumo : 99;
+/*
+   Cada pessoa come 144 por ANO de jogo. Parece muito ao lado do "6" de antes,
+   mas é exatamente o mesmo consumo por segundo de verdade: o ano passou de uma
+   hora para um dia inteiro, vinte e quatro vezes mais longo. Toda a economia
+   (colher, plantar, construir) continua no ritmo testado.
+*/
+function diasDeComida() {
+  const consumo = popAtual() * COMIDA_POR_ANO / DIAS_NO_ANO;   // por dia de jogo
+  return consumo > 0 ? jogo.recursos.comida / consumo : 999;
 }
 
 // Quanto sobra (ou falta) de comida por dia. É a conta que decide se a vila
 // pode crescer: estoque cheio não adianta se cada boca nova come mais do que
 // a lavoura produz. Item 4 — expandir de propósito, sem passar fome.
 const ACORDADO = 1;                     // sem noite, o expediente é integral
-const AMOSTRA_COMIDA = ANO / 12;        // mede a cada cinco minutos de jogo
+// 144 por ano = os mesmos 6 por hora de verdade que a economia sempre teve.
+const COMIDA_POR_ANO = 144;
+const AMOSTRA_COMIDA = 300;             // mede o fluxo de comida a cada 5 min
 
 // O saldo REAL é medido, não calculado: a conta teórica ignorava o tempo gasto
 // andando até o recurso e errava cinco vezes para mais — o conselho autorizava
@@ -2503,7 +2546,7 @@ function saldoTeorico() {
   }
   const colhedores = jogo.pessoas.filter(p => p.oficio === 'colhedor').length;
   producao += colhedores * TAXA * 0.45 * ACORDADO * ANO;
-  return producao - popAtual() * 6;
+  return producao - popAtual() * COMIDA_POR_ANO;
 }
 
 function conselho() {
@@ -2513,7 +2556,7 @@ function conselho() {
   if (obrasAtivas() >= OBRAS_AO_MESMO_TEMPO) return;
 
   const pop = popAtual(), cap = popMax();
-  const comidaAnos = anosDeComida();
+  const comidaDias = diasDeComida();
   const jaTem = c => jogo.predios.some(p => p.chave === c);
   const contar = c => jogo.predios.filter(p => p.chave === c).length;
   const fazendaVazia = jogo.predios.some(p => p.def.fazenda && p.progresso >= 1 && !p.trabalhador);
@@ -2523,7 +2566,9 @@ function conselho() {
   const producao = jogo.predios.filter(p => p.def.fazenda).length;   // conta as em obra também
 
   // --- 1. Fome primeiro. Sem despensa não se cresce. ---
-  if (comidaAnos < 4 && !fazendaVazia && !fazendaEmObra) {
+  // Dois meses de reserva: é o mesmo tempo REAL de folga que o jogo sempre
+  // exigiu aqui, agora dito na unidade nova.
+  if (comidaDias < 60 && !fazendaVazia && !fazendaEmObra) {
     if (decidirObra('cais')) return;          // peixe rende o ano todo
     if (decidirObra('fazenda')) return;
   }
@@ -2554,7 +2599,7 @@ function conselho() {
      comida — só ergue casa se a lavoura já aguentar as bocas a mais. */
   const folga = cap - pop;
   const querMaisTeto = folga <= Math.max(8, pop * 0.4);
-  if (querMaisTeto && comidaAnos >= 6 && saldoComidaPorAno() > 36) {
+  if (querMaisTeto && comidaDias >= 90 && saldoComidaPorAno() > 864) {
     // Casarão vale mais que casa quando a vila já tem madeira e pedra.
     if (pop >= 20 && podePagar(PREDIO.sobrado.custo) && decidirObra('sobrado')) return;
     if (decidirObra('casa')) return;
@@ -2717,11 +2762,11 @@ function rebrotarMata() {
 // probabilidades foram divididas por doze, então o comportamento por ano é o
 // mesmo de antes — só que distribuído ao longo dos doze dias.
 /*
-   Um ANO inteiro de vida da vila, uma vez por hora de verdade. As taxas aqui
-   são as anuais cheias: antes elas eram divididas por doze, porque o tick
-   acontecia uma vez por dia e havia doze dias no ano. Agora o tick É o ano.
+   Um DIA de vida da vila, a cada ~4 minutos de verdade. As taxas são as anuais
+   divididas por 365: ao longo de um ano de jogo o comportamento é o mesmo de
+   uma taxa anual, só que distribuído dia a dia em vez de dar um salto.
 */
-function tickAno() {
+function tickDia() {
   jogo.diaTotal = (jogo.diaTotal || 0) + 1;
   // Obra de rua num pedaço de malha que ninguém alcança: cancela e devolve o
   // canteiro, senão ela fica pendurada segurando a cota de obras da vila.
@@ -2751,7 +2796,7 @@ function tickAno() {
 
   for (const p of jogo.pessoas) {
     const antes = faseDaIdade(p.idade);
-    p.idade += 1;
+    p.idade += 1 / DIAS_NO_ANO;
     const depois = faseDaIdade(p.idade);
     if (antes !== depois) {
       if (depois === FASE.ADULTO) { crônica(nomeCompleto(p) + ' virou adulto(a) aos ' + MAIORIDADE + '.'); p.estado = 'ocioso'; }
@@ -2764,7 +2809,7 @@ function tickAno() {
   const homens = solteiros.filter(p => p.sexo === 'm'), mulheres = solteiros.filter(p => p.sexo === 'f');
   const pares = Math.min(homens.length, mulheres.length);
   for (let i = 0; i < pares; i++) {
-    if (rnd() > 0.35) continue;
+    if (rnd() > 0.35 / DIAS_NO_ANO) continue;
     const a = homens[i], b = mulheres[i];
     a.conjugeId = b.id; b.conjugeId = a.id;
     if (!a.casaId) a.casaId = b.casaId;
@@ -2800,7 +2845,7 @@ function tickAno() {
          verdade. O grosso do crescimento continua vindo das famílias que se
          mudam para as casas novas.
       */
-      if (rnd() > 0.26 * anima) continue;
+      if (rnd() > 0.26 * anima / DIAS_NO_ANO) continue;
       const pai = pessoaPorId(mae.conjugeId);
       const bebe = criarPessoa({
         x: mae.x + entre(-12, 12), y: mae.y + entre(-12, 12),
@@ -2814,6 +2859,23 @@ function tickAno() {
     }
   }
 
+  /*
+     Imigração. Uma vila com casa vazia e despensa cheia atrai gente de fora —
+     e é daí que vem o grosso do crescimento, porque a natalidade é de censo
+     (um filho a cada quatro anos por casal).
+
+     Sem isto o crescimento parava seco assim que o conselho abria teto à
+     frente da população: a casa ficava lá, vazia, esperando um bebê que
+     demora anos. Quanto mais cama sobrando, mais forte o chamado.
+  */
+  const vagasNaVila = popMax() - popAtual();
+  if (!jogo.fome && vagasNaVila > 0 && diasDeComida() > 120) {
+    if (rnd() < Math.min(0.45, vagasNaVila * 0.04)) {
+      const casa = casaComVaga();
+      if (casa) chegarFamilia(casa);
+    }
+  }
+
   // Mortes: velhice, e mais duras se faltar comida.
   for (let i = jogo.pessoas.length - 1; i >= 0; i--) {
     const p = jogo.pessoas[i];
@@ -2821,7 +2883,7 @@ function tickAno() {
     if (p.idade > p.vidaMax) chance = 0.35 + (p.idade - p.vidaMax) * 0.06;
     else if (p.idade > p.vidaMax - 10) chance = 0.05;
     if (jogo.fome) chance += faseDaIdade(p.idade) === FASE.ADULTO ? 0.05 : 0.14;
-    if (rnd() < chance) {
+    if (rnd() < chance / DIAS_NO_ANO) {
       mortos.push(p);
       crônica(nomeCompleto(p) + ' morreu aos ' + Math.floor(p.idade) + '.', true);
       removerPessoa(p);
@@ -2885,35 +2947,51 @@ function recuperarOffline(segundos) {
     }
     const teto = tetoEstoque();
     for (const k in por) jogo.recursos[k] = Math.min(Math.max(teto, jogo.recursos[k]), jogo.recursos[k] + por[k] * seg);
-    jogo.recursos.comida -= popAtual() * 6 * (seg / ANO);
+    jogo.recursos.comida -= popAtual() * COMIDA_POR_ANO * (seg / ANO);
     if (jogo.recursos.comida <= 0) { jogo.recursos.comida = 0; jogo.fome = true; }
     else if (jogo.fome && jogo.recursos.comida > popAtual() * 2) jogo.fome = false;
   }
 
   // As obras que o conselho enfileira durante a ausência também precisam sair
   // do papel — senão a vila para de crescer justamente enquanto você dorme.
-  function avancarObras() {
+  /*
+     Tudo aqui anda proporcional aos SEGUNDOS REAIS que passaram, não "uma
+     rodada por chamada". Com o tick agora sendo diário, uma chamada por dia de
+     jogo com passo fixo adiantaria o canteiro em anos de trabalho.
+
+     1,65 é o ritmo que o jogo sempre teve sem você: equivale a um operário e
+     meio martelando sem parar.
+  */
+  const OBRA_POR_SEGUNDO = 1.65;
+  function avancarObras(seg) {
     const braços = jogo.pessoas.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA).length;
-    if (!braços) return;
+    if (!braços || seg <= 0) return;
+
     for (const pr of jogo.predios) {
       if (pr.progresso >= 1) continue;
-      pr.progresso += (ANO * 0.25 * EFIC) / pr.def.tempo;
+      pr.progresso += (seg * OBRA_POR_SEGUNDO) / pr.def.tempo;
       if (pr.progresso >= 1) { concluirPredio(pr); rel.obras++; }
     }
+
+    // Um trecho de rua leva uns 3 s de trabalho; sem você, seis.
+    let trechos = Math.max(1, Math.floor(seg / 6));
     for (const obra of jogo.obrasEstrada.slice()) {
-      while (obra.feitos < obra.tiles.length && jogo.recursos.pedra >= 1) {
+      while (trechos > 0 && obra.feitos < obra.tiles.length && jogo.recursos.pedra >= 1) {
         const t = obra.tiles[obra.feitos];
         jogo.recursos.pedra -= 1;
         jogo.estradas.add(nk(t[0], t[1]));
         limparNo(t[0], t[1]);
         obra.feitos++;
+        trechos--;
       }
       if (obra.feitos >= obra.tiles.length) jogo.obrasEstrada.splice(jogo.obrasEstrada.indexOf(obra), 1);
     }
-    // A oficina e o estábulo também não param: um veículo por ano, por prédio.
+
+    // A oficina e o estábulo também não param, no ritmo de sempre.
     for (const pr of jogo.predios) {
       if (pr.progresso < 1 || !pr.def.produz) continue;
       const def = VEICULO[pr.def.produz];
+      if (rnd() > seg / def.tempo) continue;          // um veículo a cada def.tempo
       if (!podePagar(def.custo)) continue;
       const dono = jogo.pessoas.find(p => !p.veiculo && faseDaIdade(p.idade) === FASE.ADULTO &&
         OFICIO[p.oficio] && OFICIO[p.oficio].rec);
@@ -2927,29 +3005,30 @@ function recuperarOffline(segundos) {
   // A vida da vila anda por ANO. Contar em anos aqui faria uma noite inteira
   // fora não render tick nenhum, já que um ano leva doze horas.
   /*
-     O relógio anda o tempo EXATO, não em anos inteiros. Um ano de vila é uma
-     hora de verdade: sair por cinquenta minutos tem de mexer o calendário em
-     cinquenta minutos de vila, não em nada.
+     A vila anda DIA A DIA, do mesmo jeito que andaria com você olhando, e o
+     relógio conta o tempo exato: o que sobra do dia também entra na conta.
   */
-  const anos = Math.floor(s / ANO);
-  rel.anosInteiros = anos;
+  const dias = Math.floor(s / ANO_DIA);
+  rel.diasDeJogo = dias;
   rel.anos = +(s / ANO).toFixed(2);
-  for (let i = 0; i < anos; i++) {
-    render(ANO);
-    avancarObras();
-    for (let k = 0; k < 8; k++) conselho();   // mesmo ritmo de decisão do jogo aberto
-    const r = tickAno();
+  const avancarRelogio = seg => {
+    jogo.anoFrac += seg / ANO;
+    while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
+  };
+  for (let i = 0; i < dias; i++) {
+    render(ANO_DIA);
+    avancarObras(ANO_DIA);
+    conselho();                              // o conselho decide algumas vezes por dia
+    const r = tickDia();
     rel.nascidos += r.nascidos; rel.mortos += r.mortos;
-    jogo.ano++;
+    avancarRelogio(ANO_DIA);
   }
-  const resto = s - anos * ANO;
+  const resto = s - dias * ANO_DIA;
   render(resto);
-  // Obra só anda depois de pelo menos um ano: com o resto valendo obra, uma
-  // saída de trinta segundos adiantava o canteiro inteiro de graça.
-  if (anos > 0) avancarObras();
-  jogo.anoFrac += resto / ANO;
-  while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; tickAno(); }
+  avancarObras(resto);
+  avancarRelogio(resto);
   jogo.mesAnterior = mesAtual();
+  jogo.diaAnterior = diaDoAno();
 
   emRecuperacao = false;
   for (const k in inicio) rel[k] = Math.round(jogo.recursos[k] - inicio[k]);
@@ -3418,7 +3497,7 @@ function atualizarHUD() {
   // então o dia agora é contado desde a fundação e nunca briga com o mês.
   // Uma unidade só: o ano. Dia e mês juntos nunca fechavam a conta — o número
   // do dia saía do mês, e virar de mês parecia virar de dia.
-  elCal.data.textContent = MESES[mesAtual()];
+  elCal.data.textContent = dataTexto();
   elCal.estacao.textContent = est.icone + ' ' + est.nome;
   elCal.clima.textContent = cli.icone;
   elCal.clima.title = cli.nome;
@@ -3958,8 +4037,8 @@ const MISSOES = [
   },
   {
     id: 'despensa', titulo: 'Despensa cheia', icone: '🥣',
-    texto: 'Guardar comida para 10 anos.',
-    meta: () => 10, valor: () => Math.min(10, anosDeComida()),
+    texto: 'Guardar comida para 60 dias.',
+    meta: () => 60, valor: () => Math.min(60, diasDeComida()),
     premio: { comida: 120 },
   },
   {
@@ -5363,7 +5442,7 @@ function passo(dt) {
   }
 
   // Consumo de comida: 6 por pessoa por ano (item 9).
-  jogo.recursos.comida -= popAtual() * (6 / ANO) * dt;   // seis por pessoa por dia
+  jogo.recursos.comida -= popAtual() * (COMIDA_POR_ANO / ANO) * dt;
   if (jogo.recursos.comida <= 0) {
     jogo.recursos.comida = 0;
     if (!jogo.fome) { jogo.fome = true; crônica('A vila passou a sentir fome.', true); aviso('⚠️ Sem comida — a vila está passando fome'); }
@@ -5372,8 +5451,11 @@ function passo(dt) {
   }
 
   jogo.anoFrac += dt / ANO;
-  while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; tickAno(); }
+  while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
 
+  // A vida corre por DIA; o clima e a feira, por mês.
+  const dia = diaDoAno();
+  if (dia !== jogo.diaAnterior) { jogo.diaAnterior = dia; tickDia(); }
   const mes = mesAtual();
   if (mes !== jogo.mesAnterior) { jogo.mesAnterior = mes; virouMes(); }
 
@@ -5634,7 +5716,8 @@ function gravar() {
       v: 2, seed: SEED, salvoEm: jogo.salvoEm,
       cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
-      clima: jogo.clima, mesAnterior: jogo.mesAnterior, diaTotal: jogo.diaTotal,
+      clima: jogo.clima, mesAnterior: jogo.mesAnterior, diaAnterior: jogo.diaAnterior,
+      diaTotal: jogo.diaTotal,
       missoes: jogo.missoes,
       pedidos: jogo.pedidos, proxPedidoId, autoAprovar: jogo.autoAprovar,
       predios: jogo.predios.map(p => ({ id:p.id, c:p.chave, tx:p.tx, ty:p.ty, pr:p.progresso,
@@ -5663,7 +5746,9 @@ function carregar() {
     cam.x = s.cam.x; cam.y = s.cam.y; cam.z = s.cam.z || 1;
     Object.assign(jogo.recursos, s.recursos || {});
     jogo.ano = s.ano || 1; jogo.anoFrac = s.anoFrac || 0; jogo.fome = !!s.fome;
-    jogo.clima = s.clima || 'limpo'; jogo.mesAnterior = s.mesAnterior !== undefined ? s.mesAnterior : -1;
+    jogo.clima = s.clima || 'limpo';
+    jogo.mesAnterior = s.mesAnterior !== undefined ? s.mesAnterior : -1;
+    jogo.diaAnterior = s.diaAnterior !== undefined ? s.diaAnterior : -1;
     jogo.diaTotal = s.diaTotal || 0;
     jogo.missoes = s.missoes || {};
     // Save antigo tinha um pedido só; vira uma fila de um item.
@@ -5741,7 +5826,8 @@ function novaVila(seed) {
   jogo.cronica = []; jogo.proxId = 1; proxPredioId = 1;
   jogo.recursos = { madeira:220, comida:200, pedra:80 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
-  jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.pedidos = []; jogo.diaTotal = 0;
+  jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.diaAnterior = -1;
+  jogo.pedidos = []; jogo.diaTotal = 0;
   jogo.missoes = {}; jogo.saldoComida = undefined; jogo.comidaAnterior = undefined;
   esconderPedido(); sairModoRua();
   colocando = null; placeEl.classList.remove('on'); barEl.classList.remove('escondido'); selecao = [];
@@ -5851,17 +5937,17 @@ function voltarDaAusencia(quando) {
   // Relatório na cara só para ausência longa; aviso curto no meio; e nada
   // quando o tempo de vila arredonda para zero — 'esteve fora 0 mês' é ruído.
   if (fora >= 600) mostrarRelatorio(rel);
-  else if (fora >= ANO / 24) aviso('⏱️ ' + tempoDaVila(fora) + ' de vila enquanto você esteve fora');
+  else if (fora >= ANO_DIA) aviso('⏱️ ' + tempoDaVila(fora) + ' de vila enquanto você esteve fora');
 }
 
-// Quanto tempo de VILA vale um tanto de tempo real. Um ANO de vila é uma hora
-// de verdade, então cada cinco minutos reais valem um mês lá dentro.
+// Quanto tempo de VILA vale um tanto de tempo real. Um ano de vila é um dia de
+// verdade, então cada quatro minutos reais valem um dia lá dentro.
 function tempoDaVila(segundosReais) {
-  const anos = segundosReais / ANO;
-  const a = Math.floor(anos), m = Math.round((anos % 1) * 12);
-  if (a && m) return a + ' ano(s) e ' + m + ' mês(es)';
+  const dias = segundosReais / ANO_DIA;
+  const a = Math.floor(dias / DIAS_NO_ANO), d = Math.floor(dias % DIAS_NO_ANO);
+  if (a && d) return a + ' ano(s) e ' + d + ' dia(s)';
   if (a) return a + ' ano(s)';
-  return m + ' mês(es)';
+  return Math.max(1, d) + ' dia(s)';
 }
 
 addEventListener('beforeunload', () => { clearTimeout(saveT); gravar(); });

@@ -49,19 +49,34 @@ Suas ordens são atalhos, não obrigação.
 
 ## O tempo, as estações e o clima
 
-**Um ano inteiro leva uma hora de verdade.** Existe uma unidade só: o ano.
-Envelhecer, casar, nascer e morrer acontecem uma vez por ano, com as taxas
-anuais cheias. O mês é subdivisão do ano (cinco minutos de verdade cada) e
-serve para o clima, as estações e a feira do mercado.
+**Um dia de verdade = um ano de jogo.** O calendário é o normal: 365 dias, doze
+meses com o número certo de dias em cada um, sem ano bissexto. Um dia de jogo
+passa em uns **quatro minutos**, e o topo da tela mostra `Ano 1 · 02 de Junho`.
 
-Antes a hora valia um *dia* e o ano levava doze horas. A civilização quase não
-saía do lugar, e o calendário com dia, mês e ano ao mesmo tempo nunca fechava a
-conta — o número do dia saía do próprio mês, então virar de mês parecia virar
-de dia. Agora o topo da tela mostra **`Ano 6 · Setembro · Primavera`** e pronto.
+| | dura |
+|---|---|
+| um dia de jogo | ~3,9 min de verdade |
+| um mês de jogo | ~2 h de verdade |
+| um ano de jogo | **24 h de verdade** |
+| uma vida (75 anos) | 75 dias de verdade |
 
-A economia não mudou de ritmo: comida, colheita e obra continuam medidas em
-segundos de verdade, e a hora rende o mesmo tanto de trabalho de sempre. O que
-acelerou doze vezes foi só o relógio da vida.
+Daí sai o resto: quem morre aos 75 anos vive dois meses e meio de tempo real —
+ritmo de mundo para acompanhar todo dia, não de partida de uma tarde.
+
+Envelhecer, casar, nascer e morrer acontecem uma vez por **dia de jogo**, com as
+taxas anuais divididas por 365: o comportamento ao longo do ano é o de uma taxa
+anual, só distribuído em vez de dar um salto.
+
+O calendário antigo somava dia, mês e ano numa conta só e por isso andava
+`01/Janeiro`, `02/Fevereiro`, `03/Março`: o número do dia **era** o do mês. Agora
+o dia do ano (0 a 364) é repartido pelos meses com o número certo de dias em
+cada um — 31 de Janeiro vira 1º de Fevereiro, e 28 de Fevereiro vira 1º de Março.
+
+A economia não mudou de ritmo: colher, construir e comer rendem o mesmo por
+minuto de jogo que sempre renderam. As cadências do motor (conselho a cada
+7min30, medição de comida a cada 5 min) são medidas em segundos de verdade, e
+não em frações do calendário — assim mudar a escala do tempo não desregula o
+que você vê na tela.
 
 **Não há mais noite.** Com o ano passando em uma hora, um ciclo de sol dentro
 dele duraria cinco minutos — a vila piscaria entre claro e escuro o tempo todo
@@ -160,7 +175,7 @@ traçava uma reta que quase sempre morria no terceiro bloco pela regra de folga
 
 ## A vila que anda sozinha
 
-**O conselho** reavalia a vila **oito vezes por ano** e decide nesta ordem:
+**O conselho** reavalia a vila a cada 7min30 de verdade e decide nesta ordem:
 
 1. **Comida**, se a despensa tem menos de 4 dias — cais primeiro, que rende o
    ano todo, depois lavoura
@@ -379,7 +394,7 @@ Os números não foram inventados:
 Uma partida típica fica em torno de **30% crianças**, com o resto em idade de
 trabalhar — na faixa de uma cidade de fronteira em expansão.
 
-Outras regras: cada pessoa come **6 de comida por ano**; vira adulta aos **18**
+Outras regras: cada pessoa come **144 de comida por ano** (os mesmos 6 por hora de verdade de sempre); vira adulta aos **18**
 e morre por volta dos **75**; sem comida, a vila entra em fome, os nascimentos
 param e as mortes aumentam.
 
@@ -396,12 +411,17 @@ ano, a natalidade bruta precisa cobrir as mortes (1/75) mais o crescimento:
 da vila, dá **0,26 filho por casal por ano** — um filho a cada quatro anos, que
 é ritmo de família de verdade.
 
-Quem faz a vila crescer, então, é a **família que se muda** para cada casa
-nova: duas a cinco pessoas de uma vez, com ~62% de adultos (antes era sempre
-"o casal e o resto criança", o que sozinho já emperrava a pirâmide). Por isso o
-conselho não espera lotar para construir — ele abre teto enquanto a folga for
-pequena diante do tamanho da vila, com o freio de sempre: só ergue casa se a
-lavoura já aguentar as bocas a mais.
+Quem faz a vila crescer, então, é a **família que se muda**: duas a cinco
+pessoas de uma vez, com ~62% de adultos (antes era sempre "o casal e o resto
+criança", o que sozinho já emperrava a pirâmide). Elas chegam de dois jeitos —
+quando uma casa fica pronta, e quando a vila tem **cama sobrando e despensa
+cheia**, porque aí ela atrai gente de fora. Sem essa segunda porta o
+crescimento parava seco assim que o conselho abria teto à frente da população:
+a casa ficava lá, vazia, esperando um bebê que demora anos.
+
+Por isso o conselho também não espera lotar para construir — abre teto enquanto
+a folga for pequena diante do tamanho da vila, com o freio de sempre: só ergue
+casa se a lavoura já aguentar as bocas a mais.
 
 Medido depois do ajuste: adultos ficam **ociosos 0,2% do tempo**, e os ofícios
 voltaram a se repartir (lenhador, colhedor, pedreiro, lavoura, postos) em vez
@@ -509,8 +529,8 @@ por muito tempo.
 ## O que o conselho persegue
 
 A vila tem um objetivo declarado: **crescer sem passar fome**. Ele decide oito
-vezes por ano com base em duas contas — quantos anos a despensa aguenta e qual
-o **saldo real de comida por ano**, medido (não estimado: a conta teórica
+vezes com base em duas contas — quantos dias a despensa aguenta e qual
+o **saldo real de comida**, medido (não estimado: a conta teórica
 ignorava o tempo gasto andando até o recurso e errava cinco vezes para mais).
 
 Só abre teto novo quando a lavoura já sustenta as bocas que vêm junto. Quando
