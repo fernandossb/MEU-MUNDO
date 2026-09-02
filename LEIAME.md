@@ -320,6 +320,84 @@ pai nem mãe de ninguém** — uma limpeza nunca corta o meio de uma linhagem.
 
 ---
 
+## Crises
+
+A única adversidade era a fome — e fome é consequência de má administração, não
+acontecimento. Faltava o que não se controla.
+
+| | O que faz | Quanto dura |
+|---|---|---|
+| 🌵 **Seca** | a lavoura rende metade | 30 a 90 dias |
+| 🤒 **Doença** | os idosos morrem 3× mais; os adultos, 1,4× | 20 a 60 dias |
+| 🔥 **Incêndio** | um prédio cai para 33% e os moradores ficam sem teto | instantâneo |
+
+Todas são sobreviveis de propósito. Uma de cada vez, nada abaixo de vinte
+moradores, e o **Centro da Vila nunca queima** — crise que acaba com o jogo não
+é crise. Medido em dois anos de vila: 12% do tempo sob alguma crise e um
+incêndio. A vila apanha, se recupera, e a crônica ganha o que contar.
+
+---
+
+## Pessoas memoráveis
+
+O `traco` era enfeite: dez palavras bonitas que não mudavam nada. Se duas
+pessoas fazem exatamente o mesmo, não há por que lembrar de nenhuma — e lembrar
+delas era o pedido original deste jogo.
+
+Agora cada jeito mexe em **uma** coisa: *trabalhadora* colhe 20% mais,
+*destemido* anda 15% mais rápido, *generoso* carrega 30% a mais, *calado*
+constrói 20% mais rápido, *teimosa* insiste o dobro antes de desistir, *curiosa*
+procura recurso 40% mais longe, *sonhador* anda devagar mas aprende bem,
+*paciente* rende mais no posto, *brincalhona* vive quatro anos a mais.
+
+E cada um acumula o que fez: obras erguidas, material trazido, filhos criados.
+O filtro **⭐ notáveis** da crônica lista quem mais fez pela vila, com o jeito e
+os feitos ao lado — e tocar num nome abre a ficha dele. A conta soma coisas de
+naturezas diferentes de propósito: o construtor calado e a lenhadora
+trabalhadora disputam a mesma lista.
+
+---
+
+## A crônica ganhou filtro
+
+Com duzentas e quarenta entradas, achar quem nasceu no meio de trinta obras era
+impossível. Os chips separam **vida**, **obras**, **crises** e **vila** — e o
+⭐ notáveis, que mostra gente em vez de eventos.
+
+## Seguir um aldeão
+
+Na ficha de qualquer pessoa, o botão **👁 Seguir** gruda a câmera nela. Ela vai
+atrás com folga (puxar direto para o centro a cada quadro dá enjoo), e qualquer
+arrasto seu solta na hora: quem manda na câmera é você.
+
+## Demolir avisa
+
+Demolir casa habitada deixava gente sem teto em silêncio. Agora o aviso diz
+quantos perdem a casa e **se a vila tem teto sobrando para eles**.
+
+---
+
+## O galpão cheio
+
+Isto o painel de produção denunciava desde que nasceu: **102 de comida por dia
+indo para o lixo** numa vila de 83 pessoas. Foram três causas somadas, e o
+conserto precisou das três:
+
+1. o gatilho de depósito era *"gente longe de um galpão"* — que mede distância,
+   não espaço. Agora a falta de espaço também manda construir;
+2. o conselho erguia lavoura até um sexto da população **independente de já haver comida
+   demais**: treze lavouras para oitenta e três bocas. Com a despensa perto do
+   teto, a vila para de plantar;
+3. os pesos dos ofícios são **relativos** — com os três recursos fartos, todos
+   caíam para 0,5 e a repartição continuava a mesma. Trinta e três colhedores
+   trazendo comida que transbordava. Agora o galpão cheio zera o peso daquele
+   recurso.
+
+Medido depois: perda de **102 → 15,6 por dia**, lavouras de 13 → 10, e a mão de
+obra rebalanceada (colhedores 33 → 24, pedreiros 2 → 7).
+
+---
+
 ## A cadeia de produção
 
 Madeira, comida e pedra eram terminais: entravam no galpão e paravam. Serraria

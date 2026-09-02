@@ -53,6 +53,10 @@
   }
   #c-veloc:active { background:rgba(255,255,255,.26); }
   #c-veloc.sufocado { color:#e8b45c; }   /* pediu mais do que o quadro aguenta */
+  #c-crise {
+    font-size:11.5px; font-weight:600; padding:2px 7px; border-radius:7px;
+    background:rgba(200,90,60,.35); border:1px solid rgba(240,140,110,.5); color:#ffd9cc;
+  }
   #c-data { opacity:.8; }
   #c-clima { font-size:14px; }
 
@@ -144,6 +148,12 @@
     background:rgba(255,255,255,.05); border-left:3px solid rgba(150,200,140,.5);
   }
   #cronica .ev .ano { opacity:.5; font-size:11px; margin-right:6px; font-variant-numeric:tabular-nums; }
+  #cronica-filtro { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; margin-bottom:2px; }
+  #cronica-filtro .chip {
+    pointer-events:auto; cursor:pointer; font-size:11.5px; padding:5px 11px; border-radius:9px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.14);
+  }
+  #cronica-filtro .chip.on { background:rgba(150,200,140,.30); border-color:rgba(170,230,150,.6); }
   #missoes .lista { width:min(460px,92vw); max-height:60vh; overflow-y:auto; text-align:left;
     display:flex; flex-direction:column; gap:8px; }
   .missao { padding:9px 11px; border-radius:9px; background:rgba(255,255,255,.05);
@@ -235,6 +245,7 @@
       <span id="c-data">Janeiro, ano 1</span>
       <span id="c-estacao">☀️ Verão</span>
       <span id="c-clima">🌤️</span>
+      <span id="c-crise" style="display:none"></span>
       <span id="c-veloc" title="velocidade do tempo">1×</span>
     </div>
     <div id="povo" class="panel">
@@ -334,6 +345,7 @@
 
   <div id="cronica" class="folha">
     <h2 id="cronica-titulo">📜 Crônica da vila</h2>
+    <div id="cronica-filtro"></div>
     <div class="lista" id="cronica-lista"></div>
     <div class="btn" id="cronica-fechar">Fechar</div>
   </div>
@@ -347,7 +359,10 @@
 
   <div id="ficha" class="folha">
     <div class="cartao panel" id="ficha-corpo" style="padding:16px 18px"></div>
-    <div class="btn" id="ficha-fechar">Fechar</div>
+    <div class="row">
+      <div class="btn" id="ficha-seguir">👁 Seguir</div>
+      <div class="btn" id="ficha-fechar">Fechar</div>
+    </div>
   </div>
 </div>
 
@@ -491,7 +506,7 @@ function sortearClima() {
 
 // Rendimento da lavoura junta estação e clima: inverno com neve é quase nada,
 // primavera com chuva é o dobro.
-const fatorLavoura = () => estacaoAtual().lavoura * climaAtual().lavoura;
+const fatorLavoura = () => estacaoAtual().lavoura * climaAtual().lavoura * fatorSeca();
 
 /* ---------------------------------------------------------------- ruído --- */
 
@@ -899,7 +914,32 @@ const NOMES_F = ['Alice','Beatriz','Clara','Dora','Elisa','Fernanda','Gabriela',
   'Laura','Manuela','Nina','Olívia','Pilar','Rita','Sofia','Tereza','Valentina','Zoé'];
 const SOBRENOMES = ['Almeida','Barbosa','Cardoso','Duarte','Esteves','Ferreira','Gomes','Henriques',
   'Jardim','Lopes','Macedo','Nogueira','Oliveira','Pereira','Queiroz','Ramos','Silveira','Teixeira','Vasques','Xavier'];
-const TRACOS = ['trabalhadora','sonhador','teimosa','generoso','curiosa','calado','brincalhona','destemido','paciente','inquieta'];
+/*
+   O JEITO DE CADA UM, agora com consequência.
+
+   'traco' era enfeite de texto: dez palavras bonitas que não mudavam nada. Se
+   duas pessoas fazem exatamente o mesmo, não há por que lembrar de nenhuma —
+   e lembrar delas era o pedido original deste jogo.
+
+   Cada jeito mexe em UMA coisa, com força modesta. O objetivo não é otimizar
+   aldeão, é que o lenhador teimoso realmente traga mais lenha que o sonhador,
+   e que isso apareça na lista de notáveis anos depois.
+*/
+const TRACOS = {
+  trabalhadora: { nome:'trabalhadora', desc:'colhe 20% mais',            colheita:1.20 },
+  sonhador:     { nome:'sonhador',     desc:'anda devagar, aprende bem', passo:0.88, aprende:1.25 },
+  teimosa:      { nome:'teimosa',      desc:'não desiste fácil',         paciencia:2.0 },
+  generoso:     { nome:'generoso',     desc:'carrega 30% a mais',        carga:1.30 },
+  curiosa:      { nome:'curiosa',      desc:'acha recurso mais longe',   alcance:1.4 },
+  calado:       { nome:'calado',       desc:'constrói 20% mais rápido',  obra:1.20 },
+  brincalhona:  { nome:'brincalhona',  desc:'vive um pouco mais',        vida:4 },
+  destemido:    { nome:'destemido',    desc:'anda 15% mais rápido',      passo:1.15 },
+  paciente:     { nome:'paciente',     desc:'na lavoura rende 20% mais', posto:1.20 },
+  inquieta:     { nome:'inquieta',     desc:'troca de ofício à toa',     inquieta:true },
+};
+const NOMES_TRACOS = Object.keys(TRACOS);
+// Quanto o jeito de alguém mexe num aspecto (1 = não mexe).
+const jeito = (p, campo) => (TRACOS[p.traco] && TRACOS[p.traco][campo]) || 1;
 
 const OFICIO = {
   lenhador:   { nome:'lenhador',   rec:'madeira', icone:'🪓' },
@@ -936,7 +976,9 @@ function criarPessoa(op) {
     sexo,
     idade: op.idade !== undefined ? op.idade : entre(18, 40),
     vidaMax: EXPECTATIVA + entre(-4, 4),   // morrem por volta dos 75
-    traco: escolher(TRACOS),
+    traco: escolher(NOMES_TRACOS),
+    // O que a pessoa fez na vida. É daqui que sai a lista de notáveis.
+    feitos: { obras: 0, colhido: 0, filhos: 0 },
     x: op.x, y: op.y,
     oficio: 'nenhum',
     estado: 'ocioso', alvo: null, carga: 0, cargaTipo: null,
@@ -956,6 +998,8 @@ function criarPessoa(op) {
     geracao: op.geracao || 1,
     nasceu: jogo.ano - Math.floor(op.idade !== undefined ? op.idade : 25),
   };
+  // O jeito só pode mexer na vida depois que ele foi sorteado.
+  if (TRACOS[p.traco] && TRACOS[p.traco].vida) p.vidaMax += TRACOS[p.traco].vida;
   jogo.pessoas.push(p);
   return p;
 }
@@ -1002,7 +1046,7 @@ const jogo = {
   recursos: { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 },
   predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
   cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
-  nome: 'Vila Nova', ancestrais: [],
+  nome: 'Vila Nova', ancestrais: [], crise: null,
   clima: 'limpo', mesAnterior: -1, diaAnterior: -1, diaTotal: 0,
   pedidos: [], autoAprovar: true,
   fome: false, salvoEm: Date.now(),
@@ -1105,8 +1149,13 @@ function balancoDe(rec) {
 
 /* --------------------------------------------------------------- crônica -- */
 
-function crônica(texto, destaque) {
-  jogo.cronica.push({ ano: jogo.ano, texto, destaque: !!destaque });
+/*
+   O 'tipo' serve ao filtro da crônica: com duzentos e quarenta entradas, achar
+   quem nasceu no meio de trinta obras era impossível. Quem não passa tipo cai
+   em 'vila', que é o cesto do resto.
+*/
+function crônica(texto, destaque, tipo) {
+  jogo.cronica.push({ ano: jogo.ano, texto, destaque: !!destaque, t: tipo || 'vila' });
   if (jogo.cronica.length > 240) jogo.cronica.splice(0, jogo.cronica.length - 240);
 }
 
@@ -1406,7 +1455,7 @@ function desencalhar(p) {
 }
 
 function velocidadeDe(p) {
-  let v = VEL;
+  let v = VEL * jeito(p, 'passo');
   if (faseDaIdade(p.idade) === FASE.CRIANCA) v *= 0.8;
   else if (faseDaIdade(p.idade) === FASE.IDOSO) v *= 0.72;
   if (p.veiculo) v *= VEICULO[p.veiculo].veloc;
@@ -1416,7 +1465,7 @@ function velocidadeDe(p) {
 }
 
 function capacidadeDe(p) {
-  let c = CARGA;
+  let c = CARGA * jeito(p, 'carga');
   if (faseDaIdade(p.idade) === FASE.IDOSO) c *= 0.7;
   if (p.veiculo) c = VEICULO[p.veiculo].carga;
   return c;
@@ -1602,8 +1651,9 @@ function mover(p, ax, ay, dt) {
 
   p.tempoNoAlvo = (p.tempoNoAlvo || 0) + dt;
   // Passa por cima do que as etapas abaixo escreveram em 'travado': o veredito
-  // é o de cima — chegar, não andar.
-  if (p.semAvanco > PACIENCIA || p.tempoNoAlvo > p.prazoNoAlvo) p.travado = 3;
+  // é o de cima — chegar, não andar. Quem é teimoso insiste o dobro.
+  const paciencia = PACIENCIA * jeito(p, 'paciencia');
+  if (p.semAvanco > paciencia || p.tempoNoAlvo > p.prazoNoAlvo * jeito(p, 'paciencia')) p.travado = 3;
   return d;
 }
 
@@ -1783,7 +1833,8 @@ function procurarTrabalho(p) {
      próprio material é barato — e a pedra costuma estar mesmo no morro, longe.
   */
   const rec = OFICIO[p.oficio] && OFICIO[p.oficio].rec ? OFICIO[p.oficio].rec : recursoMaisNecessario();
-  let no = acharNo(p.x, p.y, rec, 45) || acharNo(p.x, p.y, null, 16);
+  const longe = Math.round(45 * jeito(p, 'alcance'));
+  let no = acharNo(p.x, p.y, rec, longe) || acharNo(p.x, p.y, null, 16);
   if (no) {
     p.oficio = no.tipo === 'madeira' ? 'lenhador' : no.tipo === 'comida' ? 'colhedor' : 'pedreiro';
     p.estado = 'indoColetar';
@@ -1972,6 +2023,7 @@ function atualizarPessoa(p, dt) {
       if (p.alvo.tipo === 'madeira') eficiencia *= bonusMadeira();
       // Ferramenta forjada na oficina: quem colhe com ela rende mais, e a
       // ferramenta se gasta. É o que dá demanda contínua à oficina.
+      eficiencia *= jeito(p, 'colheita');
       if (temNoGalpao('ferramenta')) {
         const gasta = Math.min(jogo.recursos.ferramenta, FERRO_NO_MATO * dt);
         jogo.recursos.ferramenta -= gasta;
@@ -1980,6 +2032,7 @@ function atualizarPessoa(p, dt) {
       }
       const tirado = gastarNo(p.alvo.tx, p.alvo.ty, TAXA * eficiencia * dt);
       p.carga += tirado;
+      if (p.feitos) p.feitos.colhido += tirado;
       if (tirado <= 0) {
         if (p.carga > 0.5) p.estado = 'voltando';
         else {
@@ -2047,7 +2100,9 @@ function atualizarPessoa(p, dt) {
         anotarFluxo('tabua', 'obras', gasta);
         ritmo = OBRA_COM_TABUA;
       }
-      pr.progresso += (dt * ritmo) / pr.def.tempo;
+      const antes = pr.progresso;
+      pr.progresso += (dt * ritmo * jeito(p, 'obra')) / pr.def.tempo;
+      if (p.feitos) p.feitos.obras += pr.progresso - antes;
       if (pr.progresso >= 1) { concluirPredio(pr); p.estado = 'ocioso'; p.alvo = null; }
       break;
     }
@@ -2081,7 +2136,7 @@ function atualizarPessoa(p, dt) {
         } else { obra.feitos = obra.tiles.length; }   // sem pedra, a obra para
         if (obra.feitos >= obra.tiles.length) {
           jogo.obrasEstrada.splice(jogo.obrasEstrada.indexOf(obra), 1);
-          crônica('Uma estrada nova ligou a vila.');
+          crônica('Uma estrada nova ligou a vila.', false, 'obra');
           p.estado = 'ocioso'; p.alvo = null;
         } else p.estado = 'indoEstrada';
       }
@@ -2101,7 +2156,7 @@ function atualizarPessoa(p, dt) {
       const pr = p.alvo;
       if (!pr || pr.trabalhador !== p.id) { p.estado = 'ocioso'; p.alvo = null; break; }
       p.passo += dt * 0.6;
-      const rende = (fase === FASE.IDOSO ? 0.72 : 1) * (p.instruido ? 1.2 : 1);
+      const rende = (fase === FASE.IDOSO ? 0.72 : 1) * (p.instruido ? 1.2 : 1) * jeito(p, 'posto');
       if (pr.def.pesca) {
         // Peixe não tem estação: só a tempestade tira o barco da água.
         const mar = jogo.clima === 'tempestade' ? 0.25 : 1;
@@ -2170,7 +2225,7 @@ function concluirPredio(pr) {
   pr.progresso = 1;
   invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
   flutuar(pr.cx, pr.cy - 20, pr.def.nome + ' pronto!');
-  crônica(pr.def.nome + ' concluído.', true);
+  crônica(pr.def.nome + ' concluído.', true, 'obra');
   if (pr.def.moradia) chegarFamilia(pr);
   atualizarHUD();
   salvar();
@@ -2233,7 +2288,7 @@ function chegarFamilia(casa) {
     const b = pessoaPorId(casa.moradores[casa.moradores.length - tamanho + 1]);
     if (a && b) { a.conjugeId = b.id; b.conjugeId = a.id; }
   }
-  crônica('A família ' + sobrenome + ' se mudou para a vila: ' + nomes.join(', ') + '.', true);
+  crônica('A família ' + sobrenome + ' se mudou para a vila: ' + nomes.join(', ') + '.', true, 'vida');
 }
 
 
@@ -2671,7 +2726,7 @@ function construirAuto(chave) {
   // uma noite de sono viraria uma cidade parada esperando resposta.
   if (jogo.autoAprovar || emRecuperacao) {
     if (!erguerPredio(chave, lote.tx, lote.ty)) return false;
-    crônica('O conselho ergueu ' + (def.nome === 'Casa' ? 'uma casa' : 'um(a) ' + def.nome) + '.');
+    crônica('O conselho ergueu ' + (def.nome === 'Casa' ? 'uma casa' : 'um(a) ' + def.nome) + '.', false, 'obra');
     return true;
   }
 
@@ -2703,7 +2758,7 @@ function abrirPedido(chave, tx, ty, quem, motivo) {
   };
   jogo.pedidos.push(ped);
   if (!emRecuperacao) { mostrarPedido(); atualizarBadgePedidos(); }
-  crônica(ped.quem + ' ' + ped.motivo + ' ' + def.nome + '.');
+  crônica(ped.quem + ' ' + ped.motivo + ' ' + def.nome + '.', false, 'obra');
   return ped;
 }
 
@@ -2715,13 +2770,13 @@ function responderPedido(sim, id) {
   if (!ped) return;
   jogo.pedidos.splice(jogo.pedidos.indexOf(ped), 1);
   const def = PREDIO[ped.chave];
-  if (!sim) { crônica('Você recusou a obra de ' + def.nome + '.'); aviso('Pedido recusado'); }
+  if (!sim) { crônica('Você recusou a obra de ' + def.nome + '.', false, 'obra'); aviso('Pedido recusado'); }
   else if (!areaValida(ped.tx, ped.ty, def.w, def.h) || !encostaNaRua(ped.tx, ped.ty, def.w, def.h)) {
     aviso('O terreno já não serve — eles vão procurar outro');
   } else if (!erguerPredio(ped.chave, ped.tx, ped.ty)) {
     aviso('Faltou recurso para começar');
   } else {
-    crônica('Você autorizou ' + def.nome + '.', true);
+    crônica('Você autorizou ' + def.nome + '.', true, 'obra');
     aviso('Obra autorizada');
   }
   atualizarBadgePedidos();
@@ -2819,10 +2874,18 @@ function distribuirOficios() {
     lenhador: !base || !!acharNo(base.cx, base.cy, 'madeira', 45),
     pedreiro: !base || !!acharNo(base.cx, base.cy, 'pedra', 45),
   };
+  /*
+     E o teto do galpão zera o peso. Os pesos são RELATIVOS: com os três
+     recursos fartos, todos caíam para 0,5 e a repartição continuava a mesma —
+     trinta e três colhedores trazendo comida que transbordava e apodrecia. Com
+     o galpão cheio daquele recurso, quase ninguém vai atrás dele.
+  */
+  const teto = tetoEstoque();
+  const cheio = k => r[k] >= teto * 0.9 ? 0.08 : 1;
   const peso = {
-    colhedor: 1.0 * (r.comida < pop * 8 ? 2.4 : r.comida > pop * 30 ? 0.5 : 1),
-    lenhador: 1.0 * (r.madeira < 120 ? 2.0 : r.madeira > 700 ? 0.5 : 1),
-    pedreiro: 0.8 * (r.pedra < 80 ? 2.4 : r.pedra > 600 ? 0.4 : 1),
+    colhedor: 1.0 * (r.comida < pop * 8 ? 2.4 : r.comida > pop * 30 ? 0.5 : 1) * cheio('comida'),
+    lenhador: 1.0 * (r.madeira < 120 ? 2.0 : r.madeira > 700 ? 0.5 : 1) * cheio('madeira'),
+    pedreiro: 0.8 * (r.pedra < 80 ? 2.4 : r.pedra > 600 ? 0.4 : 1) * cheio('pedra'),
   };
   for (const of in peso) if (!alcancavel[of]) peso[of] = 0;
   const soma = peso.colhedor + peso.lenhador + peso.pedreiro;
@@ -2854,6 +2917,112 @@ function distribuirOficios() {
 // O conselho decide sozinho o que a vila precisa (item 7). A regra de ouro
 // agora é urbana: prédio nenhum sai do papel longe da rua, então quando falta
 // lote com testada, a vila abre rua antes de mais nada.
+/* --------------------------------------------------------------- crises -- */
+/*
+   A única adversidade era a fome, e fome é consequência de má administração,
+   não acontecimento. Faltava o que não se controla — e num jogo sem exército
+   é daí que vem a tensão.
+
+   Três crises, todas passageiras e todas sobreviveis: a vila apanha, se
+   recupera, e a crônica ganha o que contar. Elas NÃO matam vila: seca corta a
+   lavoura pela metade, doença aumenta a mortalidade dos velhos, incêndio come
+   um prédio. Nenhuma tira o chão de quem está começando — abaixo de vinte
+   moradores nada acontece.
+*/
+const CRISES = {
+  seca: {
+    nome: 'seca', icone: '🌵',
+    aviso: 'A chuva não veio: a lavoura rende metade.',
+    fim: 'A seca passou — a terra voltou a dar.',
+    dias: [30, 90],
+  },
+  doenca: {
+    nome: 'doença', icone: '🤒',
+    aviso: 'Uma febre corre pela vila. Os velhos são os mais atingidos.',
+    fim: 'A febre passou.',
+    dias: [20, 60],
+  },
+};
+
+const POP_MINIMA_CRISE = 20;         // vila pequena demais não apanha
+const CHANCE_CRISE_ANO = 0.55;       // pouco mais de uma a cada dois anos
+const CHANCE_INCENDIO_ANO = 0.40;
+
+const emCrise = id => jogo.crise && jogo.crise.id === id;
+const fatorSeca = () => emCrise('seca') ? 0.5 : 1;
+const fatorDoenca = () => emCrise('doenca') ? 3.2 : 1;
+
+/* Roda uma vez por dia de jogo. */
+function tickCrises() {
+  // A que está correndo acaba no prazo.
+  if (jogo.crise) {
+    jogo.crise.faltam--;
+    if (jogo.crise.faltam <= 0) {
+      const c = CRISES[jogo.crise.id];
+      jogo.crise = null;
+      crônica(c.fim, true, 'crise');
+      if (!emRecuperacao) aviso(c.icone + ' ' + c.fim);
+    }
+    return;                            // uma de cada vez: duas juntas é castigo
+  }
+  if (popAtual() < POP_MINIMA_CRISE) return;
+
+  // Seca ou doença.
+  if (rnd() < CHANCE_CRISE_ANO / DIAS_NO_ANO) {
+    const id = rnd() < 0.5 ? 'seca' : 'doenca';
+    const c = CRISES[id];
+    jogo.crise = { id, faltam: inteiroEntre(c.dias[0], c.dias[1]) };
+    crônica(c.icone + ' ' + c.aviso, true, 'crise');
+    if (!emRecuperacao) aviso(c.icone + ' ' + c.aviso);
+    return;
+  }
+
+  // Incêndio: come um prédio de pé, sorteado. O Centro nunca queima — perder
+  // o Centro seria perder a vila, e crise que acaba com o jogo não é crise.
+  if (rnd() < CHANCE_INCENDIO_ANO / DIAS_NO_ANO) {
+    const candidatos = jogo.predios.filter(p => p.progresso >= 1 && p.chave !== 'centro');
+    if (!candidatos.length) return;
+    const pr = candidatos[Math.floor(rnd() * candidatos.length)];
+    incendiar(pr);
+  }
+}
+
+/*
+   O incêndio não apaga o prédio do mapa: derruba a obra para um terço e
+   devolve os moradores para a rua. Reconstruir é mais barato que erguer do
+   zero, e o canteiro fica lá, à vista, cobrando providência.
+*/
+function incendiar(pr) {
+  pr.progresso = 0.33;
+  pr.concluido = false;
+  const desabrigados = pr.moradores.slice();
+  pr.moradores = [];
+  for (const id of desabrigados) {
+    const p = pessoaPorId(id);
+    if (p) p.casaId = null;
+  }
+  if (pr.trabalhador) {
+    const t = pessoaPorId(pr.trabalhador);
+    if (t) { t.fazendaId = null; t.oficio = 'nenhum'; t.estado = 'ocioso'; }
+    pr.trabalhador = null;
+  }
+  // Quem ficou sem teto procura outro, se houver.
+  for (const id of desabrigados) {
+    const p = pessoaPorId(id);
+    if (!p) continue;
+    const casa = casaComVaga();
+    if (!casa) break;
+    p.casaId = casa.id; casa.moradores.push(p.id);
+  }
+  const texto = '🔥 Um incêndio consumiu ' + pr.def.nome +
+    (desabrigados.length ? ' — ' + desabrigados.length + ' morador(es) ficaram sem teto' : '') + '.';
+  crônica(texto, true, 'crise');
+  if (!emRecuperacao) {
+    aviso(texto);
+    flutuar(pr.cx, pr.cy - 20, '🔥 incêndio');
+  }
+}
+
 /* ------------------------------------------------------------- conselho --- */
 /*
    A meta da vila é uma só: crescer o número de pessoas sem passar fome. Tudo
@@ -2977,7 +3146,15 @@ function conselho() {
   }
 
   // --- 3. Produção acompanhando o tamanho da vila ---
-  if (producao < Math.ceil(pop / 6) && !fazendaVazia && !fazendaEmObra) {
+  /*
+     Lavoura a mais com o galpão cheio é trabalho jogado fora duas vezes: o
+     adulto preso na enxada e a comida apodrecendo por falta de espaço. O
+     painel media 102 de comida por dia indo para o lixo numa vila que já tinha
+     treze lavouras para oitenta e três bocas. Com a despensa perto do teto, a
+     vila para de plantar e vai fazer outra coisa.
+  */
+  const despensaCheia = jogo.recursos.comida >= tetoEstoque() * 0.85;
+  if (producao < Math.ceil(pop / 6) && !despensaCheia && !fazendaVazia && !fazendaEmObra) {
     if (jaTem('cais') && rnd() < 0.4 && decidirObra('cais')) return;
     if (pop >= 14 && decidirObra('fazendaGrande')) return;
     if (decidirObra('fazenda')) return;
@@ -3001,6 +3178,16 @@ function conselho() {
   // offline (onde ninguém anda) a conta de 'gente longe' nunca baixava e a vila
   // acordava com treze galpões.
   if (longe >= 3 && contar('deposito') < Math.ceil(pop / 12) && decidirObra('deposito')) return;
+
+  /*
+     Galpão cheio é recurso indo para o lixo — o painel media isso todo dia, com
+     dezenas de comida por dia perdidas numa vila que tinha sete depósitos. O
+     gatilho antigo era "gente longe de um galpão", que é outra coisa: mede
+     distância, não espaço. Agora a falta de ESPAÇO também manda construir.
+  */
+  const teto = tetoEstoque();
+  const transbordando = Object.keys(jogo.recursos).some(k => jogo.recursos[k] >= teto * 0.92);
+  if (transbordando && contar('deposito') < Math.ceil(pop / 6) + 2 && decidirObra('deposito')) return;
 
   /*
      Oficina e serraria não são mais "uma e pronto": elas alimentam a cadeia de
@@ -3041,7 +3228,7 @@ function decidirObra(chave) {
   if (def.beiraDagua) {
     const agua = aguaMaisProxima();
     if (agua && crescerRuaRumo(agua.tx, agua.ty, 9)) {
-      crônica('Sem cais possível, os aldeões pediram uma rua até a água.');
+      crônica('Sem cais possível, os aldeões pediram uma rua até a água.', false, 'obra');
       return true;
     }
     return false;
@@ -3050,13 +3237,13 @@ function decidirObra(chave) {
     // Sem lote encostado na rocha: o que falta é rua até o morro.
     const morro = rochaMaisProxima();
     if (morro && crescerRuaRumo(morro.tx, morro.ty, 14)) {
-      crônica('Para abrir a mina, os aldeões pediram uma rua até o morro.');
+      crônica('Para abrir a mina, os aldeões pediram uma rua até o morro.', false, 'obra');
       return true;
     }
     return false;
   }
   if (crescerRua()) {
-    crônica('Faltou terreno com frente para a rua — os aldeões pediram mais uma.');
+    crônica('Faltou terreno com frente para a rua — os aldeões pediram mais uma.', false, 'obra');
     aviso('🛣️ Sem lote livre: a vila está abrindo rua nova');
     return true;
   }
@@ -3175,7 +3362,7 @@ function tickDia() {
     if (!t) continue;
     if (principalDaMalha && pedacoDoTile(t[0], t[1]) && pedacoDoTile(t[0], t[1]) !== principalDaMalha) {
       jogo.obrasEstrada.splice(i, 1);
-      crônica('Uma obra de rua ficou isolada da cidade e foi abandonada.');
+      crônica('Uma obra de rua ficou isolada da cidade e foi abandonada.', false, 'obra');
     }
   }
 
@@ -3186,7 +3373,7 @@ function tickDia() {
     const ped = jogo.pedidos[i];
     const def = PREDIO[ped.chave];
     if (!areaValida(ped.tx, ped.ty, def.w, def.h)) {
-      crônica('O terreno pedido para ' + def.nome + ' já foi ocupado — o pedido caiu.');
+      crônica('O terreno pedido para ' + def.nome + ' já foi ocupado — o pedido caiu.', false, 'obra');
       jogo.pedidos.splice(i, 1);
     }
   }
@@ -3197,8 +3384,8 @@ function tickDia() {
     p.idade += 1 / DIAS_NO_ANO;
     const depois = faseDaIdade(p.idade);
     if (antes !== depois) {
-      if (depois === FASE.ADULTO) { crônica(nomeCompleto(p) + ' virou adulto(a) aos ' + MAIORIDADE + '.'); p.estado = 'ocioso'; }
-      if (depois === FASE.IDOSO) crônica(nomeCompleto(p) + ' passou dos ' + VELHICE + ' e já pega mais leve.');
+      if (depois === FASE.ADULTO) { crônica(nomeCompleto(p) + ' virou adulto(a) aos ' + MAIORIDADE + '.', false, 'vida'); p.estado = 'ocioso'; }
+      if (depois === FASE.IDOSO) crônica(nomeCompleto(p) + ' passou dos ' + VELHICE + ' e já pega mais leve.', false, 'vida');
     }
   }
 
@@ -3212,7 +3399,7 @@ function tickDia() {
     a.conjugeId = b.id; b.conjugeId = a.id;
     if (!a.casaId) a.casaId = b.casaId;
     if (!b.casaId) b.casaId = a.casaId;
-    crônica(a.nome + ' ' + a.sobrenome + ' e ' + b.nome + ' ' + b.sobrenome + ' se casaram.', true);
+    crônica(a.nome + ' ' + a.sobrenome + ' e ' + b.nome + ' ' + b.sobrenome + ' se casaram.', true, 'vida');
   }
 
   // Nascimentos: casais com casa e comida. Taxa calibrada para ~3% ao ano,
@@ -3253,9 +3440,11 @@ function tickDia() {
       });
       bebe.casaId = casa.id; casa.moradores.push(bebe.id);
       bebe.instruido = temEscola();   // quem nasce com escola aberta rende mais
+      if (mae.feitos) mae.feitos.filhos++;
+      if (pai && pai.feitos) pai.feitos.filhos++;
       bebe.estado = 'brincando';
       nascidos.push(bebe);
-      crônica('Nasceu ' + bebe.nome + ', filho(a) de ' + mae.nome + (pai ? ' e ' + pai.nome : '') + '.', true);
+      crônica('Nasceu ' + bebe.nome + ', filho(a) de ' + mae.nome + (pai ? ' e ' + pai.nome : '') + '.', true, 'vida');
     }
   }
 
@@ -3283,13 +3472,16 @@ function tickDia() {
     if (p.idade > p.vidaMax) chance = 0.35 + (p.idade - p.vidaMax) * 0.06;
     else if (p.idade > p.vidaMax - 10) chance = 0.05;
     if (jogo.fome) chance += faseDaIdade(p.idade) === FASE.ADULTO ? 0.05 : 0.14;
+    // A febre não mata quem é jovem e forte: ela leva quem já estava fraco.
+    if (emCrise('doenca')) chance *= faseDaIdade(p.idade) === FASE.IDOSO ? fatorDoenca() : 1.4;
     if (rnd() < chance / DIAS_NO_ANO) {
       mortos.push(p);
-      crônica(nomeCompleto(p) + ' morreu aos ' + Math.floor(p.idade) + '.', true);
+      crônica(nomeCompleto(p) + ' morreu aos ' + Math.floor(p.idade) + '.', true, 'vida');
       removerPessoa(p);
     }
   }
 
+  tickCrises();
   fecharDiaDoFluxo();
   conselho();
   conferirMissoes();
@@ -3458,6 +3650,33 @@ addEventListener('orientationchange', () => setTimeout(redimensionar, 150));
 
 const telaParaMundo = (sx, sy) => ({ x: cam.x + (sx - W / 2) / cam.z, y: cam.y + (sy - H / 2) / cam.z });
 
+/*
+   Seguir um aldeão. A câmera vai atrás dele com folga — puxar direto para o
+   centro a cada quadro dá enjoo, e a vila fica parecendo que balança.
+   Qualquer arrasto seu solta o seguimento na hora: quem manda na câmera é você.
+*/
+let seguindo = null;
+function seguirPessoa(p) {
+  seguindo = p || null;
+  if (seguindo) aviso('👁 Seguindo ' + nomeCompleto(seguindo));
+}
+function soltarSeguimento() {
+  if (!seguindo) return;
+  seguindo = null;
+  aviso('Câmera solta');
+}
+function moverCameraSeguindo(dt) {
+  if (!seguindo) return;
+  if (!jogo.pessoas.includes(seguindo)) {   // morreu ou saiu
+    aviso('👁 ' + nomeCompleto(seguindo) + ' não está mais entre nós');
+    seguindo = null;
+    return;
+  }
+  const k = Math.min(1, dt * 3.2);
+  cam.x += (seguindo.x - cam.x) * k;
+  cam.y += (seguindo.y - cam.y) * k;
+}
+
 const toques = new Map();
 let arraste = null, pinca = null;
 
@@ -3489,6 +3708,7 @@ cv.addEventListener('touchmove', e => {
   } else if (arraste) {
     const t = [...e.changedTouches].find(t => t.identifier === arraste.id);
     if (t) {
+      if (arraste.dist > 12) soltarSeguimento();
       cam.x -= (t.clientX - arraste.x) / cam.z; cam.y -= (t.clientY - arraste.y) / cam.z;
       arraste.dist += Math.hypot(t.clientX - arraste.x, t.clientY - arraste.y);
       arraste.x = t.clientX; arraste.y = t.clientY;
@@ -3730,7 +3950,7 @@ function moverPredioPara(pr, tx, ty) {
   pr.cx = (tx + pr.def.w / 2) * TILE; pr.cy = (ty + pr.def.h / 2) * TILE;
   marcarOcupacao(pr, true);
   invalidarArea(tx, ty, pr.def.w, pr.def.h);
-  crônica(pr.def.nome + ' mudou de lugar.');
+  crônica(pr.def.nome + ' mudou de lugar.', false, 'obra');
   aviso(pr.def.nome + ' mudou de lugar');
   salvar();
   return true;
@@ -3767,7 +3987,7 @@ function melhorarPredio(pr) {
   // Posto que deixou de existir volta a ficar vago.
   if (!nova.fazenda && !nova.posto) pr.trabalhador = null;
   fecharFolhas();
-  crônica(nomeVelho + ' virou ' + nova.nome + '.', true);
+  crônica(nomeVelho + ' virou ' + nova.nome + '.', true, 'obra');
   aviso('⬆️ ' + nomeVelho + ' virou ' + nova.nome);
   flutuar(pr.cx, pr.cy - 22, '⬆️ ' + nova.nome);
   atualizarHUD(); salvar();
@@ -3778,7 +3998,19 @@ let demolirPedido = null;
 function confirmarDemolicao(pr) {
   if (demolirPedido !== pr) {
     demolirPedido = pr;
-    aviso('Toque em Demolir de novo para confirmar');
+    // Demolir casa habitada deixava gente sem teto em silêncio. Agora o aviso
+    // diz quantos, e se há para onde eles irem.
+    const moradores = pr.moradores.length;
+    if (moradores) {
+      const vagas = popMax() - pr.def.pop - popAtual();
+      aviso(moradores + ' morador(es) perdem a casa' +
+        (vagas >= moradores ? ' — há teto para eles' : ' e a vila NÃO tem teto sobrando') +
+        '. Toque de novo para confirmar');
+    } else if (pr.trabalhador) {
+      aviso('Alguém trabalha aqui e vai ficar sem posto. Toque de novo para confirmar');
+    } else {
+      aviso('Toque em Demolir de novo para confirmar');
+    }
     for (const b of el('predio-menu-acoes').children) {
       if (b.textContent.indexOf('Demolir') >= 0) b.querySelector('span:nth-child(2)').textContent = 'Confirmar';
     }
@@ -3809,7 +4041,7 @@ function demolirPredio(pr) {
     p.casaId = casa.id; casa.moradores.push(p.id);
   }
   fecharFolhas();
-  crônica(pr.def.nome + ' foi demolido — voltou ' + custoTexto(volta) + '.', true);
+  crônica(pr.def.nome + ' foi demolido — voltou ' + custoTexto(volta) + '.', true, 'obra');
   aviso('🧨 ' + pr.def.nome + ' demolido · ' + custoTexto(volta));
   atualizarHUD(); salvar();
 }
@@ -3887,7 +4119,7 @@ const elRes = { madeira: el('r-madeira'), comida: el('r-comida'), pedra: el('r-p
                 tabua: el('r-tabua'), ferramenta: el('r-ferramenta'), pop: el('r-pop') };
 const elPovo = { criancas: el('p-criancas'), adultos: el('p-adultos'), idosos: el('p-idosos'), sem: el('p-sem'), dormindo: el('p-dormindo') };
 const elCal = { relogio: el('c-relogio'), data: el('c-data'), estacao: el('c-estacao'),
-                clima: el('c-clima'), veloc: el('c-veloc') };
+                clima: el('c-clima'), veloc: el('c-veloc'), crise: el('c-crise') };
 
 elCal.veloc.onclick = () => {
   velocidade = VELOCIDADES[(VELOCIDADES.indexOf(velocidade) + 1) % VELOCIDADES.length];
@@ -3932,6 +4164,13 @@ function atualizarHUD() {
   elCal.data.textContent = dataTexto();
   elCal.estacao.textContent = est.icone + ' ' + est.nome;
   elCal.veloc.textContent = velocidade + '×';
+  // A crise fica ao lado do clima: é a informação que muda o que fazer agora.
+  const cr = jogo.crise && CRISES[jogo.crise.id];
+  elCal.crise.style.display = cr ? '' : 'none';
+  if (cr) {
+    elCal.crise.textContent = cr.icone + ' ' + cr.nome;
+    elCal.crise.title = cr.aviso + ' (mais ' + jogo.crise.faltam + ' dia(s))';
+  }
   // Amarelo quando a vila está grande demais para entregar a velocidade pedida.
   elCal.veloc.classList.toggle('sufocado', velocidade > 1 && passosNoQuadro < velocidade);
   elCal.clima.textContent = cli.icone;
@@ -4224,7 +4463,7 @@ function confirmarRua() {
     return;
   }
   jogo.obrasEstrada.push({ tiles: plano.tiles, feitos: 0, t: 0 });
-  crônica('Você mandou abrir uma rua de ' + plano.tiles.length + ' trechos.');
+  crônica('Você mandou abrir uma rua de ' + plano.tiles.length + ' trechos.', false, 'obra');
   let msg = 'Rua encomendada: ' + plano.tiles.length + ' trechos, ' + plano.custo + '⛏';
   if (plano.folga) msg += ' · ' + plano.folga + ' bloco(s) a menos de ' + FOLGA_ENTRE_RUAS + ' de outra via';
   if (plano.parouPor) msg += ' · parou em ' + plano.parouPor;
@@ -4287,27 +4526,107 @@ el('btn-apagar').onclick = () => {
   novaVila(0); fecharFolhas(); aviso('Progresso apagado');
 };
 
-el('btn-cronica').onclick = () => {
+const FILTROS_CRONICA = [
+  { id: 'tudo',  nome: 'tudo' },
+  { id: 'vida',  nome: '👶 vida' },
+  { id: 'obra',  nome: '🏗️ obras' },
+  { id: 'crise', nome: '⚠️ crises' },
+  { id: 'vila',  nome: '🏘️ vila' },
+  { id: 'notaveis', nome: '⭐ notáveis' },
+];
+let filtroCronica = 'tudo';
+
+function montarCronica() {
   el('cronica-titulo').textContent = '📜 Crônica de ' + jogo.nome;
+
+  const barra = el('cronica-filtro');
+  barra.innerHTML = '';
+  for (const f of FILTROS_CRONICA) {
+    const c = document.createElement('div');
+    c.className = 'chip' + (filtroCronica === f.id ? ' on' : '');
+    c.textContent = f.nome;
+    c.onclick = () => { filtroCronica = f.id; montarCronica(); };
+    barra.appendChild(c);
+  }
+
   const lista = el('cronica-lista');
   lista.innerHTML = '';
-  const evs = jogo.cronica.slice(-80).reverse();
-  if (!evs.length) lista.innerHTML = '<div class="ev">A vila ainda não tem história para contar.</div>';
+
+  if (filtroCronica === 'notaveis') { montarNotaveis(lista); fecharFolhas(); el('cronica').classList.add('on'); return; }
+
+  const todos = jogo.cronica.filter(e => filtroCronica === 'tudo' || (e.t || 'vila') === filtroCronica);
+  const evs = todos.slice(-80).reverse();
+  if (!evs.length) {
+    lista.innerHTML = '<div class="ev">' +
+      (filtroCronica === 'tudo' ? 'A vila ainda não tem história para contar.'
+                                : 'Nada deste tipo aconteceu ainda.') + '</div>';
+  }
   for (const e of evs) {
     const d = document.createElement('div');
     d.className = 'ev';
-    d.style.borderLeftColor = e.destaque ? 'rgba(220,190,120,.8)' : 'rgba(150,200,140,.4)';
+    d.style.borderLeftColor = e.t === 'crise' ? 'rgba(224,120,90,.9)'
+                            : e.destaque ? 'rgba(220,190,120,.8)' : 'rgba(150,200,140,.4)';
     d.innerHTML = '<span class="ano">ano ' + e.ano + '</span>' + e.texto;
     lista.appendChild(d);
   }
   fecharFolhas(); el('cronica').classList.add('on');
-};
+}
+
+/*
+   OS NOTÁVEIS. Quem fez mais pela vila, com o que fez escrito ao lado.
+
+   A conta soma coisas de naturezas diferentes — obra erguida, material trazido,
+   filho criado — porque a graça é que caminhos diferentes levem ao mesmo lugar:
+   o construtor calado e a lenhadora trabalhadora disputam a mesma lista.
+*/
+function pontosDe(p) {
+  const f = p.feitos || { obras: 0, colhido: 0, filhos: 0 };
+  return f.obras * 40 + f.colhido * 0.12 + f.filhos * 8 + Math.floor(p.idade) * 0.15;
+}
+
+function montarNotaveis(lista) {
+  const gente = jogo.pessoas
+    .filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA)
+    .map(p => ({ p, pts: pontosDe(p) }))
+    .sort((a, b) => b.pts - a.pts)
+    .slice(0, 12);
+
+  if (!gente.length) {
+    lista.innerHTML = '<div class="ev">Ninguém fez história ainda.</div>';
+    return;
+  }
+
+  gente.forEach(({ p, pts }, i) => {
+    const f = p.feitos || { obras: 0, colhido: 0, filhos: 0 };
+    const feitos = [];
+    if (f.obras >= 0.05) feitos.push('🏗️ ' + (Math.round(f.obras * 100) / 100) + ' obra(s)');
+    if (f.colhido >= 1) feitos.push('🧺 ' + Math.round(f.colhido) + ' de material');
+    if (f.filhos) feitos.push('👶 ' + f.filhos + ' filho(s)');
+
+    const d = document.createElement('div');
+    d.className = 'ev';
+    d.style.borderLeftColor = i === 0 ? 'rgba(255,214,120,.95)' : 'rgba(150,200,140,.45)';
+    d.style.cursor = 'pointer';
+    d.innerHTML =
+      '<span class="ano">' + (i + 1) + 'º</span>' +
+      '<b>' + nomeCompleto(p) + '</b> · ' + Math.floor(p.idade) + ' anos · ' +
+      OFICIO[p.oficio].nome +
+      '<div style="opacity:.7;font-size:11.5px;margin-top:2px">' + p.traco +
+        (TRACOS[p.traco] ? ' (' + TRACOS[p.traco].desc + ')' : '') + '</div>' +
+      (feitos.length ? '<div style="opacity:.85;font-size:11.5px">' + feitos.join(' · ') + '</div>' : '');
+    d.onclick = () => { fecharFolhas(); abrirFicha(p); };
+    lista.appendChild(d);
+  });
+}
+
+el('btn-cronica').onclick = montarCronica;
 el('cronica-fechar').onclick = fecharFolhas;
 // Com a vila espalhada por duzentos tiles, achar o Centro de novo virava
 // caçada. Um toque traz a câmera de volta.
 el('btn-centro').onclick = () => {
   const c = centroDaVila();
   if (!c) return;
+  soltarSeguimento();
   cam.x = c.cx; cam.y = c.cy;
   fecharFolhas();
   aviso('🏰 ' + jogo.nome);
@@ -4319,10 +4638,18 @@ el('missoes-fechar').onclick = fecharFolhas;
 el('predio-menu-fechar').onclick = fecharFolhas;
 el('relatorio-fechar').onclick = fecharFolhas;
 el('ficha-fechar').onclick = fecharFolhas;
+el('ficha-seguir').onclick = () => {
+  if (!fichaAberta) return;
+  if (seguindo === fichaAberta) soltarSeguimento(); else seguirPessoa(fichaAberta);
+  fecharFolhas();
+};
 el('place-ok').onclick = confirmarColocacao;
 el('place-no').onclick = cancelarColocacao;
 
+let fichaAberta = null;
+
 function abrirFicha(p) {
+  fichaAberta = p;
   const conj = pessoaPorId(p.conjugeId);
   const casa = jogo.predios.find(pr => pr.id === p.casaId);
   const fase = faseDaIdade(p.idade);
@@ -4334,7 +4661,14 @@ function abrirFicha(p) {
     '<div>' + Math.floor(p.idade) + ' anos · ' + rotulo + '</div>' +
     '<div>' + (p.oficio === 'nenhum' ? 'sem ofício por enquanto'
                               : 'ofício: ' + OFICIO[p.oficio].icone + ' ' + OFICIO[p.oficio].nome) + '</div>' +
-    '<div>jeito: ' + p.traco + '</div>' +
+    '<div>jeito: ' + p.traco + ' <span style="opacity:.6">— ' +
+      (TRACOS[p.traco] ? TRACOS[p.traco].desc : '') + '</span></div>' +
+    (p.feitos && (p.feitos.obras >= 0.05 || p.feitos.colhido >= 1)
+      ? '<div style="opacity:.75">na vida: ' +
+        (p.feitos.obras >= 0.05 ? Math.round(p.feitos.obras * 100) / 100 + ' obra(s) erguida(s)' : '') +
+        (p.feitos.obras >= 0.05 && p.feitos.colhido >= 1 ? ' · ' : '') +
+        (p.feitos.colhido >= 1 ? Math.round(p.feitos.colhido) + ' de material colhido' : '') +
+        '</div>' : '') +
     (p.veiculo ? '<div>anda com: ' + (p.veiculo === 'carroca' ? '🛞 carroça' : '🐴 cavalo') + '</div>' : '') +
     (conj ? '<div>casado(a) com ' + nomeCompleto(conj) + '</div>' : '<div style="opacity:.6">sem par</div>') +
     (casa ? '<div>mora numa casa com ' + casa.moradores.length + ' pessoa(s)</div>' : '<div style="opacity:.6">sem casa</div>') +
@@ -6103,6 +6437,8 @@ function atualizarPovo(dt) {
 function passo(dt) {
   jogo.tempo += dt;
 
+  moverCameraSeguindo(dt);
+
   const v = 420 / cam.z * dt;
   if (teclas.has('a') || teclas.has('arrowleft'))  cam.x -= v;
   if (teclas.has('d') || teclas.has('arrowright')) cam.x += v;
@@ -6405,7 +6741,7 @@ function gravar() {
       v: 2, seed: SEED, salvoEm: jogo.salvoEm,
       cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
-      nome: jogo.nome, velocidade,
+      nome: jogo.nome, velocidade, crise: jogo.crise,
       // A média móvel do livro-caixa também vai no save: sem ela o painel
       // abria dizendo 'ainda sem movimento' por um minuto depois de recarregar.
       fluxo: fluxoMedio,
@@ -6419,7 +6755,8 @@ function gravar() {
       pessoas: jogo.pessoas.map(p => ({ id:p.id, n:p.nome, s:p.sobrenome, sx:p.sexo,
         i:+p.idade.toFixed(2), vm:+p.vidaMax.toFixed(1), tr:p.traco,
         x:Math.round(p.x), y:Math.round(p.y), of:p.oficio, ca:p.casaId, co:p.conjugeId, ve:p.veiculo,
-        pa:p.paiId, ma:p.maeId, g:p.geracao, nas:p.nasceu })),
+        pa:p.paiId, ma:p.maeId, g:p.geracao, nas:p.nasceu,
+        ft:{ obras:+p.feitos.obras.toFixed(2), colhido:Math.round(p.feitos.colhido), filhos:p.feitos.filhos } })),
       ancestrais: jogo.ancestrais,
       estradas: [...jogo.estradas],
       obrasEstrada: jogo.obrasEstrada.map(o => ({ t:o.tiles, f:o.feitos })),
@@ -6446,6 +6783,7 @@ function carregar() {
     jogo.ano = s.ano || 1; jogo.anoFrac = s.anoFrac || 0; jogo.fome = !!s.fome;
     jogo.nome = s.nome || 'Vila Nova';
     jogo.ancestrais = s.ancestrais || [];
+    jogo.crise = s.crise && CRISES[s.crise.id] ? s.crise : null;
     if (s.fluxo) for (const k in s.fluxo) fluxoMedio[k] = s.fluxo[k];
     velocidade = VELOCIDADES.includes(s.velocidade) ? s.velocidade : 1;
     jogo.clima = s.clima || 'limpo';
@@ -6478,7 +6816,11 @@ function carregar() {
     jogo.pessoas = [];
     for (const d of (s.pessoas || [])) {
       const p = criarPessoa({ x:d.x, y:d.y, idade:d.i, sexo:d.sx, nome:d.n, sobrenome:d.s });
-      p.id = d.id; p.vidaMax = d.vm; p.traco = d.tr; p.oficio = d.of || 'nenhum';
+      p.id = d.id; p.vidaMax = d.vm;
+      // Save antigo guardava o jeito como palavra solta; a lista virou objeto.
+      p.traco = TRACOS[d.tr] ? d.tr : escolher(NOMES_TRACOS);
+      p.feitos = d.ft || { obras: 0, colhido: 0, filhos: 0 };
+      p.oficio = d.of || 'nenhum';
       p.casaId = d.ca; p.conjugeId = d.co; p.veiculo = d.ve || null;
       // Save antigo não tem linhagem: quem veio de lá é fundador, sem pais.
       p.paiId = d.pa || null; p.maeId = d.ma || null;
@@ -6529,7 +6871,7 @@ function novaVila(seed) {
   sorteio = (SEED ^ 0x9e3779b9) >>> 0;
   chunks.clear(); cacheBioma.clear(); restante.clear(); ocupado.clear();
   jogo.predios = []; jogo.pessoas = []; jogo.estradas = new Set(); jogo.obrasEstrada = [];
-  jogo.cronica = []; jogo.ancestrais = []; jogo.proxId = 1; proxPredioId = 1;
+  jogo.cronica = []; jogo.ancestrais = []; jogo.crise = null; jogo.proxId = 1; proxPredioId = 1;
   jogo.recursos = { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
   jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.diaAnterior = -1;
@@ -6574,7 +6916,7 @@ function novaVila(seed) {
   // quiser, no menu — mas a vila nasce com nome, não como "a vila".
   jogo.nome = escolher(['Vila', 'Porto', 'Campo', 'Serra', 'Vale', 'Alto']) + ' d' +
     (rnd() < 0.5 ? 'os ' + sn1 : 'e ' + sn2);
-  crônica('As famílias ' + sn1 + ' e ' + sn2 + ' fundaram ' + jogo.nome + '.', true);
+  crônica('As famílias ' + sn1 + ' e ' + sn2 + ' fundaram ' + jogo.nome + '.', true, 'vida');
 
   atualizarHUD(); desenharMinimapa(); gravar();
 }
