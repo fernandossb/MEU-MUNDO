@@ -1094,6 +1094,51 @@ travar sempre nos mesmos rostos.
 
 ---
 
+## As vilas rivais na cor delas
+
+Prédio, rua e gente de uma vila rival passaram a usar exatamente a mesma arte
+que a sua vila — só **tingida na cor dela**. É o pedido direto de "mesmo
+sprite, cor de time": olhar o mapa e saber de quem é aquele canto sem
+precisar ler nada.
+
+**Tingir sem estragar a silhueta.** A forma óbvia — pintar por cima com
+`source-atop` direto no canvas do jogo — não funciona aqui: o terreno por
+baixo já pintou o retângulo inteiro de opaco, então a tinta vazaria para a
+grama nos cantos vazios do sprite (uma casa raramente é um retângulo cheio).
+A correção é desenhar o recorte num canvas em branco à parte, tingir só o que
+ficou opaco ALI — que é exatamente a silhueta, nada mais — e colar o
+resultado por cima do jogo.
+
+**Prédio e gente têm caches diferentes, por motivos diferentes.** Um prédio
+pronto nunca muda de arte: o tingimento dele é feito uma vez e fica guardado
+pelo id para sempre. A gente troca de quadro de passo e de direção o tempo
+todo, então tingi-la é sempre um rascunho descartável, refeito a cada quadro
+— mas são poucas (teto de 28 por vila), então o custo não incomoda.
+
+**A rua era o problema de verdade.** Ela não tem id fixo como um prédio — é
+um tile por vez, potencialmente centenas visíveis ao mesmo tempo — e a
+primeira versão refazia o desenho inteiro (limpar, onze `fillRect`, duas
+trocas de modo de composição) a cada quadro, para cada tile. Medido: **34ms
+só nisso**, com uma vila de território médio à vista — sozinho, mais que o
+quadro inteiro de 60fps (16,6ms). A aparência de um tile só depende de quatro
+booleanos (vizinho a norte/sul/leste/oeste) e é sempre a MESMA até a malha
+daquele canto crescer, então cada tile é assado uma vez, num canvas próprio,
+e guardado — o mesmo truque que os pedaços de terreno já usam. Nos quadros
+seguintes o que roda é um `drawImage` só; o cache invalida sozinho quando a
+vizinhança muda. Depois do ajuste: **34ms → menos de 1ms**.
+
+**A gente das vizinhas é decorativa, de propósito.** Dar população de
+verdade a cada vila rival — com ofício, fome, pathfinding — multiplicaria a
+simulação inteira pelo número de vilas, e é exatamente isso que a decisão de
+"modelo, não segunda simulação" (Fase 7) evita. O que faltava era só vida
+visível. Cada vila mantém uma fração pequena da população real como figuras
+sem estado de jogo nenhum — sem emprego, sem fome — que só caminham de um
+ponto a outro dentro do próprio território, devagar, com teto de 28 por
+vila. A cor entra do mesmo jeito que no prédio e na rua: mesmo sprite do seu
+aldeão, tingido.
+
+---
+
 ## Estrutura
 
 ```

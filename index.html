@@ -2782,7 +2782,7 @@ function criarRivais(quantas) {
       pop: 8, comida: 380, madeira: 220, pedra: 80,
       lavouras: 0, casas: 1,
       pressao: 0, migra: 0, viva: true, fome: false,
-      predios: [], ruas: [], blocos: [],
+      predios: [], ruas: [], blocos: [], gente: [],
     };
     // Nome repetido entre vizinhas confunde mais do que enfeita.
     while (jogo.vilas.some(o => o.nome === v.nome))
@@ -2813,6 +2813,7 @@ function fundarVilaRival(v) {
   erguerNaVilaRival(v, 'centro');
   erguerNaVilaRival(v, 'casa');
   anelDoQuarteirao(v, ...quarteiraoDe(v.tx, v.ty));
+  sincronizarGenteRival(v);
 }
 
 /* ------------------------------------------------------------ território - */
@@ -2939,6 +2940,8 @@ function diaDaVilaRival(v) {
   if (!v.fome && dias > 60 && v.pop < v.casas * 5 && rnd() < 0.26 * v.pop / 2 / DIAS_NO_ANO)
     v.pop++;
   if (rnd() < v.pop * 0.022 / DIAS_NO_ANO) v.pop = Math.max(0, v.pop - 1);   // velhice
+
+  sincronizarGenteRival(v);   // a turma visível acompanha a população nova
 }
 
 /* ------------------------------------------------------------- avançar --- */
@@ -3157,6 +3160,82 @@ function erguerNaVilaRival(v, chave) {
     }
   }
   return false;
+}
+
+/* --------------------------------------------------- os habitantes ------- */
+/*
+   GENTE NA VILA RIVAL — mesmo sprite que o seu aldeão, tingido na cor da
+   vila. É só isso: sem ofício, sem fome, sem idade que avança, sem
+   pathfinding. Dar população de verdade a cada vizinha — com A* e conselho
+   próprios — seria multiplicar a simulação inteira pelo número de vilas,
+   exatamente o que a decisão de "modelo, não segunda simulação" evita (ver
+   a nota grande no topo deste bloco de vilas). O que faltava era só vida
+   visível; isto entrega vida visível.
+
+   O tanto é uma fração pequena da população real, com teto — uma vila de
+   duas mil almas não precisa de duas mil figuras para parecer viva, e cada
+   uma tem o mesmo custo de desenho que um aldeão seu.
+*/
+const GENTE_RIVAL_POR_HABITANTE = 1 / 15;
+const TETO_GENTE_RIVAL = 28;
+
+// Um ponto qualquer dentro do território da vila — é para lá que a figura
+// caminha. Sem território ainda (o instante da fundação), fica junto ao
+// centro dela.
+function pontoNoTerritorioRival(v) {
+  if (!v.blocos.length) return { x: v.tx * TILE, y: v.ty * TILE };
+  const [bx, by] = v.blocos[Math.floor(rnd() * v.blocos.length)].split(',').map(Number);
+  const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
+  return {
+    x: (ox + bx * P + 1 + rnd() * (P - 2)) * TILE,
+    y: (oy + by * P + 1 + rnd() * (P - 2)) * TILE,
+  };
+}
+
+function criarGenteRival(v) {
+  const p0 = pontoNoTerritorioRival(v);
+  return {
+    vila: v.id, x: p0.x, y: p0.y, alvoX: p0.x, alvoY: p0.y,
+    sexo: rnd() < 0.5 ? 'f' : 'm',
+    idade: rnd() < 0.12 ? 5 + rnd() * 7 : 20 + rnd() * 45,
+    dir: 1, ang: 0, passo: rnd() * 10, estado: 'parado', pausa: rnd() * 3,
+  };
+}
+
+// Cresce ou encolhe a turma até acompanhar a população atual, sem passar do
+// teto. Chamado ao fundar a vila e, dali em diante, uma vez por dia de jogo.
+function sincronizarGenteRival(v) {
+  const alvo = Math.min(TETO_GENTE_RIVAL, Math.round(v.pop * GENTE_RIVAL_POR_HABITANTE));
+  while (v.gente.length < alvo) v.gente.push(criarGenteRival(v));
+  if (v.gente.length > alvo) v.gente.length = alvo;
+}
+
+// Anda em linha reta até o alvo, devagar, e descansa um pouco antes de
+// escolher outro. Mesma velocidade e o mesmo incremento de 'passo' que um
+// aldeão seu — é o que faz a perna se mexer no ritmo certo no sprite.
+const VELOCIDADE_GENTE_RIVAL = 16;
+function atualizarGenteRival(dt) {
+  if (!jogo.vilas || !jogo.vilas.length) return;
+  for (const v of rivaisVivas())
+    for (const p of v.gente) {
+      const dx = p.alvoX - p.x, dy = p.alvoY - p.y, d = Math.hypot(dx, dy);
+      if (d < 3) {
+        p.estado = 'parado';
+        p.pausa -= dt;
+        if (p.pausa <= 0) {
+          const alvo = pontoNoTerritorioRival(v);
+          p.alvoX = alvo.x; p.alvoY = alvo.y;
+          p.pausa = 2 + rnd() * 5;
+        }
+      } else {
+        p.estado = 'andando';
+        p.ang = Math.atan2(dy, dx);
+        p.dir = Math.cos(p.ang) >= 0 ? 1 : -1;
+        const passo = Math.min(d, VELOCIDADE_GENTE_RIVAL * dt);
+        p.x += dx / d * passo; p.y += dy / d * passo;
+        p.passo += dt;
+      }
+    }
 }
 
 /* ------------------------------------------------------------ zoneamento -- */
@@ -6441,6 +6520,81 @@ function desenharEstrada(g, tx, ty) {
   }
 }
 
+/*
+   A CALÇADA DE UMA VILA RIVAL — mesmo desenho de 'desenharEstrada', tingido
+   na cor da vila. É uma função à parte, não um parâmetro a mais na de cima:
+   'desenharEstrada' lê direto de 'jogo.estradas' (a SUA malha), e o resto do
+   jogo confia nisso. Duplicar as ~25 linhas de traço é mais barato — e mais
+   seguro — do que abrir uma porta de parâmetro na função mais usada da tela.
+
+   PRIMEIRA VERSÃO redesenhava o tile (limpar + onze fillRect + duas trocas de
+   modo de composição) A CADA QUADRO, para cada tile de rua visível — medido:
+   34ms só nisso, com uma vila de território médio à vista. Muito acima do
+   quadro inteiro.
+
+   A aparência de um tile só depende de quatro booleanos (tem vizinho a
+   norte/sul/leste/oeste) mais o padrão de pedrinha, que é fixo por posição —
+   ou seja, o resultado é sempre o MESMO até a malha daquele canto crescer.
+   Então cada tile é assado uma vez num canvas próprio e guardado; nos quadros
+   seguintes o que roda é só um 'drawImage', o mesmo truque que os pedaços de
+   terreno já usam. O cache invalida sozinho quando a vizinhança muda (uma
+   rua nova nasceu do lado) — compara a assinatura, não redesenha à toa.
+*/
+const cacheCalcadaRival = new Map();
+
+function desenharEstradaRival(g, tx, ty, temRua, cor, vilaId) {
+  const n = temRua(tx, ty - 1), s = temRua(tx, ty + 1);
+  const o = temRua(tx - 1, ty), l = temRua(tx + 1, ty);
+  const assinatura = (n?1:0) | (s?2:0) | (o?4:0) | (l?8:0);
+  const chave = vilaId + ':' + tx + ',' + ty;
+
+  let c = cacheCalcadaRival.get(chave);
+  if (!c || c.assinatura !== assinatura) {
+    if (!c) { const cv = document.createElement('canvas'); cv.width = TILE; cv.height = TILE; c = { cv, ctx: cv.getContext('2d') }; }
+    c.assinatura = assinatura;
+    const R = c.ctx, m = 4;
+    R.clearRect(0, 0, TILE, TILE);
+
+    R.fillStyle = 'rgba(120,101,72,.55)';
+    R.fillRect(m - 1, m - 1, TILE - m * 2 + 2, TILE - m * 2 + 2);
+    if (n) R.fillRect(m - 1, 0, TILE - m * 2 + 2, m + 1);
+    if (s) R.fillRect(m - 1, TILE - m - 1, TILE - m * 2 + 2, m + 1);
+    if (o) R.fillRect(0, m - 1, m + 1, TILE - m * 2 + 2);
+    if (l) R.fillRect(TILE - m - 1, m - 1, m + 1, TILE - m * 2 + 2);
+
+    R.fillStyle = '#c9b287';
+    R.fillRect(m, m, TILE - m * 2, TILE - m * 2);
+    if (n) R.fillRect(m, 0, TILE - m * 2, m + 1);
+    if (s) R.fillRect(m, TILE - m - 1, TILE - m * 2, m + 1);
+    if (o) R.fillRect(0, m, m + 1, TILE - m * 2);
+    if (l) R.fillRect(TILE - m - 1, m, m + 1, TILE - m * 2);
+
+    for (let i = 0; i < 5; i++) {
+      const hx = hash2(tx, ty, SEED + 1200 + i), hy = hash2(tx, ty, SEED + 1300 + i);
+      R.fillStyle = i % 2 ? 'rgba(96,80,58,.20)' : 'rgba(255,250,235,.24)';
+      R.fillRect(m + 1 + hx * (TILE - m * 2 - 4), m + 1 + hy * (TILE - m * 2 - 4), 2.6, 2);
+    }
+
+    R.globalCompositeOperation = 'source-atop';
+    R.fillStyle = cor;
+    R.fillRect(0, 0, TILE, TILE);
+    R.globalCompositeOperation = 'source-over';
+
+    cacheCalcadaRival.set(chave, c);
+  }
+  g.drawImage(c.cv, tx * TILE, ty * TILE);
+}
+
+// O conjunto de tiles de rua da vila, para checar vizinho em O(1). Ruas só
+// se acrescentam (nunca somem), então o tamanho do array serve de versão —
+// o mesmo truque do índice de pedaços da SUA malha.
+const ruasSetPorVila = new Map();
+function ruasDaVilaComoSet(v) {
+  let c = ruasSetPorVila.get(v.id);
+  if (!c || c.tam !== v.ruas.length) { c = { tam: v.ruas.length, set: new Set(v.ruas) }; ruasSetPorVila.set(v.id, c); }
+  return c.set;
+}
+
 /* -------------------------------------------------------------- missões --- */
 /*
    Metas que dão direção ao jogo. Todas empurram para o mesmo objetivo: mais
@@ -7450,6 +7604,39 @@ function arteDePredio(pr) {
   return v[Math.floor(hash2(pr.id * 37 + 11, pr.id * 7 + 3, 20260831) * v.length) % v.length];
 }
 
+/*
+   TINGIR UM RECORTE DA FOLHA. Usado pela gente de uma vila rival — mesmo
+   sprite que o seu aldeão, só que na cor da vila dona. Os prédios têm o
+   próprio cache permanente por id (abaixo) porque nunca trocam de aparência;
+   a gente troca de quadro de passo e de direção o tempo todo, então aqui é
+   mesmo um rascunho descartável, refeito quadro a quadro.
+
+   'source-atop' direto no canvas principal NÃO serve: o terreno por baixo já
+   pintou o retângulo inteiro de opaco, então tingir ali tingiria também a
+   grama nos cantos vazios do sprite (ele raramente é um retângulo cheio). O
+   truque é desenhar num canvas de rascunho EM BRANCO, tingir só o que ficou
+   opaco ali (que é exatamente a silhueta do sprite, nada mais), e colar o
+   resultado por cima do jogo.
+*/
+const rascunhoTinta = document.createElement('canvas');
+const ctxRascunhoTinta = rascunhoTinta.getContext('2d');
+function recorteTingido(img, sx, sy, sw, sh, dw, dh, cor) {
+  dw = Math.max(1, Math.round(dw)); dh = Math.max(1, Math.round(dh));
+  if (rascunhoTinta.width < dw) rascunhoTinta.width = dw;
+  if (rascunhoTinta.height < dh) rascunhoTinta.height = dh;
+  ctxRascunhoTinta.clearRect(0, 0, dw, dh);
+  ctxRascunhoTinta.drawImage(img, sx, sy, sw, sh, 0, 0, dw, dh);
+  ctxRascunhoTinta.globalCompositeOperation = 'source-atop';
+  ctxRascunhoTinta.fillStyle = cor;
+  ctxRascunhoTinta.fillRect(0, 0, dw, dh);
+  ctxRascunhoTinta.globalCompositeOperation = 'source-over';
+  return rascunhoTinta;
+}
+
+// Um prédio pronto nunca muda de arte, então o tingimento dele é feito uma
+// vez só e fica guardado pelo id — nada de refazer o recorte a cada quadro.
+const cachePredioTingido = new Map();
+
 // Onde o prédio é desenhado: centrado no lote, com a base na beirada de baixo.
 function caixaDoPredio(pr, q) {
   const w = pr.def.w * TILE, h = pr.def.h * TILE;
@@ -7527,17 +7714,28 @@ function desenharPredio(g, pr) {
   const q = arteDePredio(pr);
   if (q) {
     const c = caixaDoPredio(pr, q);
-    g.drawImage(imgPredios, q[0], q[1], q[2], q[3], c.dx, c.dy, q[4], q[5]);
-    // O prédio de uma vila rival carrega uma bandeirinha da cor dela — sem
-    // isso ele seria indistinguível de um prédio seu do outro lado do mapa.
-    if (pr.vila) {
-      const v = vilaPorId(pr.vila);
-      if (v) {
-        g.fillStyle = v.cor;
-        g.beginPath();
-        g.moveTo(x + w / 2, y - 3); g.lineTo(x + w / 2 + 7, y + 2); g.lineTo(x + w / 2, y + 7);
-        g.closePath(); g.fill();
+    // O prédio de uma vila rival é o MESMO sprite, só que tingido na cor
+    // dela — é o que deixa óbvio de quem é aquele canto do mapa sem precisar
+    // de legenda nem de um símbolo à parte.
+    const v = pr.vila && vilaPorId(pr.vila);
+    if (v) {
+      // Prédio pronto não muda de arte — tinge uma vez e guarda pelo id, em
+      // vez de refazer o recorte a cada quadro (o mesmo motivo do cache da
+      // calçada rival: cem prédios à vista não podem custar cem tingimentos
+      // por segundo).
+      let cv = cachePredioTingido.get(pr.id);
+      if (!cv) {
+        cv = document.createElement('canvas'); cv.width = q[4]; cv.height = q[5];
+        const cx2 = cv.getContext('2d');
+        cx2.drawImage(imgPredios, q[0], q[1], q[2], q[3], 0, 0, q[4], q[5]);
+        cx2.globalCompositeOperation = 'source-atop';
+        cx2.fillStyle = v.cor + '85';
+        cx2.fillRect(0, 0, q[4], q[5]);
+        cachePredioTingido.set(pr.id, cv);
       }
+      g.drawImage(cv, c.dx, c.dy);
+    } else {
+      g.drawImage(imgPredios, q[0], q[1], q[2], q[3], c.dx, c.dy, q[4], q[5]);
     }
   } else {
     const vari = varianteDe(pr);
@@ -7712,7 +7910,7 @@ function direcaoDoAngulo(ang) {
 const linhaDoPersonagem = p =>
   faseDaIdade(p.idade) === FASE.CRIANCA ? 2 : (p.sexo === 'f' ? 1 : 0);
 
-function desenharPessoa(g, p, selecionado) {
+function desenharPessoa(g, p, selecionado, tingir) {
   const montado = p.veiculo === 'cavalo';
   const esc = faseDaIdade(p.idade) === FASE.CRIANCA ? 0.78 : 1;
   const tam = DESENHO_PESSOA * esc;
@@ -7742,7 +7940,14 @@ function desenharPessoa(g, p, selecionado) {
   const x = p.x - tam / 2;
   const y = p.y - tam * ANCORA_Y - ergue;
 
-  g.drawImage(imgPessoas, col * SP_LADO, linha * SP_LADO, SP_LADO, SP_LADO, x, y, tam, tam);
+  // Gente de vila rival: mesmo sprite, tingido na cor dela (item da disputa
+  // de território — ver 'recorteTingido').
+  if (tingir) {
+    const r = recorteTingido(imgPessoas, col * SP_LADO, linha * SP_LADO, SP_LADO, SP_LADO, tam, tam, tingir);
+    g.drawImage(r, 0, 0, tam, tam, x, y, tam, tam);
+  } else {
+    g.drawImage(imgPessoas, col * SP_LADO, linha * SP_LADO, SP_LADO, SP_LADO, x, y, tam, tam);
+  }
 
   // Carga nas costas, por cima do sprite.
   if (p.carga > 0.5 && !p.veiculo) {
@@ -8062,6 +8267,7 @@ function passo(dt) {
   if (teclas.has('s') || teclas.has('arrowdown'))  cam.y += v;
 
   atualizarPovo(dt);
+  atualizarGenteRival(dt);
   atualizarProducao(dt);
 
   // O que passa da capacidade dos galpões se perde — é o que dá função ao
@@ -8163,8 +8369,8 @@ function desenhar() {
 
      Território alheio pinta o quarteirão inteiro na cor da vila dona — é o que
      torna a fronteira uma coisa que se vê, não uma tabela. A calçada da
-     vizinha vem por cima, mais escura que a sua: ela é caminho de vila
-     estrangeira, ninguém seu anda ali.
+     vizinha é a MESMA calçada da sua, só tingida na cor dela — mesmo sprite,
+     outra cor, para identificar de longe de quem é aquele pedaço do mapa.
 
      Os dois só custam algo quando há disputa (emDisputa() checa o tamanho de
      'jogo.vilas') e só desenham o que a câmera alcança — o mapa pode ter
@@ -8185,14 +8391,17 @@ function desenhar() {
         ctx.fillRect(x0 * TILE, y0 * TILE, (P + 1) * TILE, (P + 1) * TILE);
       }
 
-    for (const v of rivaisVivas())
+    for (const v of rivaisVivas()) {
+      const set = ruasDaVilaComoSet(v);
+      const temRua = (x, y) => set.has(nk(x, y));
+      const cor = v.cor + '55';
       for (const k of v.ruas) {
         const [tx, ty] = k.split(',').map(Number);
         const x = tx * TILE, y = ty * TILE;
         if (x < camX - TILE || x > camX + vw || y < camY - TILE || y > camY + vh) continue;
-        ctx.fillStyle = 'rgba(60,50,40,.30)';
-        ctx.fillRect(x + 3, y + 3, TILE - 6, TILE - 6);
+        desenharEstradaRival(ctx, tx, ty, temRua, cor, v.id);
       }
+    }
   }
 
   const lista = [];
@@ -8206,11 +8415,19 @@ function desenhar() {
     lista.push({ y:(pr.ty + pr.def.h) * TILE, k:1, o:pr });
   }
   if (emDisputa())
-    for (const v of rivaisVivas())
+    for (const v of rivaisVivas()) {
       for (const pr of v.predios) {
         if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
         lista.push({ y:(pr.ty + pr.def.h) * TILE, k:1, o:pr });
       }
+      // A gente decorativa da vizinha entra na mesma fila que a sua, na mesma
+      // ordenação por profundidade — senão ela sempre desenharia por cima ou
+      // por baixo de tudo, e pareceria colada na tela em vez de andando nela.
+      for (const p of v.gente) {
+        if (p.x < camX - 50 || p.x > camX + vw + 50 || p.y < camY - 50 || p.y > camY + vh + 50) continue;
+        lista.push({ y:p.y, k:2, o:p });
+      }
+    }
   {
     const povo = jogo.pessoas, n = povo.length;
     inicioDoDesenho = n ? (inicioDoDesenho + 1) % n : 0;
@@ -8238,7 +8455,10 @@ function desenhar() {
   for (const it of lista) {
     if (it.k === 0) desenharNo(ctx, it.o);
     else if (it.k === 1) { desenharPredio(ctx, it.o); janelaAcesa(ctx, it.o); }
-    else desenharPessoa(ctx, it.o, sel.has(it.o.id));
+    else {
+      const v = it.o.vila && vilaPorId(it.o.vila);
+      desenharPessoa(ctx, it.o, sel.has(it.o.id), v ? v.cor + '80' : null);
+    }
   }
 
   // Terreno dos pedidos pendentes: piscando, para você achar sem procurar.
@@ -8514,6 +8734,10 @@ function carregar() {
     jogo.dono = s.dono || {};
     jogo.vilas = (s.vilas || []).map(v => Object.assign({}, v, {
       ruas: v.ruas || [],
+      // Save de antes da gente decorativa existir não tem este campo — a
+      // vila reaparece sem ninguém andando por ela até o próximo dia de
+      // jogo, quando 'sincronizarGenteRival' preenche sozinha.
+      gente: v.gente || [],
       predios: (v.predios || []).map(([chave, tx, ty, vari]) => {
         const def = PREDIO[chave];
         const pr = { id: proxPredioId++, chave, def, tx, ty,
