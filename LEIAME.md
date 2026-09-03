@@ -1045,6 +1045,55 @@ território (🚩, no alto da tela) some, e nada te impede de seguir jogando.
 
 ---
 
+## Arte nova para todos os prédios
+
+Os dezesseis prédios do jogo trocaram de arte — e Praça, Prefeitura e Mina
+ganharam a delas pela primeira vez; antes eram só o desenho vetorial genérico.
+Casa e Sobrado, que tinham três e uma variante, agora têm onze e cinco.
+
+A fonte desta vez não eram PNGs com canal alfa como da última vez — eram
+**.jpeg**, com o fundo pintado de **preto chapado**. Isso pediu um pipeline
+diferente:
+
+1. **Conversão**: `.jpeg` não é um formato que `ferramentas/png.js` entende
+   (ele só fala PNG, decodificado à mão com zlib). A conversão em si usa
+   `System.Drawing` do .NET — que o Windows já tem, sem instalar nada — só
+   para trocar de contêiner; nenhum pixel é recomprimido demais nesse passo;
+2. **Remover o fundo**: em vez de canal alfa, um flood-fill a partir da
+   BORDA da imagem, por pixels escuros **conectados**. Isso importa: a Mina
+   tem trilho preto e entrada de caverna escura no meio do desenho, que não
+   tocam a borda e por isso sobrevivem — um corte por "todo pixel escuro vira
+   transparente", sem olhar conectividade, teria apagado metade da arte;
+3. **Descartar legenda**: vários arquivos vêm de print de asset pack, com uma
+   legenda em inglês numa faixa isolada por fundo preto (a torre da
+   Prefeitura carregava "Stone Hall Tower" escrito embaixo dela). Texto não é
+   fundo — o flood-fill não pega — mas também não é a maior peça conectada da
+   imagem. A correção manteve só a **maior ilha de pixels opacos**, o que
+   resolve isso sem precisar saber de antemão qual arquivo tem rótulo: letra
+   separada de letra raramente forma uma ilha do tamanho de um prédio inteiro.
+
+Cada passo foi conferido contra uma folha de contato com as 39 peças lado a
+lado antes de ir para o jogo — é onde o rótulo da Prefeitura foi encontrado.
+
+---
+
+## Teto de gente na tela
+
+Simular uma vila de milhares já estava resolvido (`atualizarPovo` bota quem
+está fora da tela num rodízio, com passo maior). O que ainda podia travar era
+**desenhar**: centenas de `drawImage` por quadro, cada um com composição de
+alfa, custam caro num celular mesmo com a simulação correndo rápido.
+
+Agora no máximo **500 adultos e 50 crianças** aparecem na tela ao mesmo
+tempo — o resto continua existindo, trabalhando, envelhecendo, só não é
+desenhado. Numa aglomeração grande (a praça de uma vila de milhares, por
+exemplo) o corte poderia sempre recair nas mesmas primeiras pessoas do
+array; para isso não acontecer, o ponto de partida do percurso **gira um
+passo a cada quadro**, e o grupo visível se reveza suavemente em vez de
+travar sempre nos mesmos rostos.
+
+---
+
 ## Estrutura
 
 ```
