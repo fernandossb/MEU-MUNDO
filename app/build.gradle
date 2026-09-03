@@ -21,7 +21,7 @@ android {
     minSdk 26
     targetSdk 34
     versionCode numeroDoBuild
-    versionName "1.0.${numeroDoBuild}"
+    versionName "2.0.${numeroDoBuild}"
   }
 
   if (temChave) {

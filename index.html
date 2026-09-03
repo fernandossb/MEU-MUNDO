@@ -1228,7 +1228,7 @@ const jogo = {
   nome: 'Vila Nova', ancestrais: [], crise: null, zonas: {}, historia: [],
   clima: 'limpo', mesAnterior: -1, diaAnterior: -1, diaTotal: 0,
   pedidos: [], autoAprovar: true,
-  vilas: [], dono: {}, rivais: 0,
+  vilas: [], dono: {}, rivais: 0, duelos: [],
   fome: false, salvoEm: Date.now(),
 };
 
@@ -1943,7 +1943,7 @@ function mandarAndar(ps, x, y) {
   });
 }
 function soltarPostos(p) {
-  for (const pr of jogo.predios) if (pr.trabalhador === p.id) pr.trabalhador = null;
+  for (const pr of jogo.predios) if (pr.trabalhador === p.id) { pr.trabalhador = null; conferirAbandono(pr); }
   p.fazendaId = null;
 }
 
@@ -2185,6 +2185,12 @@ function escolherSulco(p, pr) {
 
 function atualizarPessoa(p, dt) {
   const fase = faseDaIdade(p.idade);
+
+  // ITEM 3/4 — o combate manda antes de qualquer trabalho. Alguém que estava
+  // colhendo, construindo, o que for, congela naquele lugar (o estado fica
+  // guardado em 'estadoAntesDoCombate') até o confronto acabar, e só então
+  // retoma exatamente de onde parou.
+  if (avaliarCombate(p, 0, dt)) return;
 
   // Largou o posto: volta para a soleira antes de qualquer outra conta. O
   // estado muda em uma dúzia de lugares (prédio demolido, troca de ofício,
@@ -2765,7 +2771,10 @@ const NOMES_DE_VILA = [
 const CORES_DE_VILA = ['#d2704a', '#7a6fd0', '#4aa38c', '#c9a03c', '#c05a86'];
 
 const MAX_RIVAIS = 4;
-const DIST_ENTRE_VILAS = 46;        // tiles entre o seu centro e o da vizinha
+// Antes eram 46 — o suficiente para uma malha de estradas, curto demais para
+// uma população de verdade que anda sozinha e pode se topar em patrulha. Cem
+// tiles dá um bom tanto de anos de sossego antes do primeiro encontro.
+const DIST_ENTRE_VILAS = 100;
 
 const blocoK = (bx, by) => bx + ',' + by;
 
@@ -2792,6 +2801,20 @@ const emDisputa = () => rivaisVivas().length > 0;
    entre vocês (é nesse meio que a disputa acontece) e perto o bastante para as
    fronteiras se encontrarem em algumas dezenas de anos.
 */
+/*
+   OS QUATRO CANTOS. O mundo é infinito de verdade (ruído sem borda — ver "O
+   mundo" no LEIAME), mas a PARTIDA não precisa parecer infinita: você no
+   centro, cada rival num canto, formando um quadrado. É mais fácil de ler no
+   minimapa, e é onde a briga faz sentido: quem sai do seu canto para o meio
+   encontra você; quem fica no canto, não.
+
+   Os ângulos são exatamente 45/135/225/315° — a mesma distância em X e em Y
+   do seu centro — então os quatro cantos SÃO literalmente os vértices de um
+   quadrado ao redor da sua vila, não um leque qualquer.
+*/
+const CANTO = [225, 315, 135, 45].map(g => g * Math.PI / 180);
+// canto[0]=noroeste (Vila 1), [1]=nordeste (Vila 2), [2]=sudoeste (Vila 3), [3]=sudeste (Vila 4)
+
 function criarRivais(quantas) {
   jogo.vilas = [];
   jogo.dono = {};
@@ -2800,7 +2823,7 @@ function criarRivais(quantas) {
   const ex = eu ? Math.floor(eu.cx / TILE) : 0, ey = eu ? Math.floor(eu.cy / TILE) : 0;
 
   for (let i = 0; i < Math.min(quantas, MAX_RIVAIS); i++) {
-    const ang = (i / quantas) * 6.2832 + rnd() * 0.6;
+    const ang = CANTO[i % CANTO.length];
     const lugar = lugarDeVilaRival(ex, ey, ang);
     if (!lugar) continue;
     const v = {
@@ -2826,7 +2849,7 @@ function criarRivais(quantas) {
 // Terra firme a uma distância boa, tentando afastar até achar.
 function lugarDeVilaRival(ex, ey, ang) {
   for (let d = DIST_ENTRE_VILAS; d < DIST_ENTRE_VILAS + 60; d += 3)
-    for (const giro of [0, 0.25, -0.25, 0.5, -0.5]) {
+    for (const giro of [0, 0.08, -0.08, 0.16, -0.16]) {
       const tx = ex + Math.round(Math.cos(ang + giro) * d);
       const ty = ey + Math.round(Math.sin(ang + giro) * d);
       let ok = true;
@@ -2843,6 +2866,7 @@ function fundarVilaRival(v) {
   erguerNaVilaRival(v, 'casa');
   anelDoQuarteirao(v, ...quarteiraoDe(v.tx, v.ty));
   sincronizarGenteRival(v);
+  distribuirTrabalhoRival(v);
 }
 
 /* ------------------------------------------------------------ território - */
@@ -2971,6 +2995,7 @@ function diaDaVilaRival(v) {
   if (rnd() < v.pop * 0.022 / DIAS_NO_ANO) v.pop = Math.max(0, v.pop - 1);   // velhice
 
   sincronizarGenteRival(v);   // a turma visível acompanha a população nova
+  distribuirTrabalhoRival(v);
 }
 
 /* ------------------------------------------------------------- avançar --- */
@@ -3193,24 +3218,26 @@ function erguerNaVilaRival(v, chave) {
 
 /* --------------------------------------------------- os habitantes ------- */
 /*
-   GENTE NA VILA RIVAL — mesmo sprite que o seu aldeão, tingido na cor da
-   vila. É só isso: sem ofício, sem fome, sem idade que avança, sem
-   pathfinding. Dar população de verdade a cada vizinha — com A* e conselho
-   próprios — seria multiplicar a simulação inteira pelo número de vilas,
-   exatamente o que a decisão de "modelo, não segunda simulação" evita (ver
-   a nota grande no topo deste bloco de vilas). O que faltava era só vida
-   visível; isto entrega vida visível.
+   GENTE NA VILA RIVAL, DE VERDADE — até 500 adultos e 50 crianças por vila,
+   com emprego de verdade num prédio de verdade. A ressalva do bloco antigo
+   ainda vale ("modelo, não segunda simulação" no topo deste arquivo): não
+   ganham A* nem malha viária própria — andam em linha reta, do jeito que
+   sempre andaram aqui. O que muda é que agora têm um EMPREGO e um ENDEREÇO
+   ('predioId'), e é isso que os torna capazes de trabalhar à vista, de morrer
+   por alguém, e de ter um prédio conquistado quando morrem.
 
-   O tanto é uma fração pequena da população real, com teto — uma vila de
-   duas mil almas não precisa de duas mil figuras para parecer viva, e cada
-   uma tem o mesmo custo de desenho que um aldeão seu.
+   Reaproveita o sistema de posto da Fase 7 quase sem alteração: 'entrarNoPosto'
+   e 'sairDoPosto' só tocam x/y/portaX/portaY/dentro/sulco — nenhum desses
+   campos é exclusivo de 'jogo.pessoas'. Trabalhador ao ar livre (lavoura,
+   cais) vaga pelo próprio lote; trabalhador sob um teto some de vista, com a
+   mesma janela acesa do seu aldeão.
 */
-const GENTE_RIVAL_POR_HABITANTE = 1 / 15;
-const TETO_GENTE_RIVAL = 28;
+const TETO_ADULTOS_RIVAL = 500;
+const TETO_CRIANCAS_RIVAL = 50;
+let proxGenteRivalId = 1;
 
-// Um ponto qualquer dentro do território da vila — é para lá que a figura
-// caminha. Sem território ainda (o instante da fundação), fica junto ao
-// centro dela.
+// Um ponto qualquer dentro do território da vila — usado por quem ainda não
+// tem prédio (civil) e pelos que estão indo para lá antes de ter endereço.
 function pontoNoTerritorioRival(v) {
   if (!v.blocos.length) return { x: v.tx * TILE, y: v.ty * TILE };
   const [bx, by] = v.blocos[Math.floor(rnd() * v.blocos.length)].split(',').map(Number);
@@ -3221,50 +3248,468 @@ function pontoNoTerritorioRival(v) {
   };
 }
 
-function criarGenteRival(v) {
+function criarGenteRival(v, crianca) {
   const p0 = pontoNoTerritorioRival(v);
   return {
-    vila: v.id, x: p0.x, y: p0.y, alvoX: p0.x, alvoY: p0.y,
+    id: proxGenteRivalId++, vila: v.id, x: p0.x, y: p0.y, alvoX: p0.x, alvoY: p0.y,
+    nome: (rnd() < 0.5 ? NOMES_M : NOMES_F)[Math.floor(rnd() * (rnd() < 0.5 ? NOMES_M.length : NOMES_F.length))],
+    sobrenome: SOBRENOMES[Math.floor(rnd() * SOBRENOMES.length)],
     sexo: rnd() < 0.5 ? 'f' : 'm',
-    idade: rnd() < 0.12 ? 5 + rnd() * 7 : 20 + rnd() * 45,
-    dir: 1, ang: 0, passo: rnd() * 10, estado: 'parado', pausa: rnd() * 3,
+    idade: crianca ? 1 + rnd() * 16 : 18 + rnd() * 50,
+    dir: 1, ang: 0, passo: rnd() * 10, estado: 'ocioso', pausa: rnd() * 3, ociosoT: rnd() * 2,
+    veiculo: null, carga: 0, cargaTipo: null,
+    predioId: null, papel: null, dentro: null, portaX: undefined, portaY: undefined,
+    sulcoX: 0, sulcoY: 0, sulcoT: 0,
+    emCombate: null, alvoCombate: null, alvoCombateFaccao: 0, estadoAntesDoCombate: null,
+    duelo: null, morto: false,
+    proximaChecagemCombate: rnd() * INTERVALO_CHECAGEM_COMBATE,
   };
 }
 
-// Cresce ou encolhe a turma até acompanhar a população atual, sem passar do
-// teto. Chamado ao fundar a vila e, dali em diante, uma vez por dia de jogo.
-function sincronizarGenteRival(v) {
-  const alvo = Math.min(TETO_GENTE_RIVAL, Math.round(v.pop * GENTE_RIVAL_POR_HABITANTE));
-  while (v.gente.length < alvo) v.gente.push(criarGenteRival(v));
-  if (v.gente.length > alvo) v.gente.length = alvo;
+// Desliga da vida da vila: sai do prédio que usava (o que pode abandoná-lo) e
+// sai da lista. Usado tanto por combate quanto pelo ajuste diário de tamanho.
+function removerGenteRival(v, p) {
+  const i = v.gente.indexOf(p);
+  if (i >= 0) v.gente.splice(i, 1);
+  if (p.predioId) {
+    const pr = v.predios.find(x => x.id === p.predioId);
+    if (pr) {
+      if (pr.trabalhador === p.id) pr.trabalhador = null;
+      const j = pr.moradores.indexOf(p.id);
+      if (j >= 0) pr.moradores.splice(j, 1);
+      conferirAbandono(pr);
+    }
+  }
 }
 
-// Anda em linha reta até o alvo, devagar, e descansa um pouco antes de
-// escolher outro. Mesma velocidade e o mesmo incremento de 'passo' que um
-// aldeão seu — é o que faz a perna se mexer no ritmo certo no sprite.
+/*
+   Cresce ou encolhe a turma até acompanhar a população real, sem passar do
+   teto — agora com adulto e criança contados à parte, porque só adulto
+   trabalha e luta. Ao encolher, os civis (sem prédio) saem primeiro: perder
+   um lavrador desmancha o trabalho que ele fazia, perder um civil não muda
+   nada de concreto.
+*/
+function sincronizarGenteRival(v) {
+  const alvoAdultos = Math.min(TETO_ADULTOS_RIVAL, Math.round(v.pop * 0.88));
+  const alvoCriancas = Math.min(TETO_CRIANCAS_RIVAL, Math.round(v.pop * 0.12));
+  const adultosArr = v.gente.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA);
+  const criancasArr = v.gente.filter(p => faseDaIdade(p.idade) === FASE.CRIANCA);
+
+  while (adultosArr.length < alvoAdultos) { const novo = criarGenteRival(v, false); v.gente.push(novo); adultosArr.push(novo); }
+  while (criancasArr.length < alvoCriancas) { const novo = criarGenteRival(v, true); v.gente.push(novo); criancasArr.push(novo); }
+
+  if (adultosArr.length > alvoAdultos) {
+    adultosArr.sort((a, b) => (a.predioId ? 1 : 0) - (b.predioId ? 1 : 0));   // civis primeiro
+    for (let i = alvoAdultos; i < adultosArr.length; i++) removerGenteRival(v, adultosArr[i]);
+  }
+  if (criancasArr.length > alvoCriancas)
+    for (let i = alvoCriancas; i < criancasArr.length; i++) removerGenteRival(v, criancasArr[i]);
+}
+
+/*
+   O EMPREGO. Roda uma vez por dia de jogo, junto com o resto do conselho
+   rival — casa civis sem prédio em vaga de trabalho ou moradia, e TAMBÉM
+   ocupa prédio abandonado ao alcance (seu de origem ou de qualquer outra
+   vila), que é a metade rival do item 6/7: conquista territorial acontece
+   pelos dois lados, não só quando o jogador manda gente ocupar.
+*/
+function distribuirTrabalhoRival(v) {
+  const livres = v.gente.filter(p => !p.predioId && faseDaIdade(p.idade) !== FASE.CRIANCA && !p.emCombate);
+  if (!livres.length) return;
+  let i = 0;
+  const vagasProprias = v.predios;
+  const vagasAlheiasAbandonadas = todosOsPredios().filter(pr =>
+    predioAbandonado(pr) && !v.predios.includes(pr) && dentroOuPertoDoTerritorio(v, pr));
+
+  const empregar = pr => {
+    if (i >= livres.length) return;
+    if (predioAbandonado(pr)) transferirPredio(pr, v.id);
+    if (pr.def.moradia) {
+      while (pr.moradores.length < pr.def.pop && i < livres.length) {
+        const p = livres[i++]; p.predioId = pr.id; p.papel = 'morador'; pr.moradores.push(p.id);
+      }
+    } else if ((pr.def.posto || pr.def.fazenda || pr.def.pesca) && !pr.trabalhador) {
+      const p = livres[i++]; p.predioId = pr.id; p.papel = 'trabalhador'; pr.trabalhador = p.id;
+    }
+  };
+  for (const pr of vagasProprias) { if (pr.progresso < 1) continue; empregar(pr); if (i >= livres.length) return; }
+  for (const pr of vagasAlheiasAbandonadas) { empregar(pr); if (i >= livres.length) return; }
+}
+
+// Perto o bastante do próprio território para valer a pena mandar gente:
+// dentro de um bloco seu, ou vizinho de um. Sem isso a vila reivindicaria
+// prédio abandonado do outro lado do mapa, e o teto de gente nunca chegaria
+// perto de onde importa.
+function dentroOuPertoDoTerritorio(v, pr) {
+  const [bx, by] = quarteiraoDe(pr.tx, pr.ty);
+  if (v.blocos.includes(blocoK(bx, by))) return true;
+  return LADOS.some(([dx, dy]) => v.blocos.includes(blocoK(bx + dx, by + dy)));
+}
+
+/*
+   A ROTINA DIÁRIA de quem já tem prédio: vai até lá (linha reta — sem malha
+   viária própria) e entra no posto. Quem ainda não tem prédio, ou é criança,
+   continua vagando pelo território como sempre vagou. Tudo isso só roda
+   depois que o combate (próxima fase) decidiu que NÃO há ameaça — combate
+   sempre vem primeiro.
+*/
+function rotinaRival(v, p, dt) {
+  if (p.predioId) {
+    const pr = v.predios.find(x => x.id === p.predioId) ||
+               (todosOsPredios().find(x => x.id === p.predioId));
+    if (!pr || predioAbandonado(pr) || donoDoPredio(pr) !== v.id) { p.predioId = null; p.papel = null; }
+    else if (p.dentro || p.portaX !== undefined) {
+      // já no posto — 'entrarNoPosto' cuida de tudo (janela acesa, sulco).
+      if (postoAoArLivre(pr.def) && p.portaX !== undefined) {
+        p.sulcoT -= dt;
+        const dx = p.sulcoX - p.x, dy = p.sulcoY - p.y, d = Math.hypot(dx, dy);
+        if (d > 2) {
+          const passo = Math.min(d, VELOCIDADE_NO_SULCO * dt);
+          p.x += dx / d * passo; p.y += dy / d * passo; p.dir = dx >= 0 ? 1 : -1;
+        } else if (p.sulcoT <= 0) escolherSulco(p, pr);
+        p.estado = 'naFazenda';
+      } else if (!p.dentro) {
+        p.estado = 'naFazenda';   // morador dentro de casa: parado, some (a casa já tinha isso pronto)
+      }
+      p.passo += dt;
+      return;
+    } else {
+      const dx = pr.cx - p.x, dy = pr.cy - p.y, d = Math.hypot(dx, dy);
+      if (d < alcanceDe(pr)) { entrarNoPosto(p, pr); p.estado = 'naFazenda'; }
+      else {
+        p.estado = 'indoFazenda'; p.ang = Math.atan2(dy, dx); p.dir = Math.cos(p.ang) >= 0 ? 1 : -1;
+        const passo = Math.min(d, VELOCIDADE_GENTE_RIVAL * dt);
+        p.x += dx / d * passo; p.y += dy / d * passo; p.passo += dt;
+      }
+      return;
+    }
+  }
+
+  // Sem prédio (civil, ou criança): vaga pelo território, do jeito de sempre.
+  const dx = p.alvoX - p.x, dy = p.alvoY - p.y, d = Math.hypot(dx, dy);
+  if (d < 3) {
+    p.estado = 'parado';
+    p.pausa -= dt;
+    if (p.pausa <= 0) {
+      const alvo = pontoNoTerritorioRival(v);
+      p.alvoX = alvo.x; p.alvoY = alvo.y;
+      // Um civil adulto de vez em quando "coleta" no mato — só para a cena
+      // parecer viva; nenhum recurso de verdade entra ou sai por causa disso,
+      // o mesmo abstrato de sempre em 'diaDaVilaRival' continua no comando.
+      p.estado = (faseDaIdade(p.idade) !== FASE.CRIANCA && rnd() < 0.4) ? 'coletando' : 'parado';
+      p.pausa = 2 + rnd() * 5;
+    }
+  } else {
+    if (p.estado !== 'coletando') p.estado = 'andando';
+    p.ang = Math.atan2(dy, dx);
+    p.dir = Math.cos(p.ang) >= 0 ? 1 : -1;
+    const passo = Math.min(d, VELOCIDADE_GENTE_RIVAL * dt);
+    p.x += dx / d * passo; p.y += dy / d * passo;
+    p.passo += dt;
+  }
+}
+
 const VELOCIDADE_GENTE_RIVAL = 16;
+
+/*
+   Rodízio igual ao 'atualizarPovo' do jogador: até quatro vilas de até 550
+   almas cada seria simular milhares de pessoas por quadro. Quem está na tela
+   anda todo quadro; quem está fora entra num rodízio com o tempo acumulado.
+*/
+const FATIAS_GENTE_RIVAL = 5;
 function atualizarGenteRival(dt) {
   if (!jogo.vilas || !jogo.vilas.length) return;
-  for (const v of rivaisVivas())
-    for (const p of v.gente) {
-      const dx = p.alvoX - p.x, dy = p.alvoY - p.y, d = Math.hypot(dx, dy);
-      if (d < 3) {
-        p.estado = 'parado';
-        p.pausa -= dt;
-        if (p.pausa <= 0) {
-          const alvo = pontoNoTerritorioRival(v);
-          p.alvoX = alvo.x; p.alvoY = alvo.y;
-          p.pausa = 2 + rnd() * 5;
-        }
-      } else {
-        p.estado = 'andando';
-        p.ang = Math.atan2(dy, dx);
-        p.dir = Math.cos(p.ang) >= 0 ? 1 : -1;
-        const passo = Math.min(d, VELOCIDADE_GENTE_RIVAL * dt);
-        p.x += dx / d * passo; p.y += dy / d * passo;
-        p.passo += dt;
+  const margem = 220 / cam.z;
+  const meiaL = W / (2 * cam.z) + margem, meiaA = H / (2 * cam.z) + margem;
+  const x0 = cam.x - meiaL, x1 = cam.x + meiaL, y0 = cam.y - meiaA, y1 = cam.y + meiaA;
+  for (const v of rivaisVivas()) {
+    v.fatiaGente = ((v.fatiaGente || 0) + 1) % FATIAS_GENTE_RIVAL;
+    for (let i = 0; i < v.gente.length; i++) {
+      const p = v.gente[i];
+      const naTela = p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1;
+      let dtEfetivo = dt;
+      if (!naTela) {
+        p.atraso = (p.atraso || 0) + dt;
+        if (i % FATIAS_GENTE_RIVAL !== v.fatiaGente) continue;
+        dtEfetivo = Math.min(p.atraso, 0.4);
+        p.atraso = 0;
       }
+      if (avaliarCombate(p, v.id, dtEfetivo)) continue;   // combate assume o controle deste quadro
+      rotinaRival(v, p, dtEfetivo);
     }
+  }
+}
+
+/* -------------------------------------------------------- posse de prédio - */
+/*
+   ATIVO · ABANDONADO · CONQUISTADO.
+
+   Prédio de outra vila é intocável (item 5) — mas ele pode TROCAR de dono, e
+   só de um jeito: matando quem trabalha ou mora nele (item 4). Três estados:
+
+   - ATIVO: 'pr.vila' diz de quem é (undefined/0 = seu; um id = de uma
+     rival). Tem gente viva usando — trabalhador, morador, ou os dois.
+   - ABANDONADO: 'pr.vila === "livre"'. A última pessoa que o usava morreu ou
+     saiu; o prédio continua de pé, do jeito que estava, só que sem dono.
+   - CONQUISTADO: alguém de outra facção manda gente ocupá-lo — vira ATIVO de
+     novo, com o novo dono.
+
+   O prédio SEMPRE mora no array de quem o construiu ('jogo.predios' ou
+   'v.predios') — mudar isso trocando de array a cada conquista quebraria
+   toda conta que já assume "jogo.predios é só o que é meu hoje" (a produção,
+   o HUD, o minimapa, a fila de obras...). Em vez disso, 'transferirPredio'
+   MIGRA o objeto de array quando muda de dono — assim aquela suposição
+   continua verdadeira, só que agora pode mudar ao longo do jogo.
+*/
+const donoDoPredio = pr => (pr.vila && pr.vila !== 'livre') ? pr.vila : 0;
+const predioAbandonado = pr => pr.vila === 'livre';
+// "é meu" enquanto 0 (jogador) OU minha própria facção numérica.
+const predioEDaFaccao = (pr, faccao) => donoDoPredio(pr) === faccao;
+
+function listaDaFaccao(faccao) {
+  if (!faccao) return jogo.predios;
+  const v = vilaPorId(faccao);
+  return v ? v.predios : jogo.predios;
+}
+
+// Migra o prédio para a lista da facção nova. Chamado toda vez que alguém
+// (jogador ou rival) ocupa um prédio abandonado, inclusive o seu próprio
+// dono de origem reocupando o que já era dele.
+function transferirPredio(pr, novaFaccao) {
+  const listaAtual = listaDaFaccao(donoDoPredio(pr));
+  const i = listaAtual.indexOf(pr);
+  if (i >= 0) listaAtual.splice(i, 1);
+  pr.vila = novaFaccao || undefined;
+  listaDaFaccao(novaFaccao).push(pr);
+  recontarDonoDoQuarteirao(...quarteiraoDe(pr.tx, pr.ty));
+}
+
+/*
+   Quem manda no quarteirão, agora contado pelos PRÉDIOS que têm ali — não só
+   pela rua que toca a borda (a regra antiga, que ainda vale para quarteirão
+   sem prédio nenhum). É o item 7: território muda com gente e construção, não
+   com um clique.
+*/
+function recontarDonoDoQuarteirao(bx, by) {
+  const k = blocoK(bx, by);
+  const contagem = {};
+  for (const pr of todosOsPredios()) {
+    if (predioAbandonado(pr)) continue;
+    const [pbx, pby] = quarteiraoDe(pr.tx, pr.ty);
+    if (pbx !== bx || pby !== by) continue;
+    const d = donoDoPredio(pr);
+    contagem[d] = (contagem[d] || 0) + 1;
+  }
+  const chaves = Object.keys(contagem);
+  if (!chaves.length) return;                 // sem prédio ali: a regra da rua decide
+  const vencedor = +chaves.reduce((a, b) => (contagem[b] > contagem[a] ? b : a));
+  reclamarBloco(bx, by, vencedor);
+}
+
+// Todo prédio do jogo, seu e de toda vila rival viva, numa lista só — usado
+// pela detecção de combate e pela busca de prédio abandonado para ocupar.
+function todosOsPredios() {
+  const lista = jogo.predios.slice();
+  for (const v of rivaisVivas()) lista.push(...v.predios);
+  return lista;
+}
+
+/*
+   Ninguém mais usa este prédio: vira abandonado. Chamado sempre que alguém
+   morre ou sai de um posto/moradia — barato de checar (dois campos), então
+   roda a cada saída em vez de varrer tudo de tempos em tempos.
+*/
+function conferirAbandono(pr) {
+  if (!pr || predioAbandonado(pr)) return;
+  if (pr.trabalhador || pr.moradores.length) return;
+  if (!donoDoPredio(pr)) return;               // já não tinha dono de vila nenhuma pra perder
+  const dono = donoDoPredio(pr);
+  pr.vila = 'livre';
+  recontarDonoDoQuarteirao(...quarteiraoDe(pr.tx, pr.ty));
+  const nomeDono = dono === 0 ? 'sua vila' : (vilaPorId(dono) ? vilaPorId(dono).nome : 'uma vila');
+  crônica((pr.def.nome) + ' de ' + nomeDono + ' ficou abandonad' + (pr.def.nome.endsWith('a') ? 'a' : 'o') + '.', false, 'vila');
+}
+
+/* ------------------------------------------------------------- combate --- */
+/*
+   O CONFRONTO. Regra em três frases, e é literalmente só isto:
+
+   1. Inimigo a menos de 9 tiles: se os aliados na zona (você incluído) são
+      pelo menos tantos quanto os inimigos, vai pra cima; senão, foge na
+      direção do aliado mais próximo. Ninguém se sacrifica sozinho contra um
+      grupo maior.
+   2. Perseguição termina em duelo — cara a cara, dura alguns segundos, UM dos
+      dois morre (não os dois: é o que o documento pediu, "até que um dos dois
+      morra"). É sorteio simples, sem barra de vida nem número de poder —
+      ninguém aqui tem um.
+   3. Prédio de quem morreu, se ficou sem ninguém (função em 'conferirAbandono',
+      já escrita), vira alvo de conquista pela rotina normal de emprego —
+      nenhum código novo pra "tomar o prédio", ele só volta a ter vaga.
+
+   ESCALA: até 500+50 por vila rival, quatro vilas, mais você — checar todo
+   mundo contra todo mundo a cada quadro seria da ordem de milhões de contas.
+   Um índice espacial (célula do tamanho do próprio raio de combate) resolve
+   isso: cada pessoa só olha as nove células ao redor dela, e o índice é
+   remontado no máximo uma vez por segundo, não a cada quadro.
+*/
+const RAIO_COMBATE = 9 * TILE;
+const CEL_COMBATE = RAIO_COMBATE;
+const INTERVALO_CHECAGEM_COMBATE = 0.6;
+const VELOCIDADE_COMBATE = 20;
+const CONTATO_COMBATE = 9;                    // "cara a cara": trava o duelo
+const DURACAO_DUELO_MIN = 1.4, DURACAO_DUELO_VAR = 1.8;
+
+let indiceCombate = null;
+let indiceCombateEm = -999;
+const celKey = (x, y) => Math.floor(x / CEL_COMBATE) + ',' + Math.floor(y / CEL_COMBATE);
+
+function construirIndiceCombate() {
+  indiceCombate = new Map();
+  const add = (faccao, p) => {
+    if (p.morto || p.dentro) return;            // dentro do prédio, ninguém acha
+    const k = celKey(p.x, p.y);
+    let l = indiceCombate.get(k);
+    if (!l) indiceCombate.set(k, l = []);
+    l.push({ faccao, p });
+  };
+  for (const p of jogo.pessoas) if (faseDaIdade(p.idade) !== FASE.CRIANCA) add(0, p);
+  for (const v of rivaisVivas())
+    for (const p of v.gente) if (faseDaIdade(p.idade) !== FASE.CRIANCA) add(v.id, p);
+  indiceCombateEm = jogo.tempo;
+}
+function garantirIndiceCombate() {
+  if (!indiceCombate || jogo.tempo - indiceCombateEm > 1) construirIndiceCombate();
+}
+function vizinhosDeCombate(x, y) {
+  const cx = Math.floor(x / CEL_COMBATE), cy = Math.floor(y / CEL_COMBATE);
+  const saida = [];
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++) {
+      const l = indiceCombate.get((cx + dx) + ',' + (cy + dy));
+      if (l) saida.push(...l);
+    }
+  return saida;
+}
+
+function sairDoCombate(p) {
+  p.emCombate = null; p.alvoCombate = null; p.duelo = null;
+  if (p.estadoAntesDoCombate) { p.estado = p.estadoAntesDoCombate; p.estadoAntesDoCombate = null; }
+}
+
+const alvoCombateValido = p => p.alvoCombate && !p.alvoCombate.morto;
+
+// Sem aliado por perto: foge para o próprio ninho (o centro da vila) em vez
+// de ficar sem rumo — perto de casa é onde mais gente aparece para ajudar.
+function pontoDeFugaPara(p, faccao) {
+  if (!faccao) { const c = centroDaVila(); return c ? { x: c.cx, y: c.cy } : { x: p.x - 40, y: p.y }; }
+  const v = vilaPorId(faccao);
+  return v ? { x: v.tx * TILE, y: v.ty * TILE } : { x: p.x - 40, y: p.y };
+}
+
+function iniciarDuelo(p, faccaoP, alvo, faccaoAlvo) {
+  if (p.duelo || alvo.duelo || alvo.morto) return;
+  const duelo = { a: p, faccaoA: faccaoP, b: alvo, faccaoB: faccaoAlvo,
+    tempo: DURACAO_DUELO_MIN + rnd() * DURACAO_DUELO_VAR };
+  jogo.duelos.push(duelo);
+  p.duelo = duelo; p.emCombate = 'lutando'; p.estado = 'lutando'; p.alvoCombate = alvo;
+  alvo.duelo = duelo; alvo.emCombate = 'lutando'; alvo.estado = 'lutando'; alvo.alvoCombate = p;
+  alvo.alvoCombateFaccao = faccaoP;
+}
+
+function matarPorCombate(vitima, vFaccao, venFaccao) {
+  vitima.morto = true;
+  const envolveJogador = vFaccao === 0 || venFaccao === 0;
+  if (vFaccao === 0) {
+    const nomeVenc = venFaccao === 0 ? '' : ((vilaPorId(venFaccao) || {}).nome || 'uma vila rival');
+    crônica(nomeCompleto(vitima) + ' morreu em combate' + (nomeVenc ? ' contra ' + nomeVenc : '') + '.', true, 'vida');
+    aviso('⚔️ ' + nomeCompleto(vitima) + ' morreu em combate');
+    removerPessoa(vitima);
+  } else {
+    const v = vilaPorId(vFaccao);
+    if (v) { removerGenteRival(v, vitima); v.pop = Math.max(0, v.pop - 1); }
+    if (envolveJogador)
+      crônica((vitima.nome + ' ' + vitima.sobrenome) + ' de ' + (v ? v.nome : 'uma vila rival') + ' morreu em combate.', true, 'vida');
+  }
+}
+
+function processarDuelos(dt) {
+  if (!jogo.duelos.length) return;
+  for (let i = jogo.duelos.length - 1; i >= 0; i--) {
+    const d = jogo.duelos[i];
+    d.tempo -= dt;
+    if (d.tempo > 0) continue;
+    jogo.duelos.splice(i, 1);
+    const aGanha = rnd() < 0.5;
+    const vitima = aGanha ? d.b : d.a, vFaccao = aGanha ? d.faccaoB : d.faccaoA;
+    const vencedor = aGanha ? d.a : d.b, venFaccao = aGanha ? d.faccaoA : d.faccaoB;
+    matarPorCombate(vitima, vFaccao, venFaccao);
+    sairDoCombate(vencedor);
+  }
+}
+
+function moverEmCombate(p, faccao, dt) {
+  if (p.emCombate === 'perseguindo') {
+    if (!alvoCombateValido(p)) { sairDoCombate(p); return; }
+    const alvo = p.alvoCombate;
+    const dx = alvo.x - p.x, dy = alvo.y - p.y, d = Math.hypot(dx, dy);
+    p.estado = 'perseguindo';
+    if (d <= CONTATO_COMBATE) { iniciarDuelo(p, faccao, alvo, p.alvoCombateFaccao); return; }
+    p.ang = Math.atan2(dy, dx); p.dir = Math.cos(p.ang) >= 0 ? 1 : -1;
+    const passo = Math.min(d, VELOCIDADE_COMBATE * dt);
+    p.x += dx / d * passo; p.y += dy / d * passo; p.passo += dt;
+  } else if (p.emCombate === 'fugindo') {
+    p.estado = 'fugindo';
+    const destino = (p.alvoCombate && !p.alvoCombate.morto) ? p.alvoCombate : pontoDeFugaPara(p, faccao);
+    const dx = destino.x - p.x, dy = destino.y - p.y, d = Math.hypot(dx, dy) || 1;
+    p.ang = Math.atan2(dy, dx); p.dir = Math.cos(p.ang) >= 0 ? 1 : -1;
+    const passo = Math.min(d, VELOCIDADE_COMBATE * dt);
+    p.x += dx / d * passo; p.y += dy / d * passo; p.passo += dt;
+  }
+}
+
+/*
+   Chamado uma vez por pessoa por quadro (jogador e rival) ANTES de qualquer
+   outra IA. Devolve true quando o combate tomou conta deste quadro — quem
+   chamou deve pular a rotina normal.
+*/
+function avaliarCombate(p, faccao, dt) {
+  if (faseDaIdade(p.idade) === FASE.CRIANCA) return false;
+
+  if (p.emCombate === 'lutando') {
+    if (!p.duelo || !jogo.duelos.includes(p.duelo)) { sairDoCombate(p); return false; }
+    return true;
+  }
+
+  const agora = jogo.tempo;
+  if (p.emCombate && agora < (p.proximaChecagemCombate || 0)) {
+    moverEmCombate(p, faccao, dt);
+    return true;
+  }
+  p.proximaChecagemCombate = agora + INTERVALO_CHECAGEM_COMBATE * (0.85 + rnd() * 0.3);
+
+  garantirIndiceCombate();
+  const perto = vizinhosDeCombate(p.x, p.y);
+  let aliados = 1, inimigos = 0;
+  let inimigoMaisPerto = null, distInimigo = Infinity;
+  let aliadoMaisPerto = null, distAliado = Infinity;
+  for (const e of perto) {
+    if (e.p === p || e.p.morto) continue;
+    const d = Math.hypot(e.p.x - p.x, e.p.y - p.y);
+    if (d > RAIO_COMBATE) continue;
+    if (e.faccao === faccao) { aliados++; if (d < distAliado) { distAliado = d; aliadoMaisPerto = e.p; } }
+    else { inimigos++; if (d < distInimigo) { distInimigo = d; inimigoMaisPerto = e; } }
+  }
+
+  if (!inimigoMaisPerto) { if (p.emCombate) sairDoCombate(p); return false; }
+
+  if (p.emCombate !== 'perseguindo' && p.emCombate !== 'fugindo') p.estadoAntesDoCombate = p.estado;
+  if (aliados >= inimigos) {
+    p.emCombate = 'perseguindo'; p.alvoCombate = inimigoMaisPerto.p; p.alvoCombateFaccao = inimigoMaisPerto.faccao;
+  } else {
+    p.emCombate = 'fugindo'; p.alvoCombate = aliadoMaisPerto;
+  }
+  moverEmCombate(p, faccao, dt);
+  return true;
 }
 
 /* ------------------------------------------------------------ zoneamento -- */
@@ -3977,19 +4422,33 @@ function distribuirOficios() {
         const t = pessoaPorId(pr.trabalhador);
         if (!t || t.oficio !== oficio || t.ordemManual) continue;
         pr.trabalhador = null; t.fazendaId = null;
+        conferirAbandono(pr);
         t.oficio = 'nenhum'; t.estado = 'ocioso'; t.ociosoT = 3; t.alvo = null;
         emPosto--;
       }
     }
   }
-  for (const pr of jogo.predios) {
-    if (!temVaga(pr)) continue;
+  /*
+     ITEM 6/7 — prédio abandonado (seu de origem ou de uma vila rival que
+     esvaziou) entra na mesma lista de vagas, contanto que dê pra chegar
+     andando. É assim que o território muda de mão sem clique nenhum: seu
+     povo simplesmente ocupa o que ninguém mais usa.
+  */
+  const vagasAoAlcance = jogo.predios.concat(
+    rivaisVivas().flatMap(v => v.predios.filter(predioAbandonado))
+  );
+  for (const pr of vagasAoAlcance) {
+    if (!temVaga(pr) && !(predioAbandonado(pr) && (pr.def.fazenda || pr.def.mina || pr.def.posto) && pr.progresso >= 1)) continue;
     if (emPosto >= tetoDePostos) break;
     // Só nomeia quem consegue chegar lá andando pela rua.
     const i = disponiveis.findIndex(p => faseDaIdade(p.idade) === FASE.ADULTO
       && daParaChegar(p.x, p.y, pr.tx, pr.ty));
-    if (i < 0) break;
+    // Continua tentando os próximos: uma quadra abandonada longe demais não
+    // pode travar a nomeação em prédio seu, que era o comportamento de
+    // sempre (break) antes de prédio abandonado existir na lista.
+    if (i < 0) continue;
     const cand = disponiveis.splice(i, 1)[0];
+    if (predioAbandonado(pr)) { transferirPredio(pr, 0); crônica('Sua vila ocupou ' + pr.def.nome + ' abandonad' + (pr.def.nome.endsWith('a')?'a':'o') + '.', true, 'vila'); }
     pr.trabalhador = cand.id; cand.fazendaId = pr.id;
     cand.oficio = pr.def.posto || (pr.def.pesca ? 'pescador' : 'fazendeiro');
     cand.estado = 'indoFazenda'; cand.alvo = pr;
@@ -4805,7 +5264,7 @@ function removerPessoa(p) {
   if (c) c.conjugeId = null;
   for (const pr of jogo.predios) {
     const j = pr.moradores.indexOf(p.id);
-    if (j >= 0) pr.moradores.splice(j, 1);
+    if (j >= 0) { pr.moradores.splice(j, 1); conferirAbandono(pr); }
   }
   selecao = selecao.filter(s => s.id !== p.id);
 }
@@ -5176,6 +5635,13 @@ function iniciarToqueLongo(sx, sy) {
     const pr = predioEm(w.x, w.y);
     if (pr) {
       arraste = null; mouseArr = null;          // não vira arrasto nem toque curto
+      // ITEM 5/8b — prédio de outra vila é intocável: nem mover, nem
+      // melhorar, nem demolir. A única forma de tomá-lo é matando (ou
+      // esvaziando) quem trabalha ou mora nele — e mesmo abandonado ele não
+      // é seu até seu povo ocupá-lo sozinho (é o conselho que faz isso,
+      // 'distribuirOficios' — não um toque).
+      if (predioAbandonado(pr)) { aviso('🏚️ ' + pr.def.nome + ' está abandonado — sua vila vai ocupar se alcançar'); return; }
+      if (pr.vila) { aviso('🔒 ' + pr.def.nome + ' pertence a outra vila'); return; }
       abrirMenuPredio(pr);
     }
   }, ESPERA_TOQUE_LONGO);
@@ -8026,7 +8492,8 @@ function desenharPessoa(g, pReal, selecionado, tingir, dx0, dy0) {
   if (!pessoasProntas) return;       // a folha ainda está carregando
 
   const andando = p.estado.startsWith('indo') || p.estado === 'andando'
-               || p.estado === 'voltando' || p.estado === 'brincando';
+               || p.estado === 'voltando' || p.estado === 'brincando'
+               || p.estado === 'perseguindo' || p.estado === 'fugindo';
   const dir = direcaoDoAngulo(p.ang !== undefined ? p.ang : (p.dir > 0 ? 0 : Math.PI));
   const linha = linhaDoPersonagem(p) * SP_DIRECOES + dir;
   const col = andando ? Math.floor(p.passo * 9) % SP_QUADROS : SP_QUADROS;
@@ -8059,12 +8526,17 @@ function desenharPessoa(g, pReal, selecionado, tingir, dx0, dy0) {
   }
   if (p.veiculo === 'carroca') desenharCarroca(g, p, esc);
 
-  // Faísca de trabalho.
+  // Faísca de trabalho — e a de combate, vermelha, para quem está "cara a
+  // cara" resolvendo o duelo (a perseguição e a fuga já se leem no andar).
   if (p.estado === 'coletando' || p.estado === 'construindo'
       || p.estado === 'naFazenda' || p.estado === 'calçando') {
     const a = (Math.sin(agora / 90) + 1) / 2;
     g.fillStyle = 'rgba(255,235,150,' + (0.35 + a * 0.5) + ')';
     g.fillRect(p.x + (p.dir > 0 ? 9 : -12) * esc, p.y - 20 * esc, 3, 3);
+  } else if (p.estado === 'lutando') {
+    const a = (Math.sin(agora / 60) + 1) / 2;
+    g.fillStyle = 'rgba(255,80,60,' + (0.45 + a * 0.5) + ')';
+    g.beginPath(); g.arc(p.x, p.y - 18 * esc, 2.6 + a * 1.4, 0, 6.2832); g.fill();
   }
 }
 /*
@@ -8075,7 +8547,8 @@ function desenharPessoa(g, pReal, selecionado, tingir, dx0, dy0) {
 */
 function janelaAcesa(g, pr, dx0, dy0) {
   if (!pr.trabalhador || pr.progresso < 1) return;
-  const p = pessoaPorId(pr.trabalhador);
+  const p = pr.vila ? (vilaPorId(pr.vila) || { gente: [] }).gente.find(x => x.id === pr.trabalhador)
+                     : pessoaPorId(pr.trabalhador);
   if (!p || p.dentro !== pr.id) return;
   const x = pr.cx + (dx0 || 0), y = (pr.ty + pr.def.h) * TILE - 7 + (dy0 || 0);
   const brilho = 0.42 + 0.30 * (Math.sin(agora / 430) + 1) / 2;
@@ -8368,6 +8841,7 @@ function passo(dt) {
 
   atualizarPovo(dt);
   atualizarGenteRival(dt);
+  processarDuelos(dt);
   atualizarProducao(dt);
 
   // O que passa da capacidade dos galpões se perde — é o que dá função ao
@@ -8603,11 +9077,24 @@ function desenhar() {
         const d = projetar(pr.cx, (pr.ty + pr.def.h) * TILE);
         lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0, dy0:d.dy0 });
       }
-      // A gente decorativa da vizinha entra na mesma fila que a sua, na mesma
-      // ordenação por profundidade — senão ela sempre desenharia por cima ou
-      // por baixo de tudo, e pareceria colada na tela em vez de andando nela.
-      for (const p of v.gente) {
+      /*
+         A gente da vizinha entra na mesma fila que a sua, na mesma ordenação
+         por profundidade — senão ela sempre desenharia por cima ou por baixo
+         de tudo, e pareceria colada na tela em vez de andando nela.
+
+         Com até 500+50 por vila, o mesmo teto e o mesmo rodízio do seu povo
+         (ver abaixo) valem aqui — por FACÇÃO: uma vila cheia não pode roubar
+         a cota de outra.
+      */
+      const gv = v.gente, ng = gv.length;
+      v.inicioDoDesenho = ng ? ((v.inicioDoDesenho || 0) + 1) % ng : 0;
+      let adultosV = 0, criancasV = 0;
+      for (let k = 0; k < ng; k++) {
+        const p = gv[(v.inicioDoDesenho + k) % ng];
+        if (p.dentro) continue;      // sob um teto: a janela acesa já conta a história
         if (p.x < camX - 50 || p.x > camX + vw + 50 || p.y < camY - 50 || p.y > camY + vh + 50) continue;
+        if (faseDaIdade(p.idade) === FASE.CRIANCA) { if (criancasV >= MAX_CRIANCAS_NA_TELA) continue; criancasV++; }
+        else { if (adultosV >= MAX_ADULTOS_NA_TELA) continue; adultosV++; }
         const d = projetar(p.x, p.y);
         lista.push({ y:d.y, k:2, o:p, dx0:d.dx0, dy0:d.dy0 });
       }
@@ -8882,7 +9369,15 @@ function gravar() {
       // O 'def' de cada prédio da vizinha é remontado na leitura a partir da
       // chave: gravá-lo repetiria a tabela inteira em cada casa.
       vilas: (jogo.vilas || []).map(v => Object.assign({}, v, {
-        predios: v.predios.map(p => [p.chave, p.tx, p.ty, p.vari]),
+        // 'vila' aqui é o DONO ATUAL do prédio — pode ser "livre" (abandonado)
+        // ou até a facção de outra vila (conquistado), não necessariamente a
+        // desta. É por isso que não dá pra assumir 'v.id' na leitura.
+        predios: v.predios.map(p => [p.chave, p.tx, p.ty, p.vari, p.vila, p.trabalhador, p.moradores]),
+        // Combate não sobrevive ao save (dura segundos, e guardaria referência
+        // direta a outra pessoa — JSON não representa isso). Gente rival, sim.
+        gente: v.gente.map(p => Object.assign({}, p, {
+          alvoCombate: null, duelo: null, emCombate: null, estadoAntesDoCombate: null,
+        })),
       })),
       // A média móvel do livro-caixa também vai no save: sem ela o painel
       // abria dizendo 'ainda sem movimento' por um minuto depois de recarregar.
@@ -8931,23 +9426,39 @@ function carregar() {
     // Vila antiga não tem grade gravada: 'origemMalha' ancora uma no Centro na
     // primeira vez que alguém perguntar, e daí em diante ela fica.
     jogo.malhaOx = s.malhaOx; jogo.malhaOy = s.malhaOy;
+    jogo.duelos = [];
     jogo.rivais = s.rivais || 0;
     jogo.dono = s.dono || {};
     jogo.vilas = (s.vilas || []).map(v => Object.assign({}, v, {
       ruas: v.ruas || [],
       // Save de antes da gente decorativa existir não tem este campo — a
       // vila reaparece sem ninguém andando por ela até o próximo dia de
-      // jogo, quando 'sincronizarGenteRival' preenche sozinha.
-      gente: v.gente || [],
-      predios: (v.predios || []).map(([chave, tx, ty, vari]) => {
+      // jogo, quando 'sincronizarGenteRival' preenche sozinha. Save de antes
+      // do emprego/combate existirem tem gente, mas sem os campos novos —
+      // Object.assign sobre um objeto-base cobre os que faltarem.
+      gente: (v.gente || []).map(p => Object.assign({
+        predioId: null, papel: null, dentro: null, portaX: undefined, portaY: undefined,
+        sulcoX: 0, sulcoY: 0, sulcoT: 0, emCombate: null, alvoCombate: null,
+        alvoCombateFaccao: 0, estadoAntesDoCombate: null, duelo: null, morto: false,
+        proximaChecagemCombate: 0, veiculo: null, carga: 0, cargaTipo: null,
+      }, p)),
+      predios: (v.predios || []).map(([chave, tx, ty, vari, donoSalvo, trabSalvo, moradoresSalvos]) => {
         const def = PREDIO[chave];
         const pr = { id: proxPredioId++, chave, def, tx, ty,
           cx: (tx + def.w / 2) * TILE, cy: (ty + def.h / 2) * TILE,
-          progresso: 1, concluido: true, moradores: [], vila: v.id, vari, trabalhador: null };
+          progresso: 1, concluido: true,
+          // Save de antes da conquista existir não tem 'donoSalvo': cai no
+          // comportamento de sempre, dono = a própria vila.
+          moradores: moradoresSalvos || [], vila: donoSalvo !== undefined ? donoSalvo : v.id,
+          vari, trabalhador: trabSalvo !== undefined ? trabSalvo : null };
         marcarOcupacao(pr, true);
         return pr;
       }),
     }));
+    // O contador de id da gente rival começa do zero a cada sessão; sem isto,
+    // um id recém-criado podia repetir o de alguém já carregado, e 'janelaAcesa'
+    // (que acha o trabalhador pelo id) apontaria para a pessoa errada.
+    for (const v of jogo.vilas) for (const p of v.gente) if (p.id >= proxGenteRivalId) proxGenteRivalId = p.id + 1;
     if (s.fluxo) for (const k in s.fluxo) fluxoMedio[k] = s.fluxo[k];
     velocidade = VELOCIDADES.includes(s.velocidade) ? s.velocidade : 1;
     jogo.clima = s.clima || 'limpo';
@@ -9037,7 +9548,7 @@ function novaVila(seed) {
   jogo.predios = []; jogo.pessoas = []; jogo.estradas = new Set(); jogo.obrasEstrada = [];
   jogo.cronica = []; jogo.ancestrais = []; jogo.crise = null; jogo.zonas = {}; jogo.historia = [];
   jogo.malhaOx = null; jogo.malhaOy = null;
-  jogo.vilas = []; jogo.dono = {}; jogo.pressao = 0; jogo.migraSaindo = 0;
+  jogo.vilas = []; jogo.dono = {}; jogo.pressao = 0; jogo.migraSaindo = 0; jogo.duelos = [];
   jogo.proxId = 1; proxPredioId = 1;
   jogo.recursos = { madeira:220, comida:380, pedra:80, tabua:0, ferramenta:0 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
