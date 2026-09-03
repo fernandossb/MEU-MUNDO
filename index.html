@@ -272,6 +272,7 @@
       <span id="r-tabua-w" style="display:none">🟫<b id="r-tabua">0</b></span>
       <span id="r-ferramenta-w" style="display:none">🔨<b id="r-ferramenta">0</b></span>
       <span>🏠<b id="r-pop">0</b></span>
+      <span id="r-territ-w" style="display:none" title="quarteirões seus / quarteirões em disputa">🚩<b id="r-territ">0</b></span>
     </div>
     <div id="calendario" class="panel">
       <span id="c-relogio">06:00</span>
@@ -356,6 +357,15 @@
     <p class="hint">Arraste para mover · pince para zoom · toque numa pessoa para ver a ficha dela · <kbd>WASD</kbd> e roda do mouse no computador</p>
     <div class="row"><label class="hint">Nome</label><input id="nomein" maxlength="28" placeholder="Vila Nova"></div>
     <div class="row"><label class="hint">Semente</label><input id="seedin" inputmode="numeric"></div>
+    <div class="row" style="margin-top:2px">
+      <label class="hint" style="width:100%">Vilas rivais nesta partida</label>
+      <div class="btn" data-rivais="0">Nenhuma</div>
+      <div class="btn" data-rivais="1">1</div>
+      <div class="btn" data-rivais="2">2</div>
+      <div class="btn" data-rivais="3">3</div>
+      <div class="btn" data-rivais="4">4</div>
+    </div>
+    <p class="hint" id="rivais-hint" style="margin:-4px 0 0">Sem exército: quem vive melhor atrai a gente da vizinha, e o território segue a fronteira.</p>
     <div class="row">
       <div class="btn" id="btn-voltar">Continuar</div>
       <div class="btn" id="btn-novo">Nova vila</div>
@@ -930,6 +940,9 @@ function acharNo(x, y, tipo, maxTiles, qualquerLugar) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const tx = tx0 + dx, ty = ty0 + dy;
         if (ocupado.has(nk(tx, ty))) continue;
+        // O que está dentro do território da vizinha é dela. É isto que faz o
+        // quarteirão valer recurso, e não só desenho no mapa.
+        if (territorioAlheio(tx, ty)) continue;
         if (!qualquerLugar && noRuim(tx, ty)) continue;
         const n = noEm(tx, ty);
         if (!n || (tipo && n.tipo !== tipo)) continue;
@@ -1177,12 +1190,16 @@ const pessoaPorId = id => jogo.pessoas.find(p => p.id === id) || null;
 /* ----------------------------------------------------------- estado ------ */
 
 const jogo = {
-  recursos: { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 },
+  // A despensa de partida dá uns cem dias. Com a comida valendo alguma coisa, a
+  // vila precisa desse fôlego para erguer as duas primeiras lavouras antes do
+  // primeiro inverno — que chega no quinto mês.
+  recursos: { madeira:220, comida:380, pedra:80, tabua:0, ferramenta:0 },
   predios: [], pessoas: [], estradas: new Set(), obrasEstrada: [],
   cronica: [], proxId: 1, tempo: 0, ano: 1, anoFrac: 0,
   nome: 'Vila Nova', ancestrais: [], crise: null, zonas: {}, historia: [],
   clima: 'limpo', mesAnterior: -1, diaAnterior: -1, diaTotal: 0,
   pedidos: [], autoAprovar: true,
+  vilas: [], dono: {}, rivais: 0,
   fome: false, salvoEm: Date.now(),
 };
 
@@ -2091,13 +2108,67 @@ function recursoMaisNecessario() {
   return 'madeira';
 }
 
+/* -------------------------------------------------- dentro do prédio ----- */
+/*
+   O ALDEÃO NO POSTO.
+
+   Até aqui quem chegava ao trabalho parava a uns dois tiles do prédio e ficava
+   ali, imóvel, a vida inteira. Dava a impressão de vila parada mesmo quando
+   todo mundo estava produzindo — e boa parte das reclamações de "aldeão
+   parado" era isto, não gente travada de verdade.
+
+   Agora o posto tem duas naturezas:
+
+   - SOB UM TETO (serraria, oficina, escola, mercado, mina): ele entra e some
+     de vista. O prédio é que mostra o serviço, com a janela acesa.
+   - NO CAMPO (lavoura e cais): ele entra no lote e trabalha ANDANDO, cruzando
+     os sulcos. Fazendeiro trancado dentro de casa seria pior do que
+     fazendeiro parado na esquina.
+
+   A soleira fica guardada: ao sair do posto ele volta exatamente para o tile
+   de rua de onde entrou. Sem isso ele largaria o serviço no meio do lote, fora
+   do calçamento, e a regra da cidade o teleportaria para a rua mais próxima —
+   que pode ser a de trás.
+*/
+const postoAoArLivre = def => !!(def.fazenda || def.pesca);
+const VELOCIDADE_NO_SULCO = 17;      // passo lento de quem está trabalhando
+
+function entrarNoPosto(p, pr) {
+  p.portaX = p.x; p.portaY = p.y;              // a soleira, para onde ele volta
+  if (postoAoArLivre(pr.def)) { p.dentro = null; escolherSulco(p, pr); }
+  else { p.dentro = pr.id; p.x = pr.cx; p.y = pr.cy; p.sulcoT = 0; }
+}
+
+function sairDoPosto(p) {
+  if (p.portaX === undefined) return;
+  p.x = p.portaX; p.y = p.portaY;
+  p.portaX = undefined; p.portaY = undefined;
+  p.dentro = null; p.caminho = null; p.travado = 0;
+}
+
+// Um ponto qualquer dentro do lote, para atravessar até ele.
+function escolherSulco(p, pr) {
+  const folga = 7;
+  p.sulcoX = pr.tx * TILE + folga + rnd() * (pr.def.w * TILE - folga * 2);
+  p.sulcoY = pr.ty * TILE + folga + rnd() * (pr.def.h * TILE - folga * 2);
+  p.sulcoT = 2 + rnd() * 5;                    // e uma pausa ao chegar
+}
+
 function atualizarPessoa(p, dt) {
   const fase = faseDaIdade(p.idade);
+
+  // Largou o posto: volta para a soleira antes de qualquer outra conta. O
+  // estado muda em uma dúzia de lugares (prédio demolido, troca de ofício,
+  // morte do posto) e sair caçando todos seria caçar bug depois.
+  if (p.estado !== 'naFazenda' && p.portaX !== undefined) sairDoPosto(p);
 
   // Ninguém fica fora do calçamento à toa: recém-nascido, gente de save antigo
   // ou quem escapou por um canto volta para a rua mais próxima. Quem está
   // colhendo é a exceção — ele TEM de estar no mato (item 4).
-  if (!podeSairDaRua(p) && !jogo.estradas.has(nk(Math.floor(p.x / TILE), Math.floor(p.y / TILE)))) {
+  // Quem está no posto tem a soleira guardada e não entra nesta conta: ele
+  // está fora da rua de propósito, dentro do próprio lote.
+  if (p.portaX === undefined && !podeSairDaRua(p) &&
+      !jogo.estradas.has(nk(Math.floor(p.x / TILE), Math.floor(p.y / TILE)))) {
     const volta = ruaMaisProxima(p.x, p.y, 30);
     if (volta) { p.x = volta.x; p.y = volta.y; p.caminho = null; p.travado = 0; }
   }
@@ -2158,6 +2229,7 @@ function atualizarPessoa(p, dt) {
       // Ferramenta forjada na oficina: quem colhe com ela rende mais, e a
       // ferramenta se gasta. É o que dá demanda contínua à oficina.
       eficiencia *= jeito(p, 'colheita');
+      if (p.alvo.tipo === 'comida') eficiencia *= MATO_COMIDA * estacaoNoMato();
       if (temNoGalpao('ferramenta')) {
         const gasta = Math.min(jogo.recursos.ferramenta, FERRO_NO_MATO * dt);
         jogo.recursos.ferramenta -= gasta;
@@ -2281,7 +2353,7 @@ function atualizarPessoa(p, dt) {
       const pr = p.alvo;
       if (!pr || pr.progresso < 1 || !jogo.predios.includes(pr)) { p.estado = 'ocioso'; p.alvo = null; break; }
       const d = mover(p, pr.cx, pr.cy, dt);
-      if (d < alcanceDe(pr)) { p.estado = 'naFazenda'; p.frustrado = 0; }
+      if (d < alcanceDe(pr)) { p.estado = 'naFazenda'; p.frustrado = 0; entrarNoPosto(p, pr); }
       else if (p.travado > 2) desencalhar(p);
       break;
     }
@@ -2290,12 +2362,28 @@ function atualizarPessoa(p, dt) {
       const pr = p.alvo;
       if (!pr || pr.trabalhador !== p.id) { p.estado = 'ocioso'; p.alvo = null; break; }
       p.passo += dt * 0.6;
+
+      // Save antigo (ou prédio que trocou de mãos) pode cair aqui sem ter
+      // passado pela porta. Entra agora.
+      if (p.portaX === undefined) entrarNoPosto(p, pr);
+
+      // No campo o serviço é andando: ele atravessa o lote de um sulco a outro.
+      if (postoAoArLivre(pr.def)) {
+        p.sulcoT -= dt;
+        const dx = p.sulcoX - p.x, dy = p.sulcoY - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 2) {
+          const v = Math.min(dist, VELOCIDADE_NO_SULCO * dt);
+          p.x += dx / dist * v; p.y += dy / dist * v;
+          p.dir = dx >= 0 ? 1 : -1;
+        } else if (p.sulcoT <= 0) escolherSulco(p, pr);
+      }
       const rende = (fase === FASE.IDOSO ? 0.72 : 1) * (p.instruido ? 1.2 : 1) * jeito(p, 'posto');
       if (pr.def.pesca) {
         // Peixe não tem estação: só a tempestade tira o barco da água.
         const mar = jogo.clima === 'tempestade' ? 0.25 : 1;
         const barco = p.veiculo === 'barco' ? 1.6 : 1;
-        const q = 0.048 * rende * mar * barco * dt;
+        const q = PESCA_SEG * rende * mar * barco * dt;
         jogo.recursos.comida += q;
         anotarFluxo('comida', 'lavoura', q);
       } else if (pr.def.mina) {
@@ -2326,7 +2414,7 @@ function atualizarPessoa(p, dt) {
         }
       } else if (pr.def.fazenda) {
         const tamanho = pr.def.lavouraGrande ? 1.9 : 1;
-        const q = 0.052 * rende * tamanho * fatorLavoura() * dt;
+        const q = LAVOURA_SEG * rende * tamanho * fatorLavoura() * dt;
         jogo.recursos.comida += q;
         anotarFluxo('comida', 'lavoura', q);
       }
@@ -2516,7 +2604,59 @@ function temAguaPerto(tx, ty, w, h) {
   return false;
 }
 
+/*
+   ONDE O PRÉDIO VAI.
+
+   Primeiro pela grade: enche um quarteirão antes de abrir o próximo, sempre do
+   mais perto do Centro para o mais longe, sempre encostando na testada. É o
+   que dá quadra cheia em vez de fileira de casa ao longo de um tentáculo.
+
+   Depois, se a grade não serviu, cai na busca antiga — que percorre os tiles de
+   rua um a um. Isso não é enfeite: quem já jogava tem uma vila inteira de ruas
+   tortas, fora de qualquer grade, e o cais e a mina precisam de vizinho
+   molhado ou de pedra, que a quadra regular pode não ter. Sem a segunda
+   passada, essas vilas parariam de construir.
+*/
 function escolherLote(def) {
+  return loteNoQuarteirao(def) || loteNaTestada(def);
+}
+
+function loteNoQuarteirao(def) {
+  if (!centroDaVila() || !jogo.estradas.size) return null;
+  const passadas = temZonaDesenhada() ? [2, 1, 0] : [1, 0, 2];
+  const blocos = quarteiroesPorPerto().filter(([bx, by]) => {
+    const d = donoDoBloco(bx, by);
+    return d === undefined || d === 0;
+  });
+  for (const nota of passadas)
+    for (const [bx, by] of blocos)
+      for (const [tx, ty] of posicoesNoQuarteirao(bx, by, def)) {
+        if (!areaValida(tx, ty, def.w, def.h)) continue;
+        if (!encostaNaRua(tx, ty, def.w, def.h)) continue;
+        if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
+        if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
+        if (notaDaZona(def, tx, ty) !== nota) continue;
+        return { tx, ty };
+      }
+  return null;
+}
+
+// Quantas casas ainda cabem nos quarteirões abertos. É o que decide se a vila
+// precisa de rua nova — antes ela abria via por metro de calçamento já feito,
+// que não tem relação nenhuma com haver ou não onde construir.
+function vagasNoBairro(teto) {
+  const casa = PREDIO.casa;
+  let n = 0;
+  for (const [bx, by] of quarteiroesPorPerto())
+    for (const [tx, ty] of posicoesNoQuarteirao(bx, by, casa)) {
+      if (!areaValida(tx, ty, casa.w, casa.h)) continue;
+      if (!encostaNaRua(tx, ty, casa.w, casa.h)) continue;
+      if (++n >= (teto || 6)) return n;
+    }
+  return n;
+}
+
+function loteNaTestada(def) {
   const base = centroDaVila();
   if (!base || !jogo.estradas.size) return null;
   const btx = Math.floor(base.cx / TILE), bty = Math.floor(base.cy / TILE);
@@ -2545,6 +2685,7 @@ function escolherLote(def) {
           const tx = dx !== 0 ? (dx > 0 ? rx + 1 : rx - def.w) : rx - off;
           const ty = dy !== 0 ? (dy > 0 ? ry + 1 : ry - def.h) : ry - off;
           if (!areaValida(tx, ty, def.w, def.h)) continue;
+          if (pisaNaGrade(tx, ty, def.w, def.h)) continue;
           if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
           if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
           if (notaDaZona(def, tx, ty) !== nota) continue;
@@ -2554,6 +2695,468 @@ function escolherLote(def) {
     }
   }
   return null;
+}
+
+/* --------------------------------------------------- as vilas vizinhas --- */
+/*
+   A DISPUTA DE TERRITÓRIO.
+
+   Você escolhe quantas vilas quer enfrentar. Elas nascem longe, crescem
+   sozinhas, avançam sobre o mapa — e quem domina não é quem tem exército, é
+   quem tem despensa. O jogo continua sem armas: a vila que vive melhor ATRAI
+   a gente da vizinha, e quando a vizinha esvazia, o território dela passa para
+   quem a absorveu.
+
+   Isso liga as três coisas que esta fase mexeu numa só: o QUARTEIRÃO é a
+   unidade de território, a COMIDA é a moeda da disputa (é ela que faz a
+   prosperidade), e a grade é o que dá fronteira desenhável.
+
+   ------------------------------------------------------------------------
+   A DECISÃO DE ARQUITETURA, que é o que torna isto possível sem reescrever o
+   jogo: a vila vizinha NÃO é uma segunda simulação.
+
+   O miolo do jogo — alcance, A*, desencalhar, conselho — assume UMA malha
+   viária, e foi justamente essa parte que passou três fases sendo consertada.
+   Um segundo enxame de pessoas com ruas próprias reabriria tudo aquilo, e a
+   quinhentos aldeões por vila também não caberia no orçamento de um quadro.
+
+   Então a vizinha é um MODELO: população, despensa, lavouras, casas e
+   território, avançados uma vez por dia de jogo pela mesma matemática que rege
+   a sua vila (a mesma LAVOURA_SEG, o mesmo COMIDA_POR_ANO, a mesma estação).
+   Os prédios e as ruas dela existem e são desenhados, mas ficam em listas
+   próprias: 'jogo.estradas' continua sendo só sua, e nenhum aldeão seu jamais
+   tentará andar por lá. O que a vizinha faz de verdade é ocupar terreno,
+   disputar quarteirão e puxar gente — que é exatamente o que a disputa pede.
+*/
+
+const NOMES_DE_VILA = [
+  'Pedra Alta', 'Vale Fundo', 'Águas Claras', 'Serra Verde', 'Porto Velho',
+  'Campo Largo', 'Monte Sino', 'Barra Nova', 'Alto da Mata', 'Ribeira',
+];
+const CORES_DE_VILA = ['#d2704a', '#7a6fd0', '#4aa38c', '#c9a03c', '#c05a86'];
+
+const MAX_RIVAIS = 4;
+const DIST_ENTRE_VILAS = 46;        // tiles entre o seu centro e o da vizinha
+
+const blocoK = (bx, by) => bx + ',' + by;
+
+// Quem é dono de um quarteirão. undefined = terra de ninguém, 0 = você.
+const donoDoBloco = (bx, by) => jogo.dono[blocoK(bx, by)];
+const donoDoTile = (tx, ty) => {
+  if (!jogo.vilas || !jogo.vilas.length) return undefined;
+  const [bx, by] = quarteiraoDe(tx, ty);
+  return jogo.dono[blocoK(bx, by)];
+};
+// Terreno proibido para você: o que já é de uma vizinha.
+const territorioAlheio = (tx, ty) => {
+  const d = donoDoTile(tx, ty);
+  return d !== undefined && d !== 0;
+};
+
+const vilaPorId = id => (jogo.vilas || []).find(v => v.id === id) || null;
+const rivaisVivas = () => (jogo.vilas || []).filter(v => v.viva);
+const emDisputa = () => rivaisVivas().length > 0;
+
+/* ---------------------------------------------------------- a fundação --- */
+/*
+   As vizinhas nascem em direções diferentes, longe o bastante para haver mapa
+   entre vocês (é nesse meio que a disputa acontece) e perto o bastante para as
+   fronteiras se encontrarem em algumas dezenas de anos.
+*/
+function criarRivais(quantas) {
+  jogo.vilas = [];
+  jogo.dono = {};
+  if (!quantas) return;
+  const eu = centroDaVila();
+  const ex = eu ? Math.floor(eu.cx / TILE) : 0, ey = eu ? Math.floor(eu.cy / TILE) : 0;
+
+  for (let i = 0; i < Math.min(quantas, MAX_RIVAIS); i++) {
+    const ang = (i / quantas) * 6.2832 + rnd() * 0.6;
+    const lugar = lugarDeVilaRival(ex, ey, ang);
+    if (!lugar) continue;
+    const v = {
+      id: i + 1,
+      nome: NOMES_DE_VILA[Math.floor(rnd() * NOMES_DE_VILA.length)] || ('Vila ' + (i + 2)),
+      cor: CORES_DE_VILA[i % CORES_DE_VILA.length],
+      tx: lugar.tx, ty: lugar.ty,
+      pop: 8, comida: 380, madeira: 220, pedra: 80,
+      lavouras: 0, casas: 1,
+      pressao: 0, migra: 0, viva: true, fome: false,
+      predios: [], ruas: [], blocos: [],
+    };
+    // Nome repetido entre vizinhas confunde mais do que enfeita.
+    while (jogo.vilas.some(o => o.nome === v.nome))
+      v.nome = NOMES_DE_VILA[Math.floor(rnd() * NOMES_DE_VILA.length)] + ' do Norte';
+    jogo.vilas.push(v);
+    reclamarBloco(...quarteiraoDe(v.tx, v.ty), v.id);
+    fundarVilaRival(v);
+  }
+  reclamarMeuTerritorio();
+}
+
+// Terra firme a uma distância boa, tentando afastar até achar.
+function lugarDeVilaRival(ex, ey, ang) {
+  for (let d = DIST_ENTRE_VILAS; d < DIST_ENTRE_VILAS + 60; d += 3)
+    for (const giro of [0, 0.25, -0.25, 0.5, -0.5]) {
+      const tx = ex + Math.round(Math.cos(ang + giro) * d);
+      const ty = ey + Math.round(Math.sin(ang + giro) * d);
+      let ok = true;
+      for (let y = -4; y <= 4 && ok; y++)
+        for (let x = -4; x <= 4 && ok; x++)
+          if (SOLIDO[biomaEm(tx + x, ty + y)]) ok = false;
+      if (ok && donoDoBloco(...quarteiraoDe(tx, ty)) === undefined) return { tx, ty };
+    }
+  return null;
+}
+
+function fundarVilaRival(v) {
+  erguerNaVilaRival(v, 'centro');
+  erguerNaVilaRival(v, 'casa');
+  anelDoQuarteirao(v, ...quarteiraoDe(v.tx, v.ty));
+}
+
+/* ------------------------------------------------------------ território - */
+function reclamarBloco(bx, by, id) {
+  const k = blocoK(bx, by);
+  const antes = jogo.dono[k];
+  if (antes === id) return false;
+  jogo.dono[k] = id;
+  if (antes !== undefined) {
+    const va = vilaPorId(antes);
+    if (va) va.blocos = va.blocos.filter(b => b !== k);
+  }
+  const v = vilaPorId(id);
+  if (v && !v.blocos.includes(k)) v.blocos.push(k);
+  return true;
+}
+
+/*
+   O seu território sai das RUAS: todo quarteirão que a sua malha toca é seu.
+   Refeito uma vez por dia de jogo — é barato e dispensa espalhar marcação de
+   posse por todos os lugares onde uma rua pode nascer (o traçado à mão, a obra
+   do conselho, a rua com destino, a fundação).
+
+   Só terra de ninguém entra assim. Quarteirão de vizinha se ganha na
+   prosperidade, não construindo por cima.
+*/
+function reclamarMeuTerritorio() {
+  if (!emDisputa()) return;
+  for (const [bx, by] of quarteiroesAbertos()) {
+    const k = blocoK(bx, by);
+    if (jogo.dono[k] === undefined) { jogo.dono[k] = 0; }
+  }
+}
+
+const meusBlocos = () => Object.keys(jogo.dono).filter(k => jogo.dono[k] === 0).length;
+
+/* Os quarteirões vizinhos de um território — onde ele pode avançar. */
+function fronteiraDe(blocos) {
+  const fora = new Map();
+  for (const k of blocos) {
+    const [bx, by] = k.split(',').map(Number);
+    for (const [dx, dy] of LADOS) {
+      const vk = blocoK(bx + dx, by + dy);
+      if (blocos.includes(vk)) continue;
+      fora.set(vk, [bx + dx, by + dy]);
+    }
+  }
+  return [...fora.values()];
+}
+
+/* ------------------------------------------------------- a prosperidade -- */
+/*
+   A NOTA DA VILA, de 0 a 1 — é ela que decide para onde as pessoas vão e quem
+   empurra a fronteira.
+
+   Três parcelas, e nenhuma é enfeite: DESPENSA (quantos dias de comida por
+   boca), TETO (quanto ainda cabe de gente) e TERRA (quarteirões por morador).
+   Uma vila cheia de comida sem casa vazia não atrai ninguém; uma vila com
+   casas vazias e sem comida também não.
+*/
+function nota(dias, folga, blocos, pop) {
+  const nDespensa = Math.min(1, dias / 120);
+  const nTeto = Math.min(1, folga / Math.max(4, pop * 0.25));
+  const nTerra = Math.min(1, blocos / Math.max(1, pop / 9));
+  return nDespensa * 0.5 + nTeto * 0.3 + nTerra * 0.2;
+}
+
+function prosperidadeMinha() {
+  const pop = popAtual();
+  if (!pop) return 0;
+  return nota(diasDeComida(), Math.max(0, popMax() - pop), meusBlocos(), pop);
+}
+
+function prosperidadeDe(v) {
+  if (!v.pop) return 0;
+  const dias = v.comida / Math.max(0.01, v.pop * COMIDA_POR_ANO / DIAS_NO_ANO);
+  return nota(dias, Math.max(0, v.casas * 5 - v.pop), v.blocos.length, v.pop);
+}
+
+/* ---------------------------------------------------- o dia da vizinha --- */
+/*
+   A economia da vizinha, um dia de cada vez, pela MESMA matemática da sua: a
+   lavoura rende LAVOURA_SEG por segundo, a boca come COMIDA_POR_ANO por ano, e
+   a estação vale para os dois lados. Se fosse uma fórmula própria, a disputa
+   seria injusta num sentido ou no outro e não haveria como afinar.
+*/
+function diaDaVilaRival(v) {
+  const seg = ANO_DIA;
+
+  // Colheita: lavoura mais o que se apanha no mato, proporcional ao território.
+  const daLavoura = v.lavouras * LAVOURA_SEG * fatorLavoura() * seg;
+  const doMato = Math.min(v.pop, v.blocos.length * 2) * TAXA * MATO_COMIDA *
+                 estacaoNoMato() * 0.30 * seg;
+  v.comida += daLavoura + doMato;
+  v.comida -= v.pop * COMIDA_POR_ANO * (seg / ANO);
+
+  // Madeira e pedra vêm do território: terra é o que dá matéria-prima.
+  const bracos = Math.min(v.pop, v.blocos.length * 3);
+  v.madeira += bracos * TAXA * 0.30 * seg;
+  v.pedra   += bracos * TAXA * 0.12 * seg;
+  const teto = 300 + v.blocos.length * 220;
+  v.comida = Math.min(v.comida, teto);
+  v.madeira = Math.min(v.madeira, teto);
+  v.pedra = Math.min(v.pedra, teto);
+
+  // Fome: a vizinha também morre de fome, e pelas mesmas regras.
+  if (v.comida <= 0) {
+    v.comida = 0;
+    v.fome = true;
+    if (rnd() < 0.10) v.pop = Math.max(0, v.pop - 1);
+  } else if (v.fome && v.comida > v.pop * 2) v.fome = false;
+
+  // Obras: a mesma regra do seu conselho — uma lavoura para cada cinco, mais
+  // uma; e casa quando o teto aperta.
+  const querLavoura = v.lavouras < Math.ceil(v.pop / 5) + 1;
+  if (querLavoura && v.madeira >= PREDIO.fazenda.custo.madeira) {
+    if (erguerNaVilaRival(v, 'fazenda')) { v.madeira -= PREDIO.fazenda.custo.madeira; v.lavouras++; }
+  } else if (v.casas * 5 - v.pop < 3 && v.madeira >= PREDIO.casa.custo.madeira) {
+    if (erguerNaVilaRival(v, 'casa')) { v.madeira -= PREDIO.casa.custo.madeira; v.casas++; }
+  }
+
+  // Nascimento: devagar, como na sua vila, e só com despensa e teto.
+  const dias = v.comida / Math.max(0.01, v.pop * COMIDA_POR_ANO / DIAS_NO_ANO);
+  if (!v.fome && dias > 60 && v.pop < v.casas * 5 && rnd() < 0.26 * v.pop / 2 / DIAS_NO_ANO)
+    v.pop++;
+  if (rnd() < v.pop * 0.022 / DIAS_NO_ANO) v.pop = Math.max(0, v.pop - 1);   // velhice
+}
+
+/* ------------------------------------------------------------- avançar --- */
+/*
+   A FRONTEIRA SE MEXE. Cada vila acumula PRESSÃO conforme sua prosperidade; ao
+   encher, ela toma um quarteirão.
+
+   Terra de ninguém é de quem chegar primeiro. Terra de outro só muda de mão
+   quando quem empurra vive VISIVELMENTE melhor — uma vez e meia melhor. Sem
+   essa margem a fronteira ficaria trocando de dono todo dia por causa de
+   decimais, e a disputa viraria ruído em vez de história.
+*/
+const MARGEM_PARA_TOMAR = 1.5;
+
+function avancarFronteira(quem, prosp, blocos, id) {
+  const alvos = fronteiraDe(blocos);
+  if (!alvos.length) return null;
+  const [cbx, cby] = quem;
+  alvos.sort((a, b) =>
+    (Math.abs(a[0] - cbx) + Math.abs(a[1] - cby)) - (Math.abs(b[0] - cbx) + Math.abs(b[1] - cby)));
+
+  // Primeiro o que não é de ninguém; depois o do vizinho mais fraco.
+  for (const [bx, by] of alvos) {
+    if (donoDoBloco(bx, by) !== undefined) continue;
+    if (SOLIDO[biomaEm(bx * PERIODO_MALHA + 4, by * PERIODO_MALHA + 4)]) continue;
+    reclamarBloco(bx, by, id);
+    return { bx, by, tomado: false };
+  }
+  for (const [bx, by] of alvos) {
+    const dono = donoDoBloco(bx, by);
+    if (dono === undefined || dono === id) continue;
+    const outra = dono === 0 ? prosperidadeMinha() : prosperidadeDe(vilaPorId(dono));
+    if (prosp < outra * MARGEM_PARA_TOMAR) continue;
+    reclamarBloco(bx, by, id);
+    return { bx, by, tomado: true, de: dono };
+  }
+  return null;
+}
+
+/* -------------------------------------------------------- a migração ----- */
+/*
+   DOMINAR SEM GUERRA. As pessoas vão para onde se vive melhor. Uma vila que
+   produz mais comida por boca, tem casa sobrando e terra para trabalhar puxa
+   gente da vizinha — e quando a vizinha esvazia, o território dela passa a
+   quem a absorveu.
+
+   É a mesma economia de comida do item 1 servindo de arma: quem administra
+   melhor a despensa toma a vila do outro sem tocar em ninguém.
+*/
+const MIGRACAO_POR_DIA = 0.55;      // pessoas por dia, no maior desnível possível
+
+function migrarEntreVilas() {
+  const lista = [{ id: 0, prosp: prosperidadeMinha() },
+                 ...rivaisVivas().map(v => ({ id: v.id, prosp: prosperidadeDe(v), v }))];
+  if (lista.length < 2) return;
+
+  for (const origem of lista) {
+    const destino = lista.reduce((a, b) => (b.prosp > a.prosp ? b : a));
+    if (destino.id === origem.id) continue;
+    const desnivel = destino.prosp - origem.prosp;
+    if (desnivel < 0.12) continue;                 // desnível pequeno não move ninguém
+    const popOrigem = origem.id === 0 ? popAtual() : origem.v.pop;
+    if (popOrigem <= 4) continue;                  // ninguém abandona o último punhado
+
+    const fluxo = MIGRACAO_POR_DIA * Math.min(1, desnivel * 2);
+    if (origem.id === 0) {
+      jogo.migraSaindo = (jogo.migraSaindo || 0) + fluxo;
+      while (jogo.migraSaindo >= 1 && popAtual() > 4) {
+        jogo.migraSaindo -= 1;
+        const quem = escolherEmigrante();
+        if (!quem) break;
+        const dest = destino.id === 0 ? null : vilaPorId(destino.id);
+        if (dest) dest.pop++;
+        crônica(nomeCompleto(quem) + ' mudou-se para ' + (dest ? dest.nome : 'longe') + '.', true, 'vida');
+        removerPessoa(quem);
+      }
+    } else {
+      origem.v.migra = (origem.v.migra || 0) + fluxo;
+      while (origem.v.migra >= 1 && origem.v.pop > 4) {
+        origem.v.migra -= 1;
+        origem.v.pop--;
+        if (destino.id === 0) {
+          const casa = casaComVaga();
+          if (!casa) { origem.v.pop++; break; }    // sem teto aqui, ninguém vem
+          chegarFamilia(casa, 1);
+          crônica('Uma família deixou ' + origem.v.nome + ' e veio morar aqui.', true, 'vida');
+        } else {
+          const dest = vilaPorId(destino.id);
+          if (dest) dest.pop++;
+        }
+      }
+    }
+  }
+}
+
+// Quem vai embora: adulto sem posto, para não esvaziar a lavoura de uma vez.
+function escolherEmigrante() {
+  const livres = jogo.pessoas.filter(p =>
+    faseDaIdade(p.idade) === FASE.ADULTO && !OFICIO_DE_POSTO.has(p.oficio) && !p.ordemManual);
+  const lista = livres.length ? livres
+    : jogo.pessoas.filter(p => faseDaIdade(p.idade) === FASE.ADULTO);
+  return lista.length ? lista[Math.floor(rnd() * lista.length)] : null;
+}
+
+/* --------------------------------------------------------- a absorção ---- */
+function conferirAbsorcao() {
+  for (const v of rivaisVivas()) {
+    if (v.pop > 0 && v.blocos.length > 0) continue;
+    v.viva = false;
+
+    // O território vai para quem tem mais fronteira com ela — quem de fato a
+    // absorveu, e não simplesmente quem estava mais longe e teve sorte.
+    const contagem = {};
+    for (const k of v.blocos) {
+      const [bx, by] = k.split(',').map(Number);
+      for (const [dx, dy] of LADOS) {
+        const d = donoDoBloco(bx + dx, by + dy);
+        if (d === undefined || d === v.id) continue;
+        contagem[d] = (contagem[d] || 0) + 1;
+      }
+    }
+    const chaves = Object.keys(contagem);
+    const herdeiro = chaves.length
+      ? +chaves.reduce((a, b) => (contagem[b] > contagem[a] ? b : a)) : 0;
+
+    for (const k of v.blocos.slice()) {
+      const [bx, by] = k.split(',').map(Number);
+      reclamarBloco(bx, by, herdeiro);
+    }
+    v.blocos = [];
+    v.absorvidaPor = herdeiro;
+
+    if (herdeiro === 0) {
+      aviso('🏳️ ' + v.nome + ' se juntou à sua vila');
+      crônica(v.nome + ' esvaziou-se, e seu território passou a ser nosso.', true, 'vila');
+    } else {
+      const h = vilaPorId(herdeiro);
+      crônica(v.nome + ' foi absorvida por ' + (h ? h.nome : 'uma vizinha') + '.', true, 'vila');
+    }
+  }
+}
+
+/* --------------------------------------------------------- o dia todo ---- */
+function tickVilas() {
+  if (!jogo.vilas || !jogo.vilas.length) return;
+  reclamarMeuTerritorio();
+
+  const minha = prosperidadeMinha();
+  jogo.pressao = (jogo.pressao || 0) + minha * 0.22;
+  if (jogo.pressao >= 1) {
+    jogo.pressao -= 1;
+    const meus = Object.keys(jogo.dono).filter(k => jogo.dono[k] === 0);
+    const r = avancarFronteira(quarteiraoDoCentro(), minha, meus, 0);
+    if (r && r.tomado) {
+      const de = vilaPorId(r.de);
+      crônica('Nossa vila avançou sobre terras de ' + (de ? de.nome : 'uma vizinha') + '.', true, 'vila');
+    }
+  }
+
+  for (const v of rivaisVivas()) {
+    diaDaVilaRival(v);
+    const p = prosperidadeDe(v);
+    v.pressao += p * 0.22;
+    if (v.pressao >= 1) {
+      v.pressao -= 1;
+      const r = avancarFronteira(quarteiraoDe(v.tx, v.ty), p, v.blocos, v.id);
+      if (r && !r.tomado) anelDoQuarteirao(v, r.bx, r.by);
+      if (r && r.tomado && r.de === 0)
+        aviso('⚑ ' + v.nome + ' tomou um quarteirão nosso');
+    }
+  }
+
+  migrarEntreVilas();
+  conferirAbsorcao();
+}
+
+/* ------------------------------------------ os prédios e ruas da vizinha - */
+/*
+   Existem e são desenhados, mas moram em listas próprias. 'jogo.estradas'
+   continua sendo só sua: é o que garante que nenhum aldeão seu vá parar do
+   outro lado do mapa, e que o índice de pedaços da malha siga valendo.
+
+   Marcam 'ocupado', isso sim — assim você não ergue uma casa em cima da casa
+   da vizinha, e a sua rua também não passa por cima dela.
+*/
+function anelDoQuarteirao(v, bx, by) {
+  for (let lado = 0; lado < 4; lado++)
+    for (const [tx, ty] of ladoDoQuarteirao(bx, by, lado)) {
+      const k = nk(tx, ty);
+      if (ocupado.has(k) || jogo.estradas.has(k) || SOLIDO[biomaEm(tx, ty)]) continue;
+      if (!v.ruas.includes(k)) { v.ruas.push(k); limparNo(tx, ty); }
+    }
+}
+
+function erguerNaVilaRival(v, chave) {
+  const def = PREDIO[chave];
+  const blocos = v.blocos.length ? v.blocos : [blocoK(...quarteiraoDe(v.tx, v.ty))];
+  for (const k of blocos) {
+    const [bx, by] = k.split(',').map(Number);
+    for (const [tx, ty] of posicoesNoQuarteirao(bx, by, def)) {
+      if (!areaValida(tx, ty, def.w, def.h)) continue;
+      const pr = {
+        // 'id' numérico, não string: a arte sorteia a variante fazendo conta
+        // com o id ('pr.id * 37'), e uma string viraria NaN e quebraria o
+        // sorteio. 'moradores' e 'concluido' são os mesmos campos que todo
+        // prédio de verdade carrega — sem eles o desenho vetorial (a rota de
+        // reserva, antes da arte carregar) travaria ao ler 'pr.moradores.length'.
+        id: proxPredioId++, chave, def, tx, ty,
+        cx: (tx + def.w / 2) * TILE, cy: (ty + def.h / 2) * TILE,
+        progresso: 1, concluido: true, moradores: [],
+        vila: v.id, vari: Math.floor(rnd() * 3), trabalhador: null,
+      };
+      v.predios.push(pr);
+      marcarOcupacao(pr, true);
+      return true;
+    }
+  }
+  return false;
 }
 
 /* ------------------------------------------------------------ zoneamento -- */
@@ -2601,66 +3204,259 @@ function notaDaZona(def, tx, ty) {
 const temZonaDesenhada = () => Object.keys(jogo.zonas).length > 0;
 
 /* --------------------------------------------------------- traçado das ruas */
+/*
+   A GRADE DA CIDADE.
 
-// Abre uma rua nova a partir de uma ponta existente. As vias saem retas e em
-// ângulo reto, o que produz quarteirões em vez de teia de aranha.
+   Até aqui a rua crescia pela PONTA MAIS DISTANTE do centro e esticava de
+   quatro a sete tiles para fora. Sempre para fora, nunca fechando o que ficava
+   atrás — daí os tentáculos, e daí a casa erguida na ponta do tentáculo, uma
+   fileira de fundo só. A regra da folga tentava consertar isso medindo vizinho
+   a vizinho, e deixava seis de espaçamento: cinco tiles de miolo, onde um
+   prédio grande (três de profundidade) cabe uma vez e sobra um tile morto.
+
+   Agora existe uma GRADE. As vias só correm sobre as linhas dela, ancoradas no
+   Centro, com PERÍODO de nove tiles: rua, oito de quarteirão, rua. E o
+   crescimento inverte a lógica — em vez de esticar a fronteira, ele FECHA o
+   quarteirão aberto mais perto do centro.
+
+   O oito não é gosto. Quatro prédios grandes (4x3, o maior do jogo) em arranjo
+   dois por dois, todos com testada para a rua, pedem miolo de 8x6:
+
+       #########        # rua
+       #.......#        . miolo do quarteirão, 8x8
+       #[][][].#        [] prédio grande 4x3, encostado na testada
+       #[][][].#        as duas fileiras do meio sobram de quintal
+       #.......#
+       #[][][].#
+       #[][][].#
+       #.......#
+       #########
+
+   A folga entre vias sai de cena: a grade garante o espaçamento por
+   construção, sem precisar medir nada.
+*/
+const PERIODO_MALHA = 9;          // rua, oito de quarteirão, rua
+const MIOLO = PERIODO_MALHA - 1;  // oito tiles de terreno por lado
+
+// Resto positivo: em JavaScript (-1 % 9) é -1, e a conta do quarteirão
+// desandaria em todo o quadrante noroeste do mapa.
+const modMalha = (v, o) => (((v - o) % PERIODO_MALHA) + PERIODO_MALHA) % PERIODO_MALHA;
+
+/*
+   Onde a grade está ancorada. Sai do Centro e fica guardada no save: se ela
+   fosse recalculada e o Centro mudasse de lugar, a grade inteira andaria junto
+   e toda rua já construída viraria rua torta.
+
+   O deslocamento de cinco deixa o Centro (3x3) mais ou menos no meio do seu
+   próprio quarteirão, em vez de colado na esquina.
+*/
+function origemMalha() {
+  if (jogo.malhaOx === undefined || jogo.malhaOx === null) {
+    const b = centroDaVila();
+    if (!b) return { ox: 0, oy: 0 };
+    jogo.malhaOx = Math.floor(b.cx / TILE) - 5;
+    jogo.malhaOy = Math.floor(b.cy / TILE) - 5;
+  }
+  return { ox: jogo.malhaOx, oy: jogo.malhaOy };
+}
+
+const quarteiraoDe = (tx, ty) => {
+  const { ox, oy } = origemMalha();
+  return [Math.floor((tx - ox) / PERIODO_MALHA), Math.floor((ty - oy) / PERIODO_MALHA)];
+};
+
+// O quarteirão onde fica o Centro: é dele que se mede tudo.
+function quarteiraoDoCentro() {
+  const b = centroDaVila();
+  if (!b) return [0, 0];
+  return quarteiraoDe(Math.floor(b.cx / TILE), Math.floor(b.cy / TILE));
+}
+
+/* Um lado do anel do quarteirão, de esquina a esquina. Norte, sul, oeste,
+   leste — as quatro vias que o cercam. */
+function ladoDoQuarteirao(bx, by, lado) {
+  const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
+  const x0 = ox + bx * P, y0 = oy + by * P, x1 = x0 + P, y1 = y0 + P;
+  const t = [];
+  if (lado === 0) for (let x = x0; x <= x1; x++) t.push([x, y0]);
+  else if (lado === 1) for (let x = x0; x <= x1; x++) t.push([x, y1]);
+  else if (lado === 2) for (let y = y0; y <= y1; y++) t.push([x0, y]);
+  else for (let y = y0; y <= y1; y++) t.push([x1, y]);
+  return t;
+}
+
+/*
+   Os quarteirões ABERTOS: os que já têm rua em pelo menos um lado. Sai das
+   ruas, não de um raio de busca — varrer um quadrado de blocos em volta do
+   centro custaria centenas de contas a cada decisão do conselho, e quase todas
+   sobre terreno que ninguém alcança.
+
+   Um tile de rua sobre uma linha da grade faz testada para os DOIS quarteirões
+   que ela separa; por isso a coluna e a linha entram na conta duas vezes.
+*/
+function quarteiroesAbertos() {
+  const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
+  const achados = new Map();
+  for (const k of jogo.estradas) {
+    const [x, y] = k.split(',').map(Number);
+    const bx = Math.floor((x - ox) / P), by = Math.floor((y - oy) / P);
+    const bxs = modMalha(x, ox) === 0 ? [bx - 1, bx] : [bx];
+    const bys = modMalha(y, oy) === 0 ? [by - 1, by] : [by];
+    for (const a of bxs) for (const b of bys) achados.set(a + ',' + b, [a, b]);
+  }
+  return [...achados.values()];
+}
+
+/*
+   QUARTEIRÃO FECHADO é o que tem os quatro lados calçados.
+
+   Esta distinção decide a aparência da cidade. Na primeira versão da grade
+   bastava UM lado com rua para o quarteirão receber prédio, e o resultado
+   ficou meio certo: as avenidas verticais saíam retas, mas as transversais
+   quase não nasciam — para que abrir a rua de cima, se ainda cabe casa na
+   quadra? A vila virava uma fita de prédios de oito de largura descendo o mapa
+   sem cruzamento nenhum.
+
+   Agora o terreno só é loteado depois que a quadra está cercada. Assim a rua
+   transversal vem ANTES das casas, e cada quarteirão nasce inteiro.
+
+   Tile que a natureza não deixa calçar (água funda, morro) conta como pronto:
+   senão uma quadra na beira do lago ficaria eternamente por fechar, e a cidade
+   pararia de crescer naquela direção.
+*/
+function anelCompleto(bx, by) {
+  for (let lado = 0; lado < 4; lado++)
+    for (const [x, y] of ladoDoQuarteirao(bx, by, lado)) {
+      if (jogo.estradas.has(nk(x, y))) continue;
+      if (!podeVirarRua(x, y, 0, 0)) continue;      // a natureza fecha por nós
+      return false;
+    }
+  return true;
+}
+
+/*
+   Os fechados, do mais perto do Centro para o mais longe — é o que faz a
+   cidade encher uma quadra antes de abrir a próxima.
+
+   Guardado entre chamadas: são trinta e seis contas por quarteirão, e o
+   conselho pede esta lista várias vezes por decisão. Ruas só são acrescentadas,
+   nunca removidas, então o tamanho da malha serve de versão — o mesmo truque
+   do índice de pedaços.
+*/
+let fechadosCache = null, fechadosRuas = -1;
+
+function quarteiroesPorPerto() {
+  if (fechadosCache && fechadosRuas === jogo.estradas.size) return fechadosCache;
+  const [cbx, cby] = quarteiraoDoCentro();
+  const dist = b => Math.abs(b[0] - cbx) + Math.abs(b[1] - cby);
+  fechadosRuas = jogo.estradas.size;
+  fechadosCache = quarteiroesAbertos()
+    .filter(([bx, by]) => anelCompleto(bx, by))
+    .sort((a, b) => dist(a) - dist(b) || a[1] - b[1] || a[0] - b[0]);
+  return fechadosCache;
+}
+
+/*
+   Pisa numa linha da grade? Nada pode ser erguido em cima de onde a rua ainda
+   vai passar. Sem esta trava, a busca de reserva (que percorre a testada de
+   qualquer rua, e existe para as vilas antigas e para o cais) plantaria uma
+   casa no meio da futura avenida — e aquele anel nunca mais fecharia.
+*/
+function pisaNaGrade(tx, ty, w, h) {
+  const { ox, oy } = origemMalha();
+  for (let x = tx; x < tx + w; x++) if (modMalha(x, ox) === 0) return true;
+  for (let y = ty; y < ty + h; y++) if (modMalha(y, oy) === 0) return true;
+  return false;
+}
+
+/*
+   As posições de um prédio dentro do quarteirão: coladas nas quatro testadas,
+   deslizando de uma esquina à outra. O miolo do miolo fica de quintal — sem
+   rua encostada não há como servir, e um prédio ilhado no meio da quadra seria
+   exatamente a bagunça que esta fase veio desfazer.
+*/
+function posicoesNoQuarteirao(bx, by, def) {
+  const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
+  const ix = ox + bx * P + 1, iy = oy + by * P + 1;
+  const saida = [];
+  if (def.w > MIOLO || def.h > MIOLO) return saida;
+  const ultX = ix + MIOLO - def.w, ultY = iy + MIOLO - def.h;
+  for (let x = ix; x <= ultX; x++) saida.push([x, iy]);      // testada norte
+  for (let x = ix; x <= ultX; x++) saida.push([x, ultY]);    // testada sul
+  for (let y = iy; y <= ultY; y++) saida.push([ix, y]);      // testada oeste
+  for (let y = iy; y <= ultY; y++) saida.push([ultX, y]);    // testada leste
+  return saida;
+}
+
+
+
+/*
+   A RUA NOVA FECHA UM QUARTEIRÃO.
+
+   Uma obra é UM LADO do anel — no máximo nove tiles de calçamento. E o lado
+   escolhido é o do quarteirão aberto mais perto do Centro que ainda não tem os
+   quatro lados fechados. A cidade fecha a quadra ao lado antes de pensar na
+   próxima, que é o oposto exato do que ela fazia antes.
+
+   O trecho tem de SAIR da malha principal — ou de um tile encostado nela. Foi
+   assim que os aldeões pararam de ficar presos: rua que nasce solta vira
+   canteiro onde ninguém chega.
+*/
 function crescerRua() {
   if (jogo.obrasEstrada.length || jogo.recursos.pedra < 12) return false;
-  // Malha grande demais para o tamanho da vila: rua a mais só come o terreno
-  // onde caberia o lote — e aí a falta de lote pedia outra rua, sem fim.
-  if (jogo.estradas.size > 34 + jogo.predios.length * 18) return false;
-  const base = centroDaVila();
-  if (!base) return false;
-  const btx = Math.floor(base.cx / TILE), bty = Math.floor(base.cy / TILE);
+  if (!centroDaVila()) return false;
 
-  // Pontas: tiles de rua com vizinho livre. Quanto mais longe do centro, mais
-  // peso — assim a malha avança para fora em vez de se adensar no mesmo lugar.
-  //
-  // ITEM 1, a raiz do problema: a ponta mais longe do centro costumava ser um
-  // TRECHO SOLTO de rua. A vila abria obra lá, e todos os construtores saíam
-  // atrás de um canteiro onde não dá para chegar — parados a vida inteira.
-  // Só a malha principal serve de ponto de partida.
   const idxRuas = indiceDeRuas();
   const principal = pedacoPrincipal();
-  const pontas = [];
-  for (const k of jogo.estradas) {
-    if (principal && idxRuas.get(k) !== principal) continue;
-    const [rx, ry] = k.split(',').map(Number);
-    let livres = 0;
-    for (const [dx, dy] of LADOS) if (podeVirarRua(rx + dx, ry + dy, dx, dy)) livres++;
-    if (!livres) continue;
-    const d = Math.hypot(rx - btx, ry - bty);
-    pontas.push([rx, ry, d]);
-  }
-  if (!pontas.length) return false;
-  pontas.sort((a, b) => b[2] - a[2]);
-  const [px, py] = pontas[Math.floor(rnd() * Math.min(pontas.length, 5))];
+  const naMalha = (x, y) => {
+    const k = nk(x, y);
+    if (!jogo.estradas.has(k)) return false;
+    return !principal || idxRuas.get(k) === principal;
+  };
+  const encostaNaMalha = (x, y) =>
+    naMalha(x, y) || LADOS.some(([dx, dy]) => naMalha(x + dx, y + dy));
 
-  // Direção: para fora do centro, virando 90° de vez em quando. Se a folga
-  // não permitir, tenta as outras — é melhor virar a esquina do que desistir.
-  const foraX = Math.sign(px - btx) || (rnd() < 0.5 ? 1 : -1);
-  const foraY = Math.sign(py - bty) || (rnd() < 0.5 ? 1 : -1);
-  const preferida = Math.abs(px - btx) > Math.abs(py - bty) ? [foraX, 0] : [0, foraY];
-  const outra = preferida[0] !== 0 ? [0, foraY] : [foraX, 0];
-  const tentativas = rnd() < 0.4 ? [outra, preferida] : [preferida, outra];
-  tentativas.push([-preferida[0], -preferida[1]], [-outra[0], -outra[1]]);
-
-  const comprimento = 4 + Math.floor(rnd() * 4);
-  let tiles = [];
-  for (const dir of tentativas) {
-    tiles = [];
-    let cx = px, cy = py;
-    for (let i = 0; i < comprimento; i++) {
-      cx += dir[0]; cy += dir[1];
-      if (!podeVirarRua(cx, cy, dir[0], dir[1])) break;
-      if (ruaParalelaPerto(cx, cy, dir[0], dir[1])) break;   // rente a outra via
-      tiles.push([cx, cy]);
+  /*
+     Um lado, percorrido dos dois sentidos. Vale o sentido que COMEÇA ligado à
+     cidade; o que já é rua se atravessa de graça, e o primeiro obstáculo (água
+     funda, prédio, morro) encerra o trecho. Meio lado calçado é melhor do que
+     lado nenhum: no próximo turno a vila tenta de novo pela outra ponta.
+  */
+  const trechoDoLado = tiles => {
+    for (const seq of [tiles, tiles.slice().reverse()]) {
+      if (!encostaNaMalha(seq[0][0], seq[0][1])) continue;
+      const novos = [];
+      let antes = seq[0];
+      for (const [x, y] of seq) {
+        if (jogo.estradas.has(nk(x, y))) { antes = [x, y]; continue; }
+        if (!podeVirarRua(x, y, x - antes[0], y - antes[1])) break;
+        novos.push([x, y]); antes = [x, y];
+      }
+      if (novos.length) return novos;
     }
-    if (tiles.length >= 2) break;
-  }
-  if (tiles.length < 2) return false;
-  jogo.obrasEstrada.push({ tiles, feitos: 0, t: 0 });
-  return true;
+    return null;
+  };
+
+  // Os candidatos: os quarteirões já abertos e os quatro vizinhos de cada um.
+  // Sem os vizinhos a cidade nunca passaria da primeira coroa de quadras.
+  const [cbx, cby] = quarteiraoDoCentro();
+  const vistos = new Map();
+  for (const [bx, by] of quarteiroesAbertos())
+    for (const [dx, dy] of [[0, 0], ...LADOS])
+      vistos.set((bx + dx) + ',' + (by + dy), [bx + dx, by + dy]);
+  const dist = b => Math.abs(b[0] - cbx) + Math.abs(b[1] - cby);
+  const blocos = [...vistos.values()].sort((a, b) => dist(a) - dist(b) || a[1] - b[1] || a[0] - b[0]);
+
+  for (const [bx, by] of blocos)
+    for (let lado = 0; lado < 4; lado++) {
+      const tiles = ladoDoQuarteirao(bx, by, lado);
+      if (tiles.every(([x, y]) => jogo.estradas.has(nk(x, y)))) continue;   // lado pronto
+      const novos = trechoDoLado(tiles);
+      if (!novos) continue;
+      jogo.obrasEstrada.push({ tiles: novos, feitos: 0, t: 0 });
+      return true;
+    }
+  return false;
 }
 
 /*
@@ -2690,6 +3486,35 @@ function linhaDeTiles(x0, y0, x1, y1, limite) {
   return tiles;
 }
 
+/*
+   Ir do ponto A ao ponto B ANDANDO PELA GRADE, em L: primeiro pela linha em que
+   já se está, depois virando na esquina.
+
+   A escadinha do 'linhaDeTiles' resolveu um problema de verdade — rua na
+   diagonal não liga nada — mas em troca traçava uma via que não é nem
+   horizontal nem vertical, e portanto não fecha quarteirão nenhum. Uma rua com
+   destino continua tendo destino; ela só chega lá pela esquina, como rua de
+   cidade.
+
+   O alvo vira a esquina da grade mais próxima dele. Não chega no tile exato, e
+   está certo assim: desde que o aldeão pode sair da rua para colher, os
+   últimos passos até a árvore são no mato mesmo.
+*/
+function linhaNaMalha(x0, y0, x1, y1, teto) {
+  const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
+  const col = Math.round((x1 - ox) / P) * P + ox;
+  const lin = Math.round((y1 - oy) / P) * P + oy;
+  const max = teto || 60;
+  const tiles = [];
+  let x = x0, y = y0;
+  const andarX = ate => { while (x !== ate && tiles.length < max) { x += Math.sign(ate - x); tiles.push([x, y]); } };
+  const andarY = ate => { while (y !== ate && tiles.length < max) { y += Math.sign(ate - y); tiles.push([x, y]); } };
+  // Sai andando pela linha em que já está: virar de cara sairia da grade.
+  if (modMalha(x0, ox) === 0) { andarY(lin); andarX(col); }
+  else { andarX(col); andarY(lin); }
+  return tiles;
+}
+
 // Rua com destino: usada quando a vila quer chegar a algum lugar específico
 // (a beira d'água, por exemplo) em vez de só espalhar a malha.
 function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
@@ -2712,7 +3537,7 @@ function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
   const limite = maxTiles || 8;
   let antesX = origem[0], antesY = origem[1];
   let passos = 0;
-  for (const [x0, y0] of linhaDeTiles(origem[0], origem[1], alvoTx, alvoTy, 60)) {
+  for (const [x0, y0] of linhaNaMalha(origem[0], origem[1], alvoTx, alvoTy, 60)) {
     if (tiles.length >= limite) break;
     passos++;
     // Atravessar um trecho que já é rua é normal — a linha sai da malha
@@ -2732,7 +3557,9 @@ function crescerRuaRumo(alvoTx, alvoTy, maxTiles) {
        primeiros blocos, o necessário para atravessar o bairro, a folga é
        dispensada; do quarteirão em diante ela volta a valer.
     */
-    if (passos > FOLGA_ENTRE_RUAS && ruaParalelaPerto(x0, y0, x0 - antesX, y0 - antesY)) break;
+    // A folga entre vias era a tentativa antiga de criar quarteirão medindo
+    // vizinho a vizinho. A grade já garante nove tiles entre linhas paralelas,
+    // e manter as duas regras juntas travaria a via na primeira esquina.
     tiles.push([x0, y0]);
     antesX = x0; antesY = y0;
   }
@@ -2863,6 +3690,8 @@ function podeVirarRua(tx, ty, dirX, dirY) {
   const k = nk(tx, ty);
   const b = biomaEm(tx, ty);
   if (ocupado.has(k) || jogo.estradas.has(k)) return false;
+  // Quarteirão de vizinha não se calça: primeiro se ganha o território.
+  if (territorioAlheio(tx, ty)) return false;
   if (b === B.AGUA) return vaoCurto(tx, ty, dirX || 0, dirY || 0);
   return b === B.RASO || !SOLIDO[b];
 }
@@ -2880,16 +3709,28 @@ function custoDoTrecho(tx, ty) {
 // A vila começa com uma esquina, não com um anel. O anel punha duas vias
 // paralelas a quatro blocos uma da outra — exatamente o que a regra da folga
 // existe para impedir, e a cidade nascia já sem espaço para crescer direito.
+/*
+   A PRIMEIRA QUADRA.
+
+   A vila começava com uma esquina, não com um anel — o anel antigo punha duas
+   vias paralelas a quatro blocos uma da outra, apertado demais para caber
+   prédio. Com a grade de nove o anel volta a ser o certo: ele fecha o
+   quarteirão do Centro na primeira hora, e a cidade já nasce com uma quadra
+   inteira de testada para encher.
+
+   A fundação sai de graça, sem pedra. É a única rua assim no jogo — sem ela
+   não haveria testada para a primeira casa, e sem casa não haveria quem
+   calçasse a primeira rua.
+*/
 function ruaFundadora(centro) {
-  const cx = Math.floor(centro.cx / TILE), cy = Math.floor(centro.cy / TILE);
-  const w = centro.def.w, h = centro.def.h;
-  const linha = cy + Math.ceil(h / 2);          // avenida ao sul do Centro
-  const coluna = cx - Math.floor(w / 2) - 1;    // rua a oeste
+  jogo.malhaOx = Math.floor(centro.cx / TILE) - 5;
+  jogo.malhaOy = Math.floor(centro.cy / TILE) - 5;
   const por = (tx, ty) => {
     if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); }
   };
-  for (let i = -5; i <= w + 5; i++) por(cx - Math.floor(w / 2) + i, linha);
-  for (let i = -5; i <= h + 5; i++) por(coluna, cy - Math.floor(h / 2) + i);
+  const [bx, by] = quarteiraoDoCentro();
+  for (let lado = 0; lado < 4; lado++)
+    for (const [tx, ty] of ladoDoQuarteirao(bx, by, lado)) por(tx, ty);
 }
 
 function erguerPredio(chave, tx, ty) {
@@ -3010,7 +3851,14 @@ function distribuirOficios() {
      ninguém trazendo madeira nem pedra. Agora o excedente é dispensado, do
      posto menos essencial para o mais essencial.
   */
-  const tetoDePostos = Math.max(1, Math.floor(adultos / 2));
+  /*
+     Metade dos adultos era pouco desde que a comida passou a exigir uma
+     lavoura para cada cinco moradores: numa vila de dezesseis, cinco postos
+     não cabiam três lavouras mais a oficina mais a serraria, e a vila
+     empacava por falta de braço, não por falta de terreno. Seis décimos ainda
+     deixa a maioria no mato trazendo madeira e pedra.
+  */
+  const tetoDePostos = Math.max(1, Math.floor(adultos * 0.6));
   if (emPosto > tetoDePostos) {
     const ordemDeSaida = ['fazendeiro', 'pescador', 'carpinteiro', 'comerciante', 'professor', 'administrador'];
     for (const oficio of ordemDeSaida) {
@@ -3028,7 +3876,7 @@ function distribuirOficios() {
   }
   for (const pr of jogo.predios) {
     if (!temVaga(pr)) continue;
-    if (emPosto >= Math.max(1, Math.floor(adultos / 2))) break;
+    if (emPosto >= tetoDePostos) break;
     // Só nomeia quem consegue chegar lá andando pela rua.
     const i = disponiveis.findIndex(p => faseDaIdade(p.idade) === FASE.ADULTO
       && daParaChegar(p.x, p.y, pr.tx, pr.ty));
@@ -3266,6 +4114,64 @@ function diasDeComida() {
 const ACORDADO = 1;                     // sem noite, o expediente é integral
 // 144 por ano = os mesmos 6 por hora de verdade que a economia sempre teve.
 const COMIDA_POR_ANO = 144;
+
+/*
+   O CORAÇÃO DA ECONOMIA DE COMIDA.
+
+   Este número estava cinco vezes alto, e por isso comida deixava de ser
+   assunto por volta do segundo ano e nunca mais voltava. O livro-caixa
+   media, numa vila de setenta e três bocas:
+
+       entra 101,8 por dia · sai 42,5 por dia · sobra 59,3
+
+   Ou seja: UMA LAVOURA ALIMENTAVA TRINTA PESSOAS. Oito lavouras davam conta de
+   setenta e três, e o conselho ainda queria treze. O excedente ia para a feira
+   ou apodrecia no galpão, e a despensa nunca era olhada.
+
+   Agora UMA LAVOURA ALIMENTA SEIS. Três consequências, e as três são o jogo:
+
+   1. a regra que o conselho já usava — uma lavoura para cada seis moradores —
+      passa a ser exatamente a conta certa, em vez de cinco vezes demais;
+   2. a ESTAÇÃO passa a doer. O inverno derruba a colheita para 40% durante
+      três meses, e é aí que a vila come do que guardou no verão. É esse ciclo
+      que dá função à despensa;
+   3. a imigração deixa de ser automática: gente nova só vem quando a vila
+      produz de fato mais do que come.
+
+   Os dois números saem da mesma conta — seis pessoas por lavoura, descontada a
+   média das estações (0,875) — e ficam juntos aqui em vez de espalhados por
+   três lugares que se desencontram com o tempo.
+*/
+const LAVOURA_SEG = 0.0115;             // seis bocas por lavoura
+const PESCA_SEG   = 0.0106;             // o cais, na mesma proporção de antes
+
+/*
+   COLHER NÃO É PLANTAR.
+
+   Com a lavoura recalibrada, o livro-caixa acusou na hora o outro vazamento:
+   TRÊS colhedores traziam 8,45 de comida por dia; SEIS lavouras com seis
+   fazendeiros traziam 16,8. Fruta apanhada no mato rendia mais por pessoa do
+   que plantar — 2,8 contra 2,4 — e a vila podia ignorar a lavoura inteira e
+   viver do mato. Pior: a estação só mexe com quem planta, então o inverno não
+   doeria de todo jeito.
+
+   Agora o mato dá 40% do que dava, e dá conforme a estação — no inverno não há
+   fruta madura, e a seca também resseca o arbusto. Ele volta a ser o que
+   sempre deveria ter sido: o que segura a vila até a primeira colheita, não o
+   que a alimenta para sempre.
+
+   Madeira e pedra não mudam: pau e pedregulho não têm safra.
+*/
+const MATO_COMIDA = 0.55;
+
+/*
+   A estação também mexe com o mato, mas com METADE da força que tem sobre a
+   lavoura. Medido: somar a queda cheia da lavoura (40% no inverno) à queda
+   cheia do mato deixava o inverno impossível de atravessar, não difícil — a
+   primeira vila morria de fome no ano um, antes mesmo de erguer a primeira
+   lavoura. A fruta rareia no frio; ela não some.
+*/
+const estacaoNoMato = () => 1 + (fatorLavoura() - 1) * 0.5;
 const AMOSTRA_COMIDA = 300;             // mede o fluxo de comida a cada 5 min
 
 // O saldo REAL é medido, não calculado: a conta teórica ignorava o tempo gasto
@@ -3281,11 +4187,11 @@ function saldoTeorico() {
   for (const pr of jogo.predios) {
     if (pr.progresso < 1 || !pr.def.fazenda || !pr.trabalhador) continue;
     if (!pessoaPorId(pr.trabalhador)) continue;
-    const base = pr.def.pesca ? 0.048 : 0.052 * (pr.def.lavouraGrande ? 1.9 : 1);
+    const base = pr.def.pesca ? PESCA_SEG : LAVOURA_SEG * (pr.def.lavouraGrande ? 1.9 : 1);
     producao += base * ACORDADO * ANO * (pr.def.pesca ? 1 : fatorLavoura());
   }
   const colhedores = jogo.pessoas.filter(p => p.oficio === 'colhedor').length;
-  producao += colhedores * TAXA * 0.45 * ACORDADO * ANO;
+  producao += colhedores * TAXA * MATO_COMIDA * estacaoNoMato() * 0.45 * ACORDADO * ANO;
   return producao - popAtual() * COMIDA_POR_ANO;
 }
 
@@ -3305,12 +4211,27 @@ function conselho() {
   const fazendaEmObra = jogo.predios.some(p => p.def.fazenda && p.progresso < 1);
   const producao = jogo.predios.filter(p => p.def.fazenda).length;   // conta as em obra também
 
-  // --- 1. Fome primeiro. Sem despensa não se cresce. ---
-  // Dois meses de reserva: é o mesmo tempo REAL de folga que o jogo sempre
-  // exigiu aqui, agora dito na unidade nova.
+  /*
+     --- 1. Fome primeiro. Sem despensa não se cresce. ---
+
+     Duas alturas diferentes, e a segunda é nova.
+
+     Aos SESSENTA dias a vila trata de plantar mais — dois meses de reserva, a
+     mesma folga que o jogo sempre exigiu aqui.
+
+     Aos TRINTA ela para tudo. Antes não parava: com a lavoura já em obra, a
+     regra de cima se dava por satisfeita e o conselho seguia a lista adiante,
+     abrindo mina e casa com quinze dias de comida no galpão. Os construtores
+     se repartiam por três canteiros e a lavoura — a única obra que resolvia o
+     problema — saía por último. A vila morria de fome cercada de obras.
+  */
   if (comidaDias < 60 && !fazendaVazia && !fazendaEmObra) {
     if (decidirObra('cais')) return;          // peixe rende o ano todo
     if (decidirObra('fazenda')) return;
+  }
+  if (comidaDias < 30) {
+    if (!fazendaEmObra && !fazendaVazia) { decidirObra('fazenda'); }
+    return;                                   // nem casa, nem mina, nem serviço
   }
 
   // --- 2. Recurso fora de alcance: abre quarteirão até ele ---
@@ -3361,8 +4282,22 @@ function conselho() {
      treze lavouras para oitenta e três bocas. Com a despensa perto do teto, a
      vila para de plantar e vai fazer outra coisa.
   */
+  /*
+     Uma lavoura para cada CINCO moradores, mais uma.
+
+     Com a lavoura alimentando seis, mirar em "uma para cada seis" deixava a
+     vila exatamente no zero a zero — e ela travou: dezesseis moradores, três
+     lavouras, saldo de meio ponto por dia, sem excedente para chamar gente
+     nova e sem motivo para plantar mais, porque a conta já batia. Ficou parada
+     três anos seguidos.
+
+     Cinco dá cerca de vinte por cento de folga: o bastante para encher a
+     despensa no verão, atravessar o inverno comendo dela e ainda sobrar para
+     a vila crescer devagar. O "+1" é o piso das vilas pequenas, onde arredondar
+     para cima ainda dá pouca lavoura para poucas bocas.
+  */
   const despensaCheia = jogo.recursos.comida >= tetoEstoque() * 0.85;
-  if (producao < Math.ceil(pop / 6) && !despensaCheia && !fazendaVazia && !fazendaEmObra) {
+  if (producao < Math.ceil(pop / 5) + 1 && !despensaCheia && !fazendaVazia && !fazendaEmObra) {
     if (jaTem('cais') && rnd() < 0.4 && decidirObra('cais')) return;
     if (pop >= 14 && decidirObra('fazendaGrande')) return;
     if (decidirObra('fazenda')) return;
@@ -3418,8 +4353,15 @@ function conselho() {
     if (decidirObra('centro')) return;
   }
 
-  // --- 7. Malha viária à frente das construções ---
-  if (jogo.estradas.size < 26 + pop * 2.4) crescerRua();
+  /*
+     --- 7. Rua nova só quando falta terreno ---
+
+     Antes a conta era de metragem: tantos tiles de calçamento por morador. Ela
+     não sabia se havia ou não onde construir, e por isso a vila abria via
+     enquanto quadras inteiras seguiam vazias. Agora a pergunta é direta —
+     ainda cabe casa nos quarteirões abertos?
+  */
+  if (vagasNoBairro() < 4) crescerRua();
 }
 
 /*
@@ -3494,8 +4436,41 @@ function casaComVaga() {
    Antes tudo isso acontecia junto, na virada do mês, e por isso a demografia
    corria doze vezes por ano em vez de uma.
 */
+/*
+   O AVISO DO INVERNO.
+
+   De Dezembro a Fevereiro a lavoura cai para 40%, e com a economia apertada
+   esses três meses são um buraco de verdade. Descobrir isso em Janeiro, com o
+   galpão vazio, é tarde: não se planta na neve.
+
+   Então no primeiro mês de outono a vila faz a conta e diz em voz alta se a
+   despensa atravessa ou não. A conta é grosseira de propósito — consumo do
+   período contra a colheita reduzida do período — porque o que importa é o
+   sinal, não a casa decimal. E o número sai do livro-caixa, que mede, em vez
+   de uma estimativa teórica: essa já enganou o conselho uma vez.
+*/
+function conferirInverno() {
+  if (jogo.avisouInverno === jogo.ano) return;
+  if (ESTACAO_DO_MES[mesAtual()] !== 'outono') return;
+  jogo.avisouInverno = jogo.ano;
+  if (emRecuperacao) return;
+
+  const b = balancoDe('comida');
+  if (!b.entra) return;                                  // ainda sem medição
+  const comePorDia = popAtual() * COMIDA_POR_ANO / DIAS_NO_ANO;
+  const entraNoInverno = b.entra * (ESTACAO.inverno.lavoura / ESTACAO.outono.lavoura);
+  const buraco = (comePorDia - entraNoInverno) * 91;     // os três meses frios
+  if (buraco <= 0) return;
+  if (jogo.recursos.comida >= buraco * 1.1) return;
+
+  const falta = Math.ceil(buraco - jogo.recursos.comida);
+  aviso('❄️ O inverno vem aí — faltam ~' + falta + ' de comida na despensa');
+  crônica('O conselho avisou que a despensa não atravessa o inverno.', true, 'obra');
+}
+
 function virouMes() {
   conferirEstacaoPintada();
+  conferirInverno();
   const climaAntes = jogo.clima;
   sortearClima();
   if (jogo.clima !== climaAntes && !emRecuperacao) {
@@ -3667,7 +4642,21 @@ function tickDia() {
      demora anos. Quanto mais cama sobrando, mais forte o chamado.
   */
   const vagasNaVila = popMax() - popAtual();
-  if (!jogo.fome && vagasNaVila > 0 && diasDeComida() > 120) {
+  /*
+     Antes o gatilho era o estoque em DIAS, e ele mentia dos dois lados. Uma
+     vila pequena com o galpão cheio marcava duzentos dias e chamava gente que
+     não teria o que comer no inverno; uma vila grande e próspera nunca
+     alcançava os cento e vinte, porque o galpão não é elástico e o número cai
+     sozinho a cada boca nova.
+
+     A pergunta certa é outra: SOBRA comida no ano, e há despensa para
+     atravessar? O caminho antigo continua valendo para quem tem o galpão
+     transbordando — ali o saldo medido dá zero justamente porque o excedente
+     está sendo jogado fora, e recusar gente seria o contrário do certo.
+  */
+  const fartura = diasDeComida() > 120 ||
+    (diasDeComida() > 45 && saldoComidaPorAno() > COMIDA_POR_ANO * 3);
+  if (!jogo.fome && vagasNaVila > 0 && fartura) {
     if (rnd() < Math.min(0.45, vagasNaVila * 0.04)) {
       const casa = casaComVaga();
       if (casa) chegarFamilia(casa);
@@ -3692,6 +4681,7 @@ function tickDia() {
 
   tickCrises();
   fecharDiaDoFluxo();
+  tickVilas();
   conselho();
   conferirMissoes();
   atualizarHUD();
@@ -3745,8 +4735,10 @@ function recuperarOffline(segundos) {
       if (fase === FASE.CRIANCA) continue;
       const ef = (fase === FASE.IDOSO ? 0.6 : 1) * EFIC;
       const of = OFICIO[p.oficio];
-      if (of && of.rec) por[of.rec] += TAXA * ef * 0.45;    // desconto de ida e volta
-      else if (p.oficio === 'fazendeiro') por.comida += (fase === FASE.IDOSO ? 0.035 : 0.052) * EFIC;
+      // Desconto de ida e volta; e a fruta do mato segue a estação, como no jogo aberto.
+      if (of && of.rec) por[of.rec] += TAXA * ef * 0.45 *
+        (of.rec === 'comida' ? MATO_COMIDA * estacaoNoMato() : 1);
+      else if (p.oficio === 'fazendeiro') por.comida += LAVOURA_SEG * (fase === FASE.IDOSO ? 0.67 : 1) * EFIC;
     }
     const teto = tetoEstoque();
     for (const k in por) jogo.recursos[k] = Math.min(Math.max(teto, jogo.recursos[k]), jogo.recursos[k] + por[k] * seg);
@@ -4368,6 +5360,11 @@ function atualizarHUD() {
     if (tem) elRes[bem].textContent = Math.floor(jogo.recursos[bem]);
   }
   elRes.pop.textContent     = popAtual() + '/' + popMax();
+  el('r-territ-w').style.display = emDisputa() ? '' : 'none';
+  if (emDisputa()) {
+    const total = Object.keys(jogo.dono).length;
+    el('r-territ').textContent = meusBlocos() + '/' + total;
+  }
   const c = contarFases();
 
   elPovo.criancas.textContent = c.crianca;
@@ -4802,6 +5799,19 @@ el('btn-menu').onclick = () => {
   el('seedin').value = SEED;
   el('nomein').value = jogo.nome;
   el('menu-titulo').textContent = jogo.nome;
+  /*
+     A escolha só vale para uma vila NOVA — a atual já decidiu isso ao nascer.
+     O que importa aqui é ter RIVAL VIVA, não o array bruto: uma vila que já
+     absorveu todas as vizinhas guarda o registro delas para o histórico
+     ('viva:false'), e olhar só o tamanho do array a faria dizer para sempre
+     "já está em disputa" mesmo depois de já ter vencido a disputa.
+  */
+  const disputaAtiva = rivaisVivas().length > 0;
+  escolhaRivais = disputaAtiva ? jogo.rivais : (jogo.rivais || 0);
+  marcarEscolhaRivais();
+  el('rivais-hint').textContent = disputaAtiva
+    ? 'Esta vila já está em disputa. A escolha abaixo vale só se você começar de novo.'
+    : 'Sem exército: quem vive melhor atrai a gente da vizinha, e o território segue a fronteira.';
   el('menu').classList.add('on');
 };
 
@@ -4812,11 +5822,27 @@ el('nomein').oninput = e => {
   el('menu-titulo').textContent = jogo.nome;
   salvar();
 };
+let escolhaRivais = jogo.rivais || 0;
+function marcarEscolhaRivais() {
+  document.querySelectorAll('[data-rivais]').forEach(b =>
+    b.classList.toggle('sel', +b.dataset.rivais === escolhaRivais));
+}
+document.querySelectorAll('[data-rivais]').forEach(b => b.onclick = () => {
+  escolhaRivais = +b.dataset.rivais;
+  marcarEscolhaRivais();
+});
+marcarEscolhaRivais();
+
 el('btn-voltar').onclick = fecharFolhas;
 el('btn-novo').onclick = () => {
   const v = parseInt(el('seedin').value, 10);
   novaVila(Number.isFinite(v) ? v : 0);
-  fecharFolhas(); aviso('Nova vila — semente ' + SEED);
+  jogo.rivais = escolhaRivais;
+  if (escolhaRivais) criarRivais(escolhaRivais);
+  fecharFolhas();
+  aviso(escolhaRivais
+    ? 'Nova vila — semente ' + SEED + ' · ' + escolhaRivais + ' vila(s) rival(is)'
+    : 'Nova vila — semente ' + SEED);
 };
 el('btn-apagar').onclick = () => {
   try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
@@ -5320,6 +6346,10 @@ function desenharMinimapa() {
     mmx.fillStyle = cor;
     mmx.beginPath(); mmx.arc(q[0], q[1], raio, 0, 6.2832); mmx.fill();
   };
+
+  // As vilas rivais: um ponto da cor delas, maior no centro.
+  if (jogo.vilas && jogo.vilas.length)
+    for (const v of rivaisVivas()) marcar(v.tx, v.ty, v.cor, 3);
 
   // Canteiros de prédio e de rua: laranja.
   for (const pr of jogo.predios) if (pr.progresso < 1) marcar(pr.tx, pr.ty, '#e0a83c', 2);
@@ -6494,6 +7524,17 @@ function desenharPredio(g, pr) {
   if (q) {
     const c = caixaDoPredio(pr, q);
     g.drawImage(imgPredios, q[0], q[1], q[2], q[3], c.dx, c.dy, q[4], q[5]);
+    // O prédio de uma vila rival carrega uma bandeirinha da cor dela — sem
+    // isso ele seria indistinguível de um prédio seu do outro lado do mapa.
+    if (pr.vila) {
+      const v = vilaPorId(pr.vila);
+      if (v) {
+        g.fillStyle = v.cor;
+        g.beginPath();
+        g.moveTo(x + w / 2, y - 3); g.lineTo(x + w / 2 + 7, y + 2); g.lineTo(x + w / 2, y + 7);
+        g.closePath(); g.fill();
+      }
+    }
   } else {
     const vari = varianteDe(pr);
     const sp = spritePredio(pr.chave, vari);
@@ -6721,6 +7762,26 @@ function desenharPessoa(g, p, selecionado) {
     g.fillRect(p.x + (p.dir > 0 ? 9 : -12) * esc, p.y - 20 * esc, 3, 3);
   }
 }
+/*
+   A JANELA ACESA. Quem trabalha sob um teto sumiu da tela; sem nenhum sinal, o
+   prédio ficaria indistinguível de um prédio vazio, e o jogador perderia
+   justamente a informação que o sumiço deveria dar — que ali dentro tem
+   gente trabalhando.
+*/
+function janelaAcesa(g, pr) {
+  if (!pr.trabalhador || pr.progresso < 1) return;
+  const p = pessoaPorId(pr.trabalhador);
+  if (!p || p.dentro !== pr.id) return;
+  const x = pr.cx, y = (pr.ty + pr.def.h) * TILE - 7;
+  const brilho = 0.42 + 0.30 * (Math.sin(agora / 430) + 1) / 2;
+  g.fillStyle = 'rgba(255,206,116,' + brilho.toFixed(2) + ')';
+  rrect(g, x - 4.5, y - 8, 9, 9.5, 2);
+  g.fill();
+  g.fillStyle = 'rgba(90,58,20,.5)';                 // caixilho
+  g.fillRect(x - 4.5, y - 3.6, 9, 1.1);
+  g.fillRect(x - 0.55, y - 8, 1.1, 9.5);
+}
+
 function desenharCarroca(g, p, esc) {
   // Entre o animal (à frente) e quem conduz (atrás).
   const dirX = p.ang !== undefined ? Math.cos(p.ang) : p.dir;
@@ -7077,6 +8138,43 @@ function desenhar() {
     }
   }
 
+  /*
+     A DISPUTA, NO CHÃO.
+
+     Território alheio pinta o quarteirão inteiro na cor da vila dona — é o que
+     torna a fronteira uma coisa que se vê, não uma tabela. A calçada da
+     vizinha vem por cima, mais escura que a sua: ela é caminho de vila
+     estrangeira, ninguém seu anda ali.
+
+     Os dois só custam algo quando há disputa (emDisputa() checa o tamanho de
+     'jogo.vilas') e só desenham o que a câmera alcança — o mapa pode ter
+     dezenas de quarteirões tomados, mas nunca mais do que a tela mostra.
+  */
+  if (emDisputa()) {
+    const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
+    const bx0 = Math.floor((camX - ox) / P) - 1, bx1 = Math.ceil((camX + vw - ox) / P) + 1;
+    const by0 = Math.floor((camY - oy) / P) - 1, by1 = Math.ceil((camY + vh - oy) / P) + 1;
+    for (let by = by0; by <= by1; by++)
+      for (let bx = bx0; bx <= bx1; bx++) {
+        const id = jogo.dono[blocoK(bx, by)];
+        if (!id) continue;                       // undefined = ninguém, 0 = você
+        const v = vilaPorId(id);
+        if (!v) continue;
+        const x0 = ox + bx * P, y0 = oy + by * P;
+        ctx.fillStyle = v.cor + '22';
+        ctx.fillRect(x0 * TILE, y0 * TILE, (P + 1) * TILE, (P + 1) * TILE);
+      }
+
+    for (const v of rivaisVivas())
+      for (const k of v.ruas) {
+        const [tx, ty] = k.split(',').map(Number);
+        const x = tx * TILE, y = ty * TILE;
+        if (x < camX - TILE || x > camX + vw || y < camY - TILE || y > camY + vh) continue;
+        ctx.fillStyle = 'rgba(60,50,40,.30)';
+        ctx.fillRect(x + 3, y + 3, TILE - 6, TILE - 6);
+      }
+  }
+
   const lista = [];
   for (const ch of visiveis)
     for (const n of ch.nos) {
@@ -7087,8 +8185,17 @@ function desenhar() {
     if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
     lista.push({ y:(pr.ty + pr.def.h) * TILE, k:1, o:pr });
   }
+  if (emDisputa())
+    for (const v of rivaisVivas())
+      for (const pr of v.predios) {
+        if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
+        lista.push({ y:(pr.ty + pr.def.h) * TILE, k:1, o:pr });
+      }
   for (const p of jogo.pessoas) {
     // Sem noite ninguém se recolhe: a vila fica cheia o tempo todo.
+    // Quem entrou no prédio, porém, sai de vista — quem mostra o serviço dali
+    // em diante é a janela acesa do próprio prédio.
+    if (p.dentro) continue;
     if (p.x < camX - 50 || p.x > camX + vw + 50 || p.y < camY - 50 || p.y > camY + vh + 50) continue;
     lista.push({ y:p.y, k:2, o:p });
   }
@@ -7097,7 +8204,7 @@ function desenhar() {
   const sel = new Set(selecao.map(p => p.id));
   for (const it of lista) {
     if (it.k === 0) desenharNo(ctx, it.o);
-    else if (it.k === 1) desenharPredio(ctx, it.o);
+    else if (it.k === 1) { desenharPredio(ctx, it.o); janelaAcesa(ctx, it.o); }
     else desenharPessoa(ctx, it.o, sel.has(it.o.id));
   }
 
@@ -7136,6 +8243,26 @@ function desenhar() {
       ctx.strokeStyle = z.borda; ctx.lineWidth = 0.8;
       ctx.strokeRect(px + 0.5, py + 0.5, TILE - 1, TILE - 1);
     }
+  }
+
+  /*
+     A GRADE À VISTA. No modo rua as linhas do quarteirão aparecem de leve, para
+     quem traça à mão poder seguir o mesmo desenho que o conselho segue. Sem
+     elas a cidade sairia metade quadriculada e metade torta, e a parte torta
+     seria justamente a que o jogador desenhou.
+  */
+  if (modoRua) {
+    const { ox, oy } = origemMalha();
+    const tx0 = Math.floor(camX / TILE) - 1, tx1 = Math.ceil((camX + vw) / TILE) + 1;
+    const ty0 = Math.floor(camY / TILE) - 1, ty1 = Math.ceil((camY + vh) / TILE) + 1;
+    ctx.strokeStyle = 'rgba(255,255,255,.14)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x = tx0; x <= tx1; x++)
+      if (modMalha(x, ox) === 0) { ctx.moveTo(x * TILE + TILE / 2, ty0 * TILE); ctx.lineTo(x * TILE + TILE / 2, ty1 * TILE); }
+    for (let y = ty0; y <= ty1; y++)
+      if (modMalha(y, oy) === 0) { ctx.moveTo(tx0 * TILE, y * TILE + TILE / 2); ctx.lineTo(tx1 * TILE, y * TILE + TILE / 2); }
+    ctx.stroke();
   }
 
   // Traçado da rua que você está desenhando (item 5).
@@ -7296,7 +8423,13 @@ function gravar() {
       cam: { x:Math.round(cam.x), y:Math.round(cam.y), z:+cam.z.toFixed(2) },
       recursos: jogo.recursos, ano: jogo.ano, anoFrac: jogo.anoFrac, fome: jogo.fome,
       nome: jogo.nome, velocidade, crise: jogo.crise, zonas: jogo.zonas,
-      historia: jogo.historia,
+      historia: jogo.historia, malhaOx: jogo.malhaOx, malhaOy: jogo.malhaOy,
+      rivais: jogo.rivais, dono: jogo.dono,
+      // O 'def' de cada prédio da vizinha é remontado na leitura a partir da
+      // chave: gravá-lo repetiria a tabela inteira em cada casa.
+      vilas: (jogo.vilas || []).map(v => Object.assign({}, v, {
+        predios: v.predios.map(p => [p.chave, p.tx, p.ty, p.vari]),
+      })),
       // A média móvel do livro-caixa também vai no save: sem ela o painel
       // abria dizendo 'ainda sem movimento' por um minuto depois de recarregar.
       fluxo: fluxoMedio,
@@ -7331,7 +8464,7 @@ function carregar() {
   try {
     SEED = s.seed;
     cam.x = s.cam.x; cam.y = s.cam.y; cam.z = s.cam.z || 1;
-    jogo.recursos = { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 };
+    jogo.recursos = { madeira:220, comida:380, pedra:80, tabua:0, ferramenta:0 };
     Object.assign(jogo.recursos, s.recursos || {});
     // Save de antes da cadeia de produção não tem os bens novos.
     for (const k in MANUFATURADO) if (typeof jogo.recursos[k] !== 'number') jogo.recursos[k] = 0;
@@ -7341,6 +8474,22 @@ function carregar() {
     jogo.crise = s.crise && CRISES[s.crise.id] ? s.crise : null;
     jogo.zonas = s.zonas || {};
     jogo.historia = s.historia || [];
+    // Vila antiga não tem grade gravada: 'origemMalha' ancora uma no Centro na
+    // primeira vez que alguém perguntar, e daí em diante ela fica.
+    jogo.malhaOx = s.malhaOx; jogo.malhaOy = s.malhaOy;
+    jogo.rivais = s.rivais || 0;
+    jogo.dono = s.dono || {};
+    jogo.vilas = (s.vilas || []).map(v => Object.assign({}, v, {
+      ruas: v.ruas || [],
+      predios: (v.predios || []).map(([chave, tx, ty, vari]) => {
+        const def = PREDIO[chave];
+        const pr = { id: proxPredioId++, chave, def, tx, ty,
+          cx: (tx + def.w / 2) * TILE, cy: (ty + def.h / 2) * TILE,
+          progresso: 1, concluido: true, moradores: [], vila: v.id, vari, trabalhador: null };
+        marcarOcupacao(pr, true);
+        return pr;
+      }),
+    }));
     if (s.fluxo) for (const k in s.fluxo) fluxoMedio[k] = s.fluxo[k];
     velocidade = VELOCIDADES.includes(s.velocidade) ? s.velocidade : 1;
     jogo.clima = s.clima || 'limpo';
@@ -7429,8 +8578,10 @@ function novaVila(seed) {
   chunks.clear(); cacheBioma.clear(); restante.clear(); ocupado.clear();
   jogo.predios = []; jogo.pessoas = []; jogo.estradas = new Set(); jogo.obrasEstrada = [];
   jogo.cronica = []; jogo.ancestrais = []; jogo.crise = null; jogo.zonas = {}; jogo.historia = [];
+  jogo.malhaOx = null; jogo.malhaOy = null;
+  jogo.vilas = []; jogo.dono = {}; jogo.pressao = 0; jogo.migraSaindo = 0;
   jogo.proxId = 1; proxPredioId = 1;
-  jogo.recursos = { madeira:220, comida:200, pedra:80, tabua:0, ferramenta:0 };
+  jogo.recursos = { madeira:220, comida:380, pedra:80, tabua:0, ferramenta:0 };
   jogo.ano = 1; jogo.anoFrac = 0; jogo.fome = false;
   jogo.clima = 'limpo'; jogo.mesAnterior = -1; jogo.diaAnterior = -1;
   jogo.pedidos = []; jogo.diaTotal = 0;

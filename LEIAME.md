@@ -7,8 +7,11 @@ decide o que construir **mesmo com o jogo fechado**.
 Tudo vive em **um único arquivo** (`index.html`): nenhuma biblioteca, nenhuma
 requisição de rede, nenhuma instalação. Funciona 100% offline no celular.
 
-> O jogo é pacífico por decisão de projeto: não há exércitos, combate nem
-> inimigos, e nada disso está planejado.
+> O jogo é pacífico por decisão de projeto: não há exércitos nem combate, e
+> nada disso está planejado. Desde a Fase 7 existe uma disputa **de território
+> e prosperidade** contra vilas rivais opcionais — mas ninguém empunha arma;
+> quem vive melhor atrai a gente da vizinha, e é assim que se domina. Veja
+> [A disputa de território](#a-disputa-de-território).
 
 ## O mundo
 
@@ -876,6 +879,172 @@ antes). Com eles, a atualização automática funciona.
 
 ---
 
+## A grade de quarteirões
+
+As ruas cresciam pela ponta mais distante do centro, e esticavam de quatro a
+sete tiles sempre para fora — nunca fechando o que ficava para trás. Isso dava
+tentáculos, e casa erguida na ponta de um tentáculo, uma fileira de fundo só. A
+regra antiga de manter seis blocos de folga entre vias tentava consertar isso
+medindo vizinho a vizinho, e deixava só cinco tiles de miolo — onde um prédio
+grande (três de profundidade) cabe uma vez, com um tile morto sobrando.
+
+Agora existe uma **grade**, ancorada no Centro, com período de nove tiles: rua,
+oito de quarteirão, rua. O crescimento inverteu a lógica — em vez de esticar a
+fronteira, ele **fecha o quarteirão aberto mais perto do centro**, um lado do
+anel por vez, e só solta lote depois que a quadra está com os quatro lados
+calçados. É o que faz a rua transversal nascer antes das casas, em vez de a
+cidade virar uma fita descendo o mapa sem cruzamento nenhum.
+
+O oito não é gosto: quatro prédios grandes (4×3, o maior do jogo) em arranjo
+2×2, todos com testada para a rua, pedem miolo de 8×6. Com quarteirão quadrado,
+o período de nove garante isso sempre, em qualquer parte do mapa:
+
+```
+ #########        # rua
+ #.......#        . miolo do quarteirão, 8×8
+ #[][][].#        [] prédio grande 4×3, encostado na testada
+ #[][][].#        as duas fileiras do meio sobram de quintal
+ #.......#
+ #[][][].#
+ #[][][].#
+ #.......#
+ #########
+```
+
+Testado num quarteirão vazio: cabem exatamente 4 prédios grandes (4×3), ou 8
+médios (3×2), ou 12 casas (2×2) — a testada é que limita, não a área.
+
+A folga de seis blocos saiu de cena — a grade garante o espaçamento por
+construção, sem precisar medir nada. E a rua com destino (a que busca madeira,
+pedra ou beira d'água) agora anda **em L pela própria grade** em vez de em
+diagonal escalonada: sai pela linha em que já está, vira a esquina, chega. Ela
+não precisa mais perseguir árvore — desde a Fase 3 o aldeão sai da rua para
+colher — então sua única função voltou a ser ligar prédio e dar velocidade.
+
+Vila que já existe fica com o traçado torto que tem: não dá para redesenhar
+rua já construída sem demolir o que está encostado nela, e o mapa é fixo por
+regra do projeto. O que muda é o crescimento **daqui para frente**. Vila nova
+nasce certinha desde o primeiro quarteirão — a fundação (antes uma cruz de
+ruas ao redor do Centro) agora é o **anel do próprio quarteirão do Centro**,
+fechado de graça, sem gastar pedra.
+
+---
+
+## A comida com desafio de verdade
+
+O painel de produção denunciou isto assim que passou a medir: numa vila de 73
+pessoas, **uma única lavoura alimentava 30 moradores**. Oito lavouras davam
+conta de setenta e três bocas, e o excedente ia para a feira ou apodrecia no
+galpão — a despensa nunca precisava ser olhada, porque nunca chegava perto de
+zero. O número de rendimento por segundo estava calibrado para a economia
+antiga (1 hora real = 1 ano de jogo) e nunca foi reajustado quando o calendário
+virou 1 dia real = 1 ano.
+
+Agora **uma lavoura alimenta seis pessoas** — a mesma proporção que o conselho
+já usava para decidir quando construir mais uma, só que a conta finalmente bate
+de verdade. Três consequências, e as três são o jogo:
+
+1. a **estação passa a doer**: o inverno derruba o rendimento da lavoura para
+   40% durante três meses, e é aí que a vila come do que guardou no verão —
+   é esse ciclo que dá função real à despensa e ao Depósito;
+2. **colher no mato não compete mais com plantar**: fruta apanhada rendia mais
+   por pessoa do que lavoura (a estação só descontava quem plantava), e a vila
+   podia ignorar a lavoura inteira vivendo do mato. Agora o mato rende 55% do
+   normal, e também segue a estação — pela metade da força que pesa sobre a
+   lavoura, porque somar as duas quedas cheias deixava o primeiro inverno
+   impossível de atravessar, não difícil;
+3. a **imigração passa a exigir fartura real**: antes o gatilho era só a
+   despensa em dias (que engana dos dois lados — vila pequena com galpão cheio
+   parecia rica, vila grande e próspera nunca alcançava o número porque o
+   galpão não cresce sozinho). Agora entra quem sobra comida medida no
+   livro-caixa, não só quem tem estoque.
+
+Ajustes que vieram junto, para a dificuldade nova não virar fome de largada:
+a despensa inicial subiu de 200 para 380 (o fôlego para erguer duas lavouras
+antes do primeiro inverno, que chega no quinto mês); a meta do conselho subiu
+de "uma lavoura a cada seis" para **"uma a cada cinco, mais uma"** (a conta
+exata dava saldo zero e a vila travava, sem excedente para crescer nem motivo
+para plantar mais); o teto de gente em posto de trabalho (fazenda, mina,
+oficina...) subiu de metade dos adultos para 60% (com mais lavoura por
+morador, metade não tinha braço de sobra); e a fome grave (menos de 30 dias de
+estoque) agora **para tudo** — antes o conselho seguia abrindo mina e casa com
+quinze dias de comida no galpão porque "já tem lavoura em obra" bastava para a
+regra de cima se dar por satisfeita.
+
+No primeiro mês de outono, o conselho faz a conta do inverno e avisa em voz
+alta se a despensa não vai atravessar — descobrir isso em pleno janeiro, com o
+galpão vazio, é tarde demais para plantar.
+
+---
+
+## O aldeão no posto
+
+Quem chegava ao trabalho parava a dois tiles do prédio e ficava ali, imóvel,
+para sempre — e boa parte da sensação de "vila parada" era isto, não gente de
+fato travada. Agora o posto tem duas naturezas:
+
+- **sob um teto** (serraria, oficina, escola, mercado, mina): o aldeão entra e
+  some de vista. Quem mostra que há gente ali é uma janelinha acesa, pulsando
+  de leve no prédio;
+- **ao ar livre** (lavoura e cais): ele entra no lote e trabalha **andando**,
+  cruzando os sulcos de um lado a outro do terreno. Fazendeiro trancado dentro
+  de casa seria pior do que fazendeiro parado na esquina.
+
+A soleira por onde ele entrou fica guardada, e é para lá que ele volta ao
+largar o posto — sem isso ele reapareceria no meio do lote, fora da rua, e a
+regra de "gente anda na rua" o teletransportaria para o calçamento mais
+próximo, que pode ser o de trás do prédio.
+
+---
+
+## A disputa de território
+
+Uma vila que vive melhor não precisa de exército para tomar o lugar da
+vizinha — ela só precisa **crescer mais rápido**. É essa a aposta desta fase: a
+economia de comida apertada do item anterior deixa de ser só dificuldade e
+vira a arma da disputa.
+
+No menu, ao começar uma vila nova, você escolhe **quantas vilas rivais**
+enfrentar (0 a 4). Elas nascem longe, em direções diferentes, e a partir daí:
+
+- **Território é quarteirão.** Cada vila acumula pressão conforme sua
+  prosperidade e, ao encher, avança a fronteira um quarteirão por vez — sempre
+  preferindo terra de ninguém; só toma quarteirão de outra vila quando vive
+  **1,5× melhor** que ela (sem essa margem a fronteira ficaria trocando de dono
+  todo dia por causa de decimais);
+- **Prosperidade é medida**, de 0 a 1, por três números: quantos dias de
+  comida por boca, quanto teto ainda sobra, quantos quarteirões por morador.
+  Uma vila cheia de comida sem casa vazia não atrai ninguém; uma vila com casas
+  vazias e sem comida também não;
+- **Ninguém empunha arma.** As pessoas migram para onde se vive melhor —
+  quando a vizinha vive pior que você, gente de lá se muda para cá sozinha;
+  quando é o contrário, é a sua vila que perde gente. Quando uma vila esvazia
+  de vez, o território dela passa para quem tiver mais fronteira em comum —
+  **quem de fato a absorveu**, não quem estava por perto por acaso.
+
+A decisão de arquitetura que torna isto possível **sem reescrever o jogo**: a
+vila rival **não é uma segunda simulação**. O miolo do jogo (alcance, A*,
+desencalhar, o conselho) assume uma malha viária só, e essa foi justamente a
+parte mais frágil e mais recentemente consertada — um segundo enxame de
+pessoas com ruas próprias reabriria tudo aquilo, e quinhentos aldeões por vila
+não caberiam no orçamento de um quadro.
+
+Então a vizinha é um **modelo**: população, despensa, lavouras, casas e
+território avançados uma vez por dia de jogo pela mesma matemática que rege a
+sua vila — a mesma taxa de lavoura, o mesmo consumo por pessoa, a mesma
+estação. Os prédios e as ruas dela existem e são desenhados (com uma
+bandeirinha da cor dela no telhado, e a calçada num tom diferente da sua), mas
+moram em listas próprias: sua malha viária continua sendo só sua, e nenhum
+aldeão seu jamais tenta andar por lá. Isso também é o que permite a vizinha
+**seguir vivendo com o app fechado** — ela avança pelo mesmo motor de
+recuperação offline que já existia, um dia de cada vez, sem código novo para
+isso.
+
+Se você dominar todas as vilas rivais, a disputa termina — o placar de
+território (🚩, no alto da tela) some, e nada te impede de seguir jogando.
+
+---
+
 ## Estrutura
 
 ```
@@ -896,12 +1065,15 @@ para uma vila de 10 pessoas. **Atualizar o app não apaga o save.**
 
 ## O que ainda não existe
 
-- **Pathfinding A\***: hoje as pessoas contornam obstáculos por desvio simples.
-  Funciona com prédios espalhados; vai falhar quando a vila virar um labirinto.
-- **Depleção de recursos no modo offline**: com o jogo fechado, as árvores não
-  diminuem. Simplificação consciente — o teto de estoque segura o exagero.
-- **Estações do ano e clima**.
-- **Depleção de recursos com o jogo fechado**: as árvores não diminuem offline.
+- **Arte própria da Praça, da Prefeitura e da Mina**: as três continuam no
+  desenho vetorial de sempre, sem sprite — nenhuma arte pronta para elas ainda.
+- **Rios**: o gerador de terreno não produz travessias curtas de água profunda
+  neste mundo (amostrado: 766 tiles de água funda em 600×600, nenhuma
+  travessia curta). A ponte existe e funciona — só não há rio para ela vencer.
+  Adicionar rio mudaria o mapa de quem já joga, o que fere a regra de mapa fixo.
+- **Combate**: a disputa de território (Fase 7) é só migração e prosperidade.
+  Não há planos de introduzir exército ou luta — é decisão de projeto, não
+  limitação técnica.
 
 [un]: https://www.un.org/development/desa/pd/sites/www.un.org.development.desa.pd/files/aging_theme_household_size_and_composition_around_the_world_2017_data_booklet.pdf
 [genus]: https://genus.springeropen.com/articles/10.1186/s41118-024-00211-6
