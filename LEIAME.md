@@ -1139,6 +1139,64 @@ aldeão, tingido.
 
 ---
 
+## O mapa virou isométrico
+
+Os prédios da Fase 8 vieram numa perspectiva de losango; o mapa era visto de
+cima, reto. Medido na base da Praça — 185×123 px de bounding box — dava uns
+33,6° de inclinação; a malha adotou a proporção 2:1 (a convenção clássica de
+jogo isométrico em pixel art) por ser perto o bastante do que a arte já tem,
+sem herdar números quebrados.
+
+**A regra que guiou tudo**: a simulação não muda. Pathfinding, alcance,
+distância, colisão continuam em coordenadas de mundo, no grid quadrado de
+sempre. Só o DESENHO passa por uma projeção antes de virar pixel de tela — e
+mesmo aí, de duas formas diferentes:
+
+- O **chão** (terreno, rua, obra, bairro, território) ganha a inclinação
+  pela própria matriz do canvas: um quadrado desenhado em coordenadas de
+  mundo, sem nenhuma mudança de código, sai como losango sozinho. É por isso
+  que `desenharEstrada` não precisou ser reescrita — ela roda dentro de um
+  trecho com a matriz inclinada, e o resultado sai certo.
+- Um **objeto em pé** (prédio, gente, árvore) não pode receber a mesma
+  inclinação — a arte dele já é isométrica, e inclinar de novo destorceria o
+  sprite, como uma foto esticada. Em vez disso, só a ORIGEM do desenho se
+  move: a função calcula sua posição normalmente, em pixels de mundo, e um
+  deslocamento (dx0,dy0) — vindo da projeção do ponto onde o objeto pisa — é
+  somado onde ela já lia sua própria posição.
+
+Toque, arrastar o mapa e WASD passaram pela mesma virada: `telaParaMundo`
+ganhou a fórmula isométrica inversa, e um deslocamento de tela (arrastar o
+dedo, apertar uma seta) agora vira deslocamento de mundo pela mesma inversa
+— sem isso, "esquerda" no teclado andaria na diagonal do mundo, não na tela.
+
+**Dois problemas de escala, achados testando com centenas de gente e vilas
+rivais** — nenhum visível numa vila pequena, os dois travando o jogo numa
+grande:
+
+1. A primeira versão movia a origem de cada objeto em pé com
+   `ctx.save()+translate()+restore()` — correto, mas empilhar e desempilhar
+   o estado do canvas centenas de vezes por quadro não escala como uma soma.
+   Numa vila de 307 pessoas, `desenhar()` foi a 197ms. A troca por
+   deslocamento somado (o dx0,dy0 do parágrafo acima, em vez de mexer na
+   matriz) trouxe de volta a menos de 1ms;
+2. Um bug **anterior a esta fase**, só exposto porque a área de mundo que a
+   câmera isométrica precisa varrer é maior que antes: o cálculo de quais
+   quarteirões de disputa pintar misturava pixel de câmera com tile de
+   quarteirão. Com a tela sempre mostrando uma janela pequena isso nunca
+   dava zebra visível; a nova área ampliada empurrou a conta para **65 mil
+   blocos por quadro**. A correção foi só bater as unidades.
+
+Os prédios também saíram 30% maiores — a arte isométrica ocupava menos da
+caixa do que o desenho vetorial antigo ocupava, e ficaram pequenos demais na
+tela. Crescem para cima e para os lados a partir da MESMA base: a fundação
+continua exatamente sobre o lote.
+
+O minimapa continua visto de cima, de propósito — é a convenção comum em
+jogo isométrico (um "mapa de bolso" que orienta, não a cena principal) e o
+código dele já era independente da câmera principal.
+
+---
+
 ## Estrutura
 
 ```

@@ -466,6 +466,35 @@ const TILE  = 28;
 const CHUNK = 24;
 const CPX   = CHUNK * TILE;
 const SUB   = 2;            // amostras de terreno por tile (suavização)
+
+/*
+   A PROJEÇÃO ISOMÉTRICA.
+
+   Os sprites novos de prédio (Fase 8) vêm desenhados numa perspectiva de
+   losango — medido na base da Praça: 185×123 px, uns 33,6° de inclinação.
+   O resto do jogo (terreno, rua, tudo) era visto de cima reto, e o choque
+   entre um prédio em diagonal sobre um chão quadrado é o que pediu conserto.
+
+   A proporção 2:1 (em vez do 1,5:1 medido) é a convenção clássica de jogo
+   isométrico em pixel art — cada passo de tile desloca 2 px na tela para
+   os lados por 1 px para cima/baixo. É perto o bastante do que a arte já
+   tem, e poupa a malha inteira de números quebrados.
+
+   A ideia central: A SIMULAÇÃO NÃO MUDA. Pathfinding, alcance, distância,
+   colisão — tudo continua em coordenadas de MUNDO, no grid quadrado de
+   sempre, exatamente como era. Só o DESENHO passa por uma projeção antes de
+   virar pixel de tela. 'mundoParaIso' é essa projeção; 'isoParaMundo' é a
+   volta, usada para traduzir toque de dedo em tile.
+*/
+const ISO_A = 1, ISO_B = 0.5, ISO_C = -1, ISO_D = 0.5;   // shear 2:1
+
+function mundoParaIso(wx, wy) {
+  return { x: wx * ISO_A + wy * ISO_C, y: wx * ISO_B + wy * ISO_D };
+}
+// Inversa da matriz acima (determinante 1: ISO_A*ISO_D - ISO_C*ISO_B = 1).
+function isoParaMundo(ix, iy) {
+  return { x: ix * ISO_D - iy * ISO_C, y: -ix * ISO_B + iy * ISO_A };
+}
 /*
    UM DIA DE VERDADE = UM ANO DE JOGO.
 
@@ -4931,7 +4960,22 @@ function redimensionar() {
 addEventListener('resize', redimensionar);
 addEventListener('orientationchange', () => setTimeout(redimensionar, 150));
 
-const telaParaMundo = (sx, sy) => ({ x: cam.x + (sx - W / 2) / cam.z, y: cam.y + (sy - H / 2) / cam.z });
+/*
+   Tela → mundo, agora em duas etapas: primeiro desfaz zoom e posição da
+   câmera (que vivem em espaço ISOMÉTRICO, igual ao que 'desenhar' usa),
+   depois desfaz a própria projeção para achar o tile de verdade. Um toque
+   no meio da tela ainda deve cair exatamente sob o dedo — e num chão em
+   losango isso já não é "ande reto até o centro", é a volta da inclinação.
+*/
+const telaParaMundo = (sx, sy) => {
+  const camIso = mundoParaIso(cam.x, cam.y);
+  return isoParaMundo(camIso.x + (sx - W / 2) / cam.z, camIso.y + (sy - H / 2) / cam.z);
+};
+
+// Um DESLOCAMENTO de tela (arrastar o dedo, ou WASD) vira deslocamento de
+// mundo pela mesma inversa — sem o termo de câmera, porque delta não tem
+// posição, só direção e tamanho.
+const deltaTelaParaMundo = (dsx, dsy) => isoParaMundo(dsx / cam.z, dsy / cam.z);
 
 /*
    Seguir um aldeão. A câmera vai atrás dele com folga — puxar direto para o
@@ -4997,7 +5041,8 @@ cv.addEventListener('touchmove', e => {
     const t = [...e.changedTouches].find(t => t.identifier === arraste.id);
     if (t) {
       if (arraste.dist > 12) soltarSeguimento();
-      cam.x -= (t.clientX - arraste.x) / cam.z; cam.y -= (t.clientY - arraste.y) / cam.z;
+      const dm = deltaTelaParaMundo(t.clientX - arraste.x, t.clientY - arraste.y);
+      cam.x -= dm.x; cam.y -= dm.y;
       arraste.dist += Math.hypot(t.clientX - arraste.x, t.clientY - arraste.y);
       arraste.x = t.clientX; arraste.y = t.clientY;
       if (arraste.dist > 12) cancelarToqueLongo();
@@ -5032,7 +5077,8 @@ addEventListener('mousemove', e => {
   if (!mouseArr) return;
   if (desenhandoRua) { tracarAte(e.clientX, e.clientY); return; }
   if (pintandoZona) { pintarAte(e.clientX, e.clientY); return; }
-  cam.x -= (e.clientX - mouseArr.x) / cam.z; cam.y -= (e.clientY - mouseArr.y) / cam.z;
+  const dm = deltaTelaParaMundo(e.clientX - mouseArr.x, e.clientY - mouseArr.y);
+  cam.x -= dm.x; cam.y -= dm.y;
   mouseArr.dist += Math.hypot(e.clientX - mouseArr.x, e.clientY - mouseArr.y);
   mouseArr.x = e.clientX; mouseArr.y = e.clientY;
   if (mouseArr.dist > 6) cancelarToqueLongo();
@@ -7264,14 +7310,23 @@ function spriteMoita(v) {
   });
 }
 
-function desenharNo(g, n) {
+/*
+   Recebe a posição JÁ PROJETADA (px,py), em vez de projetar via 'save +
+   translate + restore' como prédio e gente. Diferença de escala: uma vila
+   tem dezenas de prédios e no máximo algumas centenas de pessoas (com teto);
+   o mapa pode ter MILHARES de árvores à vista num zoom bem aberto. Medido: o
+   custo de pilha do contexto por chamada, desprezível para um punhado de
+   prédios, virou o item mais caro do quadro assim que multiplicado por
+   milhares — e uma soma antes do desenho não tem esse custo nenhum.
+*/
+function desenharNo(g, n, px, py) {
   const v = Math.floor((n.semente || 0) * VARIANTES) % VARIANTES;
   const s = (n.s || 1) * 0.78;
   let sp;
   if (n.tipo === 'madeira') sp = n.conifera ? spriteConifera(v, n.neve) : spriteArvore(v);
   else if (n.tipo === 'pedra') sp = spritePedra(v, n.neve);
   else sp = spriteMoita(v);
-  g.drawImage(sp.cv, n.x - sp.ax * s, n.y - sp.ay * s, sp.larg * s, sp.alt * s);
+  g.drawImage(sp.cv, px - sp.ax * s, py - sp.ay * s, sp.larg * s, sp.alt * s);
 }
 
 /* ------------------------------------------------------------- prédios ---- */
@@ -7637,12 +7692,25 @@ function recorteTingido(img, sx, sy, sw, sh, dw, dh, cor) {
 // vez só e fica guardado pelo id — nada de refazer o recorte a cada quadro.
 const cachePredioTingido = new Map();
 
+/*
+   Os prédios da Fase 8 ficaram pequenos demais na tela, segundo quem joga —
+   a arte isométrica ocupa menos da caixa do que o desenho vetorial antigo
+   ocupava. 30% de aumento, crescendo para cima e para os lados a partir da
+   MESMA base: a fundação continua exatamente sobre o lote, só o prédio fica
+   mais imponente.
+*/
+const ESCALA_PREDIO = 1.3;
+
 // Onde o prédio é desenhado: centrado no lote, com a base na beirada de baixo.
-function caixaDoPredio(pr, q) {
+// 'dx0,dy0' é o deslocamento isométrico (ver 'desenharPredio' para o porquê
+// de ser somado aqui em vez de vir de um 'ctx.translate').
+function caixaDoPredio(pr, q, dx0, dy0) {
   const w = pr.def.w * TILE, h = pr.def.h * TILE;
+  const dw = q[4] * ESCALA_PREDIO, dh = q[5] * ESCALA_PREDIO;
   return {
-    dx: pr.tx * TILE + (w - q[4]) / 2,
-    dy: pr.ty * TILE + h - q[5],
+    dx: pr.tx * TILE + (w - dw) / 2 + dx0,
+    dy: pr.ty * TILE + h - dh + dy0,
+    dw, dh,
   };
 }
 
@@ -7681,9 +7749,25 @@ function janelasDe(pr) {
   return lista;
 }
 
-function desenharPredio(g, pr) {
+/*
+   'dx0,dy0' É A PROJEÇÃO ISOMÉTRICA, SOMADA EM VEZ DE APLICADA COM
+   'ctx.translate'.
+
+   A primeira versão usava 'comPontoProjetado' (save + translate + restore)
+   para cada prédio e cada pessoa, igual já fazia para árvore. Certo na
+   forma, caro na prática: medido numa vila de 307 pessoas, só o translate
+   ida-e-volta delas custava ~0,2ms CADA — não os ~0,009ms de um teste
+   isolado — e o quadro inteiro foi a 197ms. Empilhar e desempilhar o estado
+   do contexto centenas de vezes seguidas não escala como uma soma.
+
+   A correção: em vez de mexer na matriz do canvas, o deslocamento entra
+   como número e é somado direto onde 'x' e 'y' já nascem — dali em diante a
+   função desenha exatamente como sempre desenhou.
+*/
+function desenharPredio(g, pr, dx0, dy0) {
+  dx0 = dx0 || 0; dy0 = dy0 || 0;
   const w = pr.def.w * TILE, h = pr.def.h * TILE;
-  const x = pr.tx * TILE, y = pr.ty * TILE;
+  const x = pr.tx * TILE + dx0, y = pr.ty * TILE + dy0;
 
   if (pr.progresso < 1) {
     // Canteiro: fundação marcada, andaime e barra de progresso.
@@ -7713,7 +7797,7 @@ function desenharPredio(g, pr) {
      arte para uma chave nova, a vila continua de pé, só que mais simples. */
   const q = arteDePredio(pr);
   if (q) {
-    const c = caixaDoPredio(pr, q);
+    const c = caixaDoPredio(pr, q, dx0, dy0);
     // O prédio de uma vila rival é o MESMO sprite, só que tingido na cor
     // dela — é o que deixa óbvio de quem é aquele canto do mapa sem precisar
     // de legenda nem de um símbolo à parte.
@@ -7733,9 +7817,9 @@ function desenharPredio(g, pr) {
         cx2.fillRect(0, 0, q[4], q[5]);
         cachePredioTingido.set(pr.id, cv);
       }
-      g.drawImage(cv, c.dx, c.dy);
+      g.drawImage(cv, c.dx, c.dy, c.dw, c.dh);
     } else {
-      g.drawImage(imgPredios, q[0], q[1], q[2], q[3], c.dx, c.dy, q[4], q[5]);
+      g.drawImage(imgPredios, q[0], q[1], q[2], q[3], c.dx, c.dy, c.dw, c.dh);
     }
   } else {
     const vari = varianteDe(pr);
@@ -7910,7 +7994,19 @@ function direcaoDoAngulo(ang) {
 const linhaDoPersonagem = p =>
   faseDaIdade(p.idade) === FASE.CRIANCA ? 2 : (p.sexo === 'f' ? 1 : 0);
 
-function desenharPessoa(g, p, selecionado, tingir) {
+/*
+   'dx0,dy0': mesma correção de performance do prédio (ver o comentário
+   grande em 'desenharPredio') — a projeção soma, não usa 'ctx.translate'.
+
+   Aqui a técnica é outra porque a função lê 'p.x,p.y' em muitos pontos
+   soltos (sombra, carga, cavalo, carroça, faísca), sem uma variável única no
+   topo para ajustar. Uma CÓPIA RASA de 'p' com 'x,y' já deslocados resolve
+   isso de um golpe só: o resto da função — e as sub-funções que recebem
+   este mesmo 'p', como 'desenharCavalo' — nunca precisam saber que a
+   posição foi ajustada.
+*/
+function desenharPessoa(g, pReal, selecionado, tingir, dx0, dy0) {
+  const p = (dx0 || dy0) ? Object.assign({}, pReal, { x: pReal.x + (dx0 || 0), y: pReal.y + (dy0 || 0) }) : pReal;
   const montado = p.veiculo === 'cavalo';
   const esc = faseDaIdade(p.idade) === FASE.CRIANCA ? 0.78 : 1;
   const tam = DESENHO_PESSOA * esc;
@@ -7977,11 +8073,11 @@ function desenharPessoa(g, p, selecionado, tingir) {
    justamente a informação que o sumiço deveria dar — que ali dentro tem
    gente trabalhando.
 */
-function janelaAcesa(g, pr) {
+function janelaAcesa(g, pr, dx0, dy0) {
   if (!pr.trabalhador || pr.progresso < 1) return;
   const p = pessoaPorId(pr.trabalhador);
   if (!p || p.dentro !== pr.id) return;
-  const x = pr.cx, y = (pr.ty + pr.def.h) * TILE - 7;
+  const x = pr.cx + (dx0 || 0), y = (pr.ty + pr.def.h) * TILE - 7 + (dy0 || 0);
   const brilho = 0.42 + 0.30 * (Math.sin(agora / 430) + 1) / 2;
   g.fillStyle = 'rgba(255,206,116,' + brilho.toFixed(2) + ')';
   rrect(g, x - 4.5, y - 8, 9, 9.5, 2);
@@ -8260,11 +8356,15 @@ function passo(dt) {
 
   moverCameraSeguindo(dt);
 
-  const v = 420 / cam.z * dt;
-  if (teclas.has('a') || teclas.has('arrowleft'))  cam.x -= v;
-  if (teclas.has('d') || teclas.has('arrowright')) cam.x += v;
-  if (teclas.has('w') || teclas.has('arrowup'))    cam.y -= v;
-  if (teclas.has('s') || teclas.has('arrowdown'))  cam.y += v;
+  // WASD anda pelos eixos da TELA (esquerda é sempre esquerda na tela), não
+  // pelos eixos do mundo — que em isométrico ficam na diagonal.
+  const v = 420 * dt;
+  let dtx = 0, dty = 0;
+  if (teclas.has('a') || teclas.has('arrowleft'))  dtx -= v;
+  if (teclas.has('d') || teclas.has('arrowright')) dtx += v;
+  if (teclas.has('w') || teclas.has('arrowup'))    dty -= v;
+  if (teclas.has('s') || teclas.has('arrowdown'))  dty += v;
+  if (dtx || dty) { const dm = deltaTelaParaMundo(dtx, dty); cam.x += dm.x; cam.y += dm.y; }
 
   atualizarPovo(dt);
   atualizarGenteRival(dt);
@@ -8330,16 +8430,71 @@ function passo(dt) {
   if (mmT <= 0) { mmT = 0.6; desenharMinimapa(); atualizarHUD(); salvar(); }
 }
 
-function desenhar() {
-  const z = cam.z, vw = W / z, vh = H / z;
-  const camX = cam.x - vw / 2, camY = cam.y - vh / 2;
+/*
+   ONDE UM OBJETO EM PÉ (prédio, gente, árvore) POUSA NA TELA.
 
-  ctx.setTransform(DPR * z, 0, 0, DPR * z, -camX * DPR * z, -camY * DPR * z);
+   A arte deles já É isométrica — foi desenhada assim pelo artista. Não se
+   pode aplicar o mesmo cisalhamento do chão a um sprite pronto: ele ficaria
+   torto, dobrado, como uma foto esticada. O que se faz é mover só a ORIGEM
+   do desenho para onde a projeção manda, sem mexer nos eixos.
+
+   A primeira versão fazia isso com 'ctx.save()+translate()+restore()' — a
+   maneira "de manual" de mover uma origem. Certo no resultado, caro na
+   prática: numa vila de 307 pessoas, empilhar e desempilhar o estado do
+   canvas centenas de vezes por quadro levou 'desenhar()' a 197ms. A troca é
+   por SOMA: cada função de desenho (árvore, prédio, gente) ganhou um
+   deslocamento numérico (dx0,dy0) que ela soma onde já lia sua própria
+   posição — sem tocar a matriz do canvas nenhuma vez. 'projetar()', logo
+   abaixo, é quem calcula esse par de números a partir do ponto de mundo que
+   deve ficar sob o pé do objeto (para prédio, o centro da base do lote; para
+   gente e árvore, a própria posição).
+*/
+
+function desenhar() {
+  const z = cam.z, vw0 = W / z, vh0 = H / z;
+  const camIso = mundoParaIso(cam.x, cam.y);
+
+  /*
+     QUANTO DE MUNDO A CÂMERA ALCANÇA.
+
+     Antes, a tela mostrava um retângulo do mundo idêntico ao retângulo da
+     tela — 1 px de mundo = 1 px de tela, antes do zoom. Com o chão agora
+     inclinado, o retângulo da TELA corresponde a um LOSANGO no mundo: virar
+     a câmera para o queixo esquerdo de uma casa pode estar bem mais longe em
+     tile do que virar para o topo.
+
+     A conta usa a caixa que ENVOLVE esse losango (um pouco maior que o
+     necessário nos quatro cantos) — pintar alguns tiles a mais fora da tela é
+     barato; deixar um buraco por ter cortado rente não é uma opção.
+  */
+  const cantos = [
+    isoParaMundo(camIso.x - vw0 / 2, camIso.y - vh0 / 2),
+    isoParaMundo(camIso.x + vw0 / 2, camIso.y - vh0 / 2),
+    isoParaMundo(camIso.x - vw0 / 2, camIso.y + vh0 / 2),
+    isoParaMundo(camIso.x + vw0 / 2, camIso.y + vh0 / 2),
+  ];
+  const camX = Math.min(cantos[0].x, cantos[1].x, cantos[2].x, cantos[3].x);
+  const camXmax = Math.max(cantos[0].x, cantos[1].x, cantos[2].x, cantos[3].x);
+  const camY = Math.min(cantos[0].y, cantos[1].y, cantos[2].y, cantos[3].y);
+  const camYmax = Math.max(cantos[0].y, cantos[1].y, cantos[2].y, cantos[3].y);
+  const vw = camXmax - camX, vh = camYmax - camY;
+
+  // Transformação BASE: zoom e posição da câmera, sem inclinação — é a que
+  // vale para todo objeto em pé, que não pode ficar torto.
+  ctx.setTransform(DPR * z, 0, 0, DPR * z, W * DPR / 2 - camIso.x * DPR * z, H * DPR / 2 - camIso.y * DPR * z);
   ctx.imageSmoothingEnabled = true;   // item 2: nada de serrilhado
 
   const c0x = Math.floor(camX / CPX), c0y = Math.floor(camY / CPX);
-  const c1x = Math.floor((camX + vw) / CPX), c1y = Math.floor((camY + vh) / CPX);
+  const c1x = Math.floor(camXmax / CPX), c1y = Math.floor(camYmax / CPX);
   const visiveis = [];
+  // O CHÃO — terreno, e mais adiante rua, obra e território — é a única
+  // parte da cena que RECEBE a inclinação isométrica: aqui um quadrado
+  // desenhado em coordenadas de mundo, sem nenhuma mudança de código, sai
+  // como losango na tela sozinho, porque a matriz ativa é que faz esse
+  // trabalho. Fecha antes da lista de prédios e gente, que usam a base sem
+  // inclinação (ver 'projetar', mais abaixo).
+  ctx.save();
+  ctx.transform(ISO_A, ISO_B, ISO_C, ISO_D, 0, 0);
   for (let cy = c0y; cy <= c1y; cy++)
     for (let cx = c0x; cx <= c1x; cx++) {
       const ch = pegarChunk(cx, cy);
@@ -8377,9 +8532,18 @@ function desenhar() {
      dezenas de quarteirões tomados, mas nunca mais do que a tela mostra.
   */
   if (emDisputa()) {
+    /*
+       ACHADO AQUI, NÃO CRIADO AQUI: esta conta já misturava pixel de câmera
+       com tile de quarteirão desde a Fase 7 — 'camX' é pixel, 'ox' e 'P' são
+       tile. Com a tela sempre mostrando uma janela pequena isso passava
+       batido; a área de mundo maior que a isometria enxerga (zoom aberto
+       amplia mais que antes) empurrou a conta para 65 mil blocos por quadro.
+       A correção é só bater as unidades: 'ox' e 'P' em pixel, como 'camX' já
+       é.
+    */
     const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
-    const bx0 = Math.floor((camX - ox) / P) - 1, bx1 = Math.ceil((camX + vw - ox) / P) + 1;
-    const by0 = Math.floor((camY - oy) / P) - 1, by1 = Math.ceil((camY + vh - oy) / P) + 1;
+    const bx0 = Math.floor((camX - ox * TILE) / (P * TILE)) - 1, bx1 = Math.ceil((camX + vw - ox * TILE) / (P * TILE)) + 1;
+    const by0 = Math.floor((camY - oy * TILE) / (P * TILE)) - 1, by1 = Math.ceil((camY + vh - oy * TILE) / (P * TILE)) + 1;
     for (let by = by0; by <= by1; by++)
       for (let bx = bx0; bx <= bx1; bx++) {
         const id = jogo.dono[blocoK(bx, by)];
@@ -8403,29 +8567,49 @@ function desenhar() {
       }
     }
   }
+  ctx.restore();   // fecha a inclinação do chão — daqui em diante, tudo pé no prumo
+
+  /*
+     A ORDEM DE DESENHO, em isométrico, não é mais "quem está mais embaixo na
+     tela" — é quem está mais para o fundo do MUNDO, medido por (x+y) do
+     ponto onde o objeto pisa. Convenientemente isso é exatamente a coordenada
+     Y que a própria projeção calcula, então a chave de profundidade é só a
+     projeção do ponto de ancoragem de cada item.
+  */
+  // Calcula a projeção uma vez e devolve tudo que a ordenação E o desenho
+  // final precisam: a profundidade (y projetado) e o deslocamento isométrico
+  // a somar dentro da função de desenho (ver 'desenharPredio'/'desenharPessoa').
+  const projetar = (ancoraX, ancoraY) => {
+    const p = mundoParaIso(ancoraX, ancoraY);
+    return { y: p.y, dx0: p.x - ancoraX, dy0: p.y - ancoraY };
+  };
 
   const lista = [];
   for (const ch of visiveis)
     for (const n of ch.nos) {
       if (n.x < camX - 40 || n.x > camX + vw + 40 || n.y < camY - 60 || n.y > camY + vh + 60) continue;
-      lista.push({ y:n.y, k:0, o:n });
+      const p = mundoParaIso(n.x, n.y);   // calcula uma vez, usa na ordenação E no desenho
+      lista.push({ y:p.y, k:0, o:n, px:p.x, py:p.y });
     }
   for (const pr of jogo.predios) {
     if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
-    lista.push({ y:(pr.ty + pr.def.h) * TILE, k:1, o:pr });
+    const d = projetar(pr.cx, (pr.ty + pr.def.h) * TILE);
+    lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0, dy0:d.dy0 });
   }
   if (emDisputa())
     for (const v of rivaisVivas()) {
       for (const pr of v.predios) {
         if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
-        lista.push({ y:(pr.ty + pr.def.h) * TILE, k:1, o:pr });
+        const d = projetar(pr.cx, (pr.ty + pr.def.h) * TILE);
+        lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0, dy0:d.dy0 });
       }
       // A gente decorativa da vizinha entra na mesma fila que a sua, na mesma
       // ordenação por profundidade — senão ela sempre desenharia por cima ou
       // por baixo de tudo, e pareceria colada na tela em vez de andando nela.
       for (const p of v.gente) {
         if (p.x < camX - 50 || p.x > camX + vw + 50 || p.y < camY - 50 || p.y > camY + vh + 50) continue;
-        lista.push({ y:p.y, k:2, o:p });
+        const d = projetar(p.x, p.y);
+        lista.push({ y:d.y, k:2, o:p, dx0:d.dx0, dy0:d.dy0 });
       }
     }
   {
@@ -8446,20 +8630,32 @@ function desenhar() {
         if (adultosNaTela >= MAX_ADULTOS_NA_TELA) continue;
         adultosNaTela++;
       }
-      lista.push({ y:p.y, k:2, o:p });
+      const d = projetar(p.x, p.y);
+      lista.push({ y:d.y, k:2, o:p, dx0:d.dx0, dy0:d.dy0 });
     }
   }
   lista.sort((a, b) => a.y - b.y);
 
   const sel = new Set(selecao.map(p => p.id));
   for (const it of lista) {
-    if (it.k === 0) desenharNo(ctx, it.o);
-    else if (it.k === 1) { desenharPredio(ctx, it.o); janelaAcesa(ctx, it.o); }
-    else {
+    if (it.k === 0) desenharNo(ctx, it.o, it.px, it.py);
+    else if (it.k === 1) {
+      desenharPredio(ctx, it.o, it.dx0, it.dy0);
+      janelaAcesa(ctx, it.o, it.dx0, it.dy0);
+    } else {
       const v = it.o.vila && vilaPorId(it.o.vila);
-      desenharPessoa(ctx, it.o, sel.has(it.o.id), v ? v.cor + '80' : null);
+      desenharPessoa(ctx, it.o, sel.has(it.o.id), v ? v.cor + '80' : null, it.dx0, it.dy0);
     }
   }
+
+  /*
+     O RESTO É CHÃO DE NOVO: marcação de pedido, bairro pintado, grade do modo
+     rua, traçado sob o dedo, prévia de onde um prédio vai cair — tudo
+     desenhado sobre o tile, então tudo recebe a mesma inclinação. Um save só
+     para o grupo inteiro, que termina logo antes da prévia de 'colocando'.
+  */
+  ctx.save();
+  ctx.transform(ISO_A, ISO_B, ISO_C, ISO_D, 0, 0);
 
   // Terreno dos pedidos pendentes: piscando, para você achar sem procurar.
   // Tocar no quadrado reabre aquele pedido (item 2).
@@ -8546,15 +8742,19 @@ function desenhar() {
     ctx.lineWidth = 2;
     ctx.strokeRect(tx * TILE + 1, ty * TILE + 1, def.w * TILE - 2, def.h * TILE - 2);
   }
+  ctx.restore();   // fecha o segundo trecho de chão
 
   ctx.font = '600 11px system-ui, sans-serif';
   ctx.textAlign = 'center';
   for (const f of flutuantes) {
     const a = 1 - f.t / 1.2;
+    // Nasce num ponto do mundo (projetado uma vez); a subida é só de tela.
+    const pf = mundoParaIso(f.x, f.y);
+    const fx = pf.x, fy = pf.y - 14 - f.t * 20;
     ctx.fillStyle = 'rgba(0,0,0,' + (a * 0.5) + ')';
-    ctx.fillText(f.texto, f.x + 1, f.y - 14 - f.t * 20 + 1);
+    ctx.fillText(f.texto, fx + 1, fy + 1);
     ctx.fillStyle = 'rgba(255,255,255,' + a + ')';
-    ctx.fillText(f.texto, f.x, f.y - 14 - f.t * 20);
+    ctx.fillText(f.texto, fx, fy);
   }
 
   // --- brilho das janelas, ainda em coordenadas do mundo ---
@@ -8568,8 +8768,9 @@ function desenhar() {
       if (pr.cy < camY - 120 || pr.cy > camY + vh + 120) continue;
       const b = brilhoJanela();
       const r = 54;
+      const pj = mundoParaIso(pr.cx, pr.cy);
       ctx.globalAlpha = 0.5 * forca;
-      ctx.drawImage(b, pr.cx - r, pr.cy - r + 6, r * 2, r * 2);
+      ctx.drawImage(b, pj.x - r, pj.y - r + 6, r * 2, r * 2);
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
