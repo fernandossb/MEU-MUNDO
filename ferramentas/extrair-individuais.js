@@ -203,8 +203,28 @@ for (const [num, chave, w, h] of PECAS) {
   const rec = recortarAlfa(im);
 
   const { dw, dh } = tamanhoNaTela(w, h, rec);
-  const fL = Math.max(1, Math.round(dw*ESCALA)), fA = Math.max(1, Math.round(dh*ESCALA));
-  const red = reduzir(rec, fL, fA);
+  /*
+     NUNCA amplia além da resolução nativa do recorte. 'reduzir' é um filtro
+     de caixa — ótimo para reduzir, péssimo para ampliar: sem pixel de sobra
+     pra fazer média, ele degenera em vizinho-mais-próximo e o resultado sai
+     em blocos. Estes 37 arquivos chegaram bem menores que a leva anterior
+     (100 a 180px), e o multiplicador de folga (ESCALA) pedia guardar quase
+     o DOBRO disso — cada prédio saía ampliado às pressas, e era exatamente
+     essa a "resolução horrível" que apareceu no jogo.
+
+     A correção: se a folga pedida já cabe dentro da origem, guarda reduzido
+     como sempre (o filtro de caixa faz um bom trabalho reduzindo). Se a
+     origem é pequena demais para a folga, guarda na resolução NATIVA, sem
+     tocar — e deixa o próprio canvas do jogo suavizar na hora de desenhar
+     ('ctx.imageSmoothingEnabled = true' já está ligado), que é um
+     redimensionamento muito melhor do que este filtro de caixa faria.
+  */
+  // Decisão binária, não um corte por eixo: recortar cada eixo contra a
+  // origem de forma independente distorceria a proporção sempre que só um
+  // dos dois lados precisasse de mais espaço que a origem tem.
+  const alvoL = Math.max(1, Math.round(dw*ESCALA)), alvoA = Math.max(1, Math.round(dh*ESCALA));
+  const cabeSemAmpliar = alvoL <= rec.larg && alvoA <= rec.alt;
+  const red = cabeSemAmpliar ? reduzir(rec, alvoL, alvoA) : rec;
   const vari = (porChave[chave] = (porChave[chave] || 0));
   porChave[chave]++;
   quadros.push({ chave, vari, dw, dh, im: red, origem: num });

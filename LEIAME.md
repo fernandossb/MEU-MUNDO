@@ -1152,6 +1152,24 @@ A Fazenda de novo ficou de fora (nenhum dos 37 é lavoura) e continua
 reaproveitada da primeira leva. `ferramentas/extrair-individuais.js` é a
 ferramenta desta rodada — mantém `anexar-fazenda.js` como estava.
 
+**Correção rápida, no mesmo dia**: a arte publicada saiu borrada/em blocos.
+Causa direta — estes 37 arquivos chegaram bem menores que as levas
+anteriores (100 a 180px, contra os 500px+ de antes), e o pipeline guardava
+cada peça em `tela × ESCALA` (a folga de 2,2× reservada para aguentar o
+zoom máximo) **sem checar se a origem tinha pixel suficiente para isso**.
+Pedir a um filtro de caixa para AMPLIAR uma imagem pequena é exatamente o
+oposto do que ele faz bem — sem vizinho de sobra pra tirar média, ele
+degenera em vizinho-mais-próximo, e o resultado sai em blocos.
+
+A correção é uma decisão binária por peça, não um corte por eixo (cortar
+largura e altura contra a origem de forma independente distorceria a
+proporção sempre que só um lado precisasse de mais espaço): se a folga
+pedida cabe dentro da origem, reduz como sempre; se a origem é pequena
+demais para a folga, guarda na resolução NATIVA, sem tocar, e deixa o
+próprio canvas do jogo suavizar ao desenhar (`ctx.imageSmoothingEnabled`
+já vem ligado) — um redimensionamento melhor do que o filtro de caixa faria
+de qualquer forma.
+
 ---
 
 ## Teto de gente na tela
