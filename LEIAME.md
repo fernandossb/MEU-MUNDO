@@ -1119,6 +1119,41 @@ Fazenda reaproveitada na folha final.
 
 ---
 
+## A terceira leva — 37 arquivos individuais, e por que isso resolveu de vez
+
+A medição manual da leva anterior não ficou confiável — a arte publicada
+saiu com recorte errado, mesmo com toda a conferência por folha de contato.
+Não foi possível confirmar com certeza qual caixa media qual pixel errado
+(os testes locais, em vários tamanhos de tela e níveis de zoom, não
+reproduziram o defeito), mas medir grade e coluna à mão sempre foi a parte
+frágil do processo — e trocar por arquivos já separados elimina essa parte
+inteira, não só conserta o sintoma.
+
+Desta vez o usuário mandou **um arquivo por prédio** (37 PNGs, numerados) —
+exatamente o formato mais confiável que este projeto já usou. Sem grade pra
+adivinhar, sem risco de uma caixa pegar o vizinho, cada peça já vem isolada.
+
+Um detalhe novo: os recortes têm **dois estilos de fundo** diferentes,
+conforme a ferramenta que gerou cada um —
+
+- **preto chapado** (um punhado de arquivos): a mesma remoção por
+  flood-fill de sempre;
+- **fundo claro com uma AURÉOLA ESCURA contornando a silhueta** (a
+  maioria): um "drop shadow" que sobra colado nas bordas do prédio se só o
+  fundo claro for removido. A correção é uma segunda passada de flood-fill,
+  desta vez partindo de onde o fundo já virou transparente e comendo
+  qualquer pixel escuro adjacente, até parar de encontrar — ou seja, até
+  alcançar o prédio de verdade, que não é escuro por toda parte.
+
+Qual dos dois estilos vale para cada arquivo é decidido sozinho, pela cor
+dos quatro cantos (escura ou clara) — nenhuma lista manual de exceções.
+
+A Fazenda de novo ficou de fora (nenhum dos 37 é lavoura) e continua
+reaproveitada da primeira leva. `ferramentas/extrair-individuais.js` é a
+ferramenta desta rodada — mantém `anexar-fazenda.js` como estava.
+
+---
+
 ## Teto de gente na tela
 
 Simular uma vila de milhares já estava resolvido (`atualizarPovo` bota quem
