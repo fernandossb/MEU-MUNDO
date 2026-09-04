@@ -1077,6 +1077,48 @@ lado antes de ir para o jogo — é onde o rótulo da Prefeitura foi encontrado.
 
 ---
 
+## A segunda leva de arte — e por que a técnica teve que mudar
+
+Uma versão com qualidade melhorada das mesmas 39 peças chegou depois, só que
+desta vez **numa montagem única** — as 39 imagens já juntas numa folha, sem
+grade regular (cada fileira tem a altura do seu prédio mais alto: 4, 4, 4, 5,
+6, 7, 7 e 2 peças, oito fileiras, não uma grade uniforme) e com o fundo em
+**gradiente com textura**, não mais preto chapado.
+
+Isso quebrou as duas técnicas da leva anterior:
+
+- o flood-fill "perto do preto" não serve quando o fundo não é uma cor só;
+- detectar a grade sozinho também falhou — tentei três jeitos (diferença
+  contra a imagem borrada, energia de borda por coluna/linha, os dois
+  suavizados) e nenhum separou bem prédio de fundo, porque o próprio fundo
+  tinha textura demais para essas contas confiarem nele.
+
+A saída foi **medir na mão**: recortar a imagem em fatias com uma régua de
+pixels desenhada em cima (linhas a cada 16px, número a cada 64), e ler direto
+onde cada prédio começa e termina. Lento — oito fileiras, cada uma conferida
+individualmente antes de fechar a coordenada — mas confiável onde o
+automático não foi.
+
+A remoção de fundo, depois do recorte, também mudou: em vez de um valor fixo,
+a cor de referência sai da **mediana dos quatro cantos daquele recorte
+específico** (não a moldura inteira — uma moldura de recorte largo às vezes
+cruza por cima do prédio VIZINHO, e a média saía puxada para uma cor que não
+era o fundo). Mediana em vez de média por um motivo direto: se um dos quatro
+cantos pegou o vizinho por engano, os outros três ainda dominam a conta.
+
+Duas peças exigiram ajuste fino manual (a base da fonte grande e a barraca de
+garrafas), encontradas comparando o antes/depois numa folha de contato — o
+mesmo hábito de conferência da leva anterior.
+
+**A Fazenda ficou de fora desta leva** — nenhuma das 39 peças é uma lavoura —
+e continua com a arte processada da vez passada, só colada na mesma folha.
+
+`ferramentas/extrair-montagem.js` faz o recorte com coordenadas medidas à mão
+e a remoção de fundo por mediana; `ferramentas/anexar-fazenda.js` cola a
+Fazenda reaproveitada na folha final.
+
+---
+
 ## Teto de gente na tela
 
 Simular uma vila de milhares já estava resolvido (`atualizarPovo` bota quem
