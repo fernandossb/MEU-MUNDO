@@ -1239,6 +1239,46 @@ código dele já era independente da câmera principal.
 
 ---
 
+## Corrigido: a vila esvaziava sozinha com vilas rivais ativas
+
+Um bug sério, publicado sem correção por algumas horas antes de ser achado:
+em partidas longas com vilas rivais, a comida da SUA vila ia a zero e os
+adultos morriam de fome — mesmo com lavoura de sobra e a vila aparentemente
+saudável.
+
+Causa raiz medida, não suposta: as quatro vilas rivais chegavam à nota de
+prosperidade **máxima (1.0) já no quarto dia de jogo** e ficavam lá para
+sempre. A fórmula (`nota()`, em "A disputa de território") normaliza folga de
+casas e quarteirões por morador usando um piso pequeno — fácil de saturar com
+população baixa — e o conselho rival mantém a folga sempre perto do ideal por
+construção reativa. A sua vila, crescendo de verdade, nunca alcançava 1.0.
+Resultado: migração constante para fora, um sentido só, mesmo com a vila bem.
+
+E cada saída tinha um efeito em cascata que não era óbvio: menos adulto
+reduz o teto de gente em posto (`distribuirOficios`), e **fazendeiro é o
+primeiro nome da lista quando esse teto aperta** — regra antiga, de antes de
+existir vila rival, nunca um problema até a migração passar a cortar adulto
+com frequência. A fazenda ficava sem ninguém, a comida parava de entrar, a
+fome fazia o resto.
+
+Duas correções, medidas antes e depois:
+
+1. **A fórmula ficou mais difícil de saturar** — pisos e divisores maiores
+   fazem a mesma folga pequena valer bem menos nota numa vila pequena;
+2. **Período de graça**: abaixo de vinte pessoas, sua vila não perde ninguém
+   para fora, não importa o desnível. É a mesma regra que já valia para a
+   fronteira territorial ("um período inicial de desenvolvimento antes que os
+   territórios entrem em conflito") — só que também precisava valer aqui.
+
+Testado com o mesmo cenário que expôs o bug (4 vilas rivais, recuperação
+offline de vários anos): antes, colapsava para 3 habitantes e comida zero por
+volta do ano 9; depois, mais de 1400 habitantes e comida sobrando no ano 3,
+com as quatro vilas rivais igualmente vivas e saudáveis. A migração continua
+funcionando nos dois sentidos quando o desequilíbrio é de verdade — testado
+forçando fome numa vila rival e vendo gente dela se mudar para a sua.
+
+---
+
 ## Estrutura
 
 ```

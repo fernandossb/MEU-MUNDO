@@ -2927,10 +2927,26 @@ function fronteiraDe(blocos) {
    Uma vila cheia de comida sem casa vazia não atrai ninguém; uma vila com
    casas vazias e sem comida também não.
 */
+/*
+   MEDIDO: com os pisos antigos (4 e 1), as quatro vilas rivais chegavam à
+   nota MÁXIMA já no quarto dia e ficavam lá para sempre — o conselho rival
+   mantém a folga de casas sempre perto do ideal, e "folga de 4" ou "1
+   quarteirão" já bastava pra saturar com pop pequena. A sua vila, crescendo
+   de verdade, nunca alcançava 1.0. Resultado: migração constante para fora,
+   mesmo com a vila saudável — cada saída cortava adulto, cortava o teto de
+   gente em posto, e fazendeiro é o primeiro nome da lista de dispensa
+   (ver 'distribuirOficios'). A fazenda ficava sem ninguém, a comida parava,
+   a fome fechava o ciclo.
+
+   Pisos mais altos (8 e 3) e divisores maiores (0.4 e /6) fazem a mesma
+   folga ou o mesmo punhado de quarteirões render bem menos nota numa vila
+   pequena — a saturação passa a exigir prosperidade de verdade, não só
+   population baixa.
+*/
 function nota(dias, folga, blocos, pop) {
   const nDespensa = Math.min(1, dias / 120);
-  const nTeto = Math.min(1, folga / Math.max(4, pop * 0.25));
-  const nTerra = Math.min(1, blocos / Math.max(1, pop / 9));
+  const nTeto = Math.min(1, folga / Math.max(8, pop * 0.4));
+  const nTerra = Math.min(1, blocos / Math.max(3, pop / 6));
   return nDespensa * 0.5 + nTeto * 0.3 + nTerra * 0.2;
 }
 
@@ -3047,6 +3063,16 @@ function avancarFronteira(quem, prosp, blocos, id) {
 */
 const MIGRACAO_POR_DIA = 0.55;      // pessoas por dia, no maior desnível possível
 
+/*
+   O PERÍODO DE GRAÇA. "A distância inicial entre as vilas deve permitir um
+   período de desenvolvimento antes que os territórios entrem em conflito" —
+   isso vale para a migração tanto quanto para a fronteira. Abaixo de vinte
+   pessoas a SUA vila não perde ninguém para fora, não importa o desnível:
+   é o tempo de erguer a segunda e a terceira lavoura antes de qualquer
+   disputa começar a valer.
+*/
+const POP_MINIMA_ANTES_DE_EMIGRAR = 20;
+
 function migrarEntreVilas() {
   const lista = [{ id: 0, prosp: prosperidadeMinha() },
                  ...rivaisVivas().map(v => ({ id: v.id, prosp: prosperidadeDe(v), v }))];
@@ -3059,6 +3085,7 @@ function migrarEntreVilas() {
     if (desnivel < 0.12) continue;                 // desnível pequeno não move ninguém
     const popOrigem = origem.id === 0 ? popAtual() : origem.v.pop;
     if (popOrigem <= 4) continue;                  // ninguém abandona o último punhado
+    if (origem.id === 0 && popOrigem < POP_MINIMA_ANTES_DE_EMIGRAR) continue;
 
     const fluxo = MIGRACAO_POR_DIA * Math.min(1, desnivel * 2);
     if (origem.id === 0) {
