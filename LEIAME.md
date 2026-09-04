@@ -1341,31 +1341,40 @@ forçando fome numa vila rival e vendo gente dela se mudar para a sua.
 
 ---
 
-## Corrigido: prédio baixo e plano parecia flutuar sobre o chão
+## Corrigido: prédio largo invadia a rua ou o vizinho (não era sombra)
 
 Reportado com print: a Praça (e "algumas outras construções") pareciam
 sobrepostas à rua, como se estivessem flutuando, em vez de apoiadas nela.
 
-Causa: a arte fotográfica (todas as três levas) nunca trouxe sombra de
-contato — nenhuma das 39 peças tem um ponto escuro sob a base sugerindo
-apoio no chão. Prédio com parede vertical (casa, sobrado, castelo) disfarça
-isso — a silhueta já lê como "em pé" mesmo sem sombra. A Praça não tem
-parede nenhuma: é uma plataforma de pedra achatada, cortada rente à
-silhueta, colada sobre a grama sem nenhuma pista visual de apoio. O
-resultado é o clássico "sticker flutuando" de sprite 2D sem sombra própria.
+**Primeiro diagnóstico saiu errado.** A hipótese foi falta de sombra de
+contato — nenhuma das 39 peças fotográficas tem um ponto escuro sob a base,
+e a Praça, sem parede vertical pra disfarçar, lia como um sticker colado na
+grama. A correção (uma elipse escura sob todo prédio, reaproveitando
+`sombraNoChao()` de árvore e carroça) foi publicada como 1.0.36 — e piorou
+tudo: todo prédio passou a ter uma sombra visivelmente separada da própria
+base, como se a vila inteira estivesse flutuando. Reportado assim mesmo,
+com bom humor ("ficou um lixo, mas foi engraçado").
 
-A correção não mexe na arte nem no recorte — é desenho, em
-`desenharPredio()`: uma elipse escura e translúcida embaixo de todo prédio
-pronto com arte da folha, do mesmo jeito que árvore e carroça já ganham a
-delas via `sombraNoChao()` (existente, só nunca tinha sido chamada para
-prédio). Centrada na base do lote, com raio proporcional à largura
-desenhada do prédio — sem precisar saber qual chave é "baixa" e qual é
-"alta", a mesma sombra funciona para as dezesseis.
+**Causa real**, achada depurando o jogo ao vivo no navegador (frame forçado
+manualmente, já que a aba em automação não roda `requestAnimationFrame` em
+segundo plano — sem isso, o patch de depuração nunca disparava e a sombra
+parecia certa nos números mas errada na tela): `ESCALA_PREDIO = 1.3` (da
+fase do mapa isométrico) cresce o prédio **para cima E para os lados** a
+partir da mesma base. Prédio com parede alta esconde bem o alargamento — a
+silhueta continua lendo como "em pé". Prédio baixo e largo, como a Praça,
+não tem onde esconder: a arte fica literalmente mais larga que o próprio
+lote e vaza por cima de quem estiver do lado — rua ou outro prédio. Sempre
+foi isso; a sombra só mascarou o sintoma errado.
 
-Testado visualmente, desktop e mobile: a Praça (as duas variantes com
-canteiro de flor na borda e a do jardim grande) ganhou apoio visível no
-chão; casas e castelo, que já liam bem, ficaram com uma sombra sutil a mais
-— não chamou atenção nem destoou.
+A correção de verdade é travar a LARGURA desenhada no teto do próprio lote,
+em `caixaDoPredio()` — a altura continua livre pra crescer pra cima (é o
+que faz o prédio parecer mais imponente, pedido de uma leva anterior, e
+crescer pra cima nunca invade o vizinho do lado). A tentativa de sombra foi
+revertida por completo.
+
+Testado ao vivo, praça e castelo lado a lado: a praça parou de tocar a rua,
+o castelo continua do mesmo tamanho de antes — sem sombra nenhuma, só sem
+vazar.
 
 ---
 
