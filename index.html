@@ -8199,18 +8199,51 @@ const ESCALA_PREDIO = 1.3;
 // de ser somado aqui em vez de vir de um 'ctx.translate').
 function caixaDoPredio(pr, q, dx0, dy0) {
   const w = pr.def.w * TILE, h = pr.def.h * TILE;
-  // A largura NUNCA passa do próprio lote — prédio baixo e largo (a praça,
-  // sem parede vertical pra disfarçar) esticava 1,3x pros dois lados e
-  // invadia a rua ou o lote vizinho. MESMA escala nos dois eixos (nunca só
-  // na largura): travar um eixo sozinho distorce a proporção da arte
+
+  /*
+     A Praça é a única peça cuja arte é uma PLATAFORMA achatada, recortada
+     rente ao próprio piso — o piso da imagem É o lote, de ponta a ponta.
+     Pra ela, o tamanho certo na tela não é "w tiles vezes TILE": numa
+     projeção 2:1, a pegada isométrica de um lote w×h mede (w+h)*TILE de
+     largura (as DUAS dimensões do lote contribuem pra largura na tela, não
+     só a largura) — usar só 'w' deixava a peça visivelmente menor que o
+     próprio lote (confirmado comparando com o losango de "movendo").
+
+     E como o ponto de ancoragem (meio da aresta sul, não o centro
+     verdadeiro do losango — ver 'projetar' em cima da lista de desenho)
+     fica deslocado h/2 pra esquerda e h/4 pra cima do centro real, a caixa
+     precisa da mesma correção pra cair no lugar certo.
+
+     Nenhum outro prédio tem essa propriedade — todos os outros são
+     recortados rente à PRÓPRIA estrutura (parede, telhado), não ao piso do
+     lote, então "w+h" não representa a arte deles; ampliar do mesmo jeito
+     estourou o castelo pra muito além do próprio lote num teste. Esses
+     continuam na conta de sempre, abaixo.
+  */
+  if (pr.def.praca) {
+    const alvoL = w + h;
+    const escala = alvoL / q[4];
+    const dw = q[4] * escala, dh = q[5] * escala;
+    const folgaV = h - dh;
+    const deslocaV = (folgaV >= 0 ? folgaV / 2 : folgaV) + h / 4;
+    return {
+      dx: pr.tx * TILE + (w - dw) / 2 + dx0 + h / 2,
+      dy: pr.ty * TILE + deslocaV + dy0,
+      dw, dh,
+    };
+  }
+
+  // A largura NUNCA passa do próprio lote — prédio baixo e largo (sem
+  // parede vertical pra disfarçar) esticava 1,3x pros dois lados e invadia
+  // a rua ou o lote vizinho. MESMA escala nos dois eixos (nunca só na
+  // largura): travar um eixo sozinho distorce a proporção da arte
   // isométrica e desalinha o ângulo dela do ângulo da rua.
   const escala = Math.min(ESCALA_PREDIO, w / q[4]);
   const dw = q[4] * escala, dh = q[5] * escala;
   // Vertical: prédio alto (dh > h) continua ancorado na base, crescendo pra
   // cima do próprio lote — é o que faz casa e castelo parecerem em pé. Mas
-  // prédio que já cabe no lote (dh <= h, o caso comum agora que a largura
-  // trava) não tem por que colar na base — centralizado, como a horizontal
-  // já é, é o que faz a praça (que não cresce mais) parecer no lugar certo.
+  // prédio que já cabe no lote (dh <= h) não tem por que colar na base —
+  // centralizado, como a horizontal já é, fica no lugar certo.
   const folgaV = h - dh;
   const deslocaV = folgaV >= 0 ? folgaV / 2 : folgaV;
   return {
