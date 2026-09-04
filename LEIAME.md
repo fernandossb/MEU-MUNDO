@@ -1572,6 +1572,45 @@ outra) — mobile e desktop.
 
 ---
 
+## O planeta, parte 3: transparência não é a mesma coisa que encolher
+
+"Ficou melhor, mas eu preciso que o mapa vá diminuindo gradualmente, como
+se fosse o mapa do Google Earth." A parte 2 resolveu o corte seco, mas
+trocou por um cross-fade — duas imagens diferentes se misturando no
+lugar. O Google Earth não faz isso: o mapa dele não troca de imagem, ele
+ENCOLHE até virar globo, com a área visível fechando como um obturador de
+câmera. É outro efeito, não só "mais suave".
+
+Sem geometria 3D não dá pra encolher/curvar o mapa de verdade — mas dá pra
+imitar bem o RESULTADO: o planeta agora desenha PRIMEIRO, cobrindo a tela
+inteira; a vila desenha por cima, mas só dentro de uma janela circular que
+fecha. No topo da faixa (`ZOOM_LIMIAR`) a janela é maior que a diagonal da
+tela — nenhum corte visível ainda, é só o zoom normal encolhendo o
+conteúdo, como sempre foi. No fundo da faixa (`ZOOM_TRANSICAO_FIM`) a
+janela já fechou exatamente no raio do disco (`raioDoPlaneta()`, extraída
+numa função à parte pra `desenhar()` e `desenharVisaoDistante()` usarem o
+mesmo número — sem isso a janela podia fechar num tamanho diferente do
+disco por baixo, e sobraria uma quina visível bem no fim da transição). A
+vila ainda esmaece dentro da janela (mesma conta de transparência da parte
+2), mas agora é o ENCOLHER que carrega o efeito — a transparência só
+amacia o traço final da borda, não faz mais o trabalho sozinha.
+
+`ctx.clip()` aplicado num circulo em espaço de tela (`ctx.setTransform(DPR,
+0,0,DPR,0,0)` antes do clip) sobrevive a `desenharVilaNormal()` trocando de
+transform internamente pra desenhar chão, prédio, gente — clip recorta a
+REGIÃO de composição do canvas, não é afetado por mudança de matriz depois
+de aplicado. Mesma lógica pra `globalAlpha`: setado antes da chamada, dura
+até algo de dentro da função reatribuir (só acontece no brilho de janela
+noturno, bem no fim do desenho — sem efeito no que importa: chão, rua,
+prédio, gente, árvore, tudo desenhado antes disso).
+
+Testado ao vivo cruzando a faixa inteira: janela grande sem corte visível
+logo depois do limiar, fechando visivelmente com o espaço escuro
+aparecendo nos cantos, sumindo quase por completo perto do fim, e batendo
+sem salto nenhum com o disco puro do outro lado — mobile e desktop.
+
+---
+
 ## Estrutura
 
 ```

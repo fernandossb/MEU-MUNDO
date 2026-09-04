@@ -9066,12 +9066,19 @@ const ESCALA_PLANETA = 0.01; // px de mundo -> px de disco
 // ZOOM_LIMIAR até ZOOM_MIN) continua a mesma conta de sempre, sem depender
 // de alpha — é o que faz o disco continuar encolhendo suavemente mesmo
 // depois que a mistura com a vila já terminou.
+// Raio do disco pro zoom atual — função à parte porque 'desenhar()' precisa
+// do mesmo número pra encolher a janela da vila até bater exatamente na
+// borda do planeta (ver o comentário grande sobre a faixa de transição).
+function raioDoPlaneta() {
+  const prof = Math.min(1, Math.max(0, (ZOOM_LIMIAR - cam.z) / (ZOOM_LIMIAR - ZOOM_MIN)));
+  return Math.min(W, H) * (0.62 - prof * 0.16);
+}
+
 function desenharVisaoDistante(alpha) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.globalAlpha = alpha;
   const cx = W / 2, cy = H / 2;
-  const prof = Math.min(1, Math.max(0, (ZOOM_LIMIAR - cam.z) / (ZOOM_LIMIAR - ZOOM_MIN)));
-  const raio = Math.min(W, H) * (0.62 - prof * 0.16);
+  const raio = raioDoPlaneta();
   const t = agora / 1000;
 
   // --- espaço ao redor, com estrelas fixas (hash, não mexe no rnd() do jogo) ---
@@ -9155,20 +9162,32 @@ function desenharVisaoDistante(alpha) {
 }
 
 /*
-   Sem faixa de transição, a troca entre vila e planeta era um corte seco no
-   exato ZOOM_LIMIAR — reportado como "mudança muito brusca". Agora, entre
-   ZOOM_LIMIAR e ZOOM_TRANSICAO_FIM, as duas visões se misturam: a vila
-   continua desenhada por baixo (ainda é ela quem o jogador vê primeiro) e o
-   planeta entra por cima com transparência crescente, até tomar conta de
-   vez. Fora dessa faixa, cada visão desenha sozinha — sem gastar o dobro
-   fora da transição.
+   Primeira versão misturava as duas visões por transparência, no lugar —
+   "funcionou, mas a mudança ficou muito brusca". O pedido era outro: o
+   mapa "ir diminuindo gradualmente, como o Google Earth" — lá o mapa não
+   troca de imagem, ele ENCOLHE até virar globo. Sem geometria 3D não dá
+   pra encolher/curvar o mapa de verdade, mas dá pra imitar o efeito: o
+   planeta desenha primeiro, cobrindo a tela inteira; a vila desenha por
+   cima, mas só dentro de uma JANELA CIRCULAR que fecha — no topo da faixa
+   (ZOOM_LIMIAR) a janela é maior que a tela, sem corte visível nenhum; no
+   fundo dela (ZOOM_TRANSICAO_FIM) a janela já fechou exatamente na borda
+   do disco. A vila também esmaece dentro da janela (a mesma transparência
+   de antes), mas agora é o ENCOLHER que carrega o efeito — a
+   transparência só suaviza o traço final da borda.
 */
 function desenhar() {
   if (cam.z < ZOOM_TRANSICAO_FIM) { desenharVisaoDistante(1); return; }
   if (cam.z < ZOOM_LIMIAR) {
+    desenharVisaoDistante(1);   // o planeta já cobre a tela inteira
+    const alpha = (ZOOM_LIMIAR - cam.z) / (ZOOM_LIMIAR - ZOOM_TRANSICAO_FIM);  // 0 no topo, 1 no fundo
+    const raioGrande = Math.hypot(W, H) / 2 + 20;   // maior que a diagonal: nenhum corte visível ainda
+    const raioJanela = raioGrande + (raioDoPlaneta() - raioGrande) * alpha;
+    ctx.save();
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.beginPath(); ctx.arc(W / 2, H / 2, raioJanela, 0, 6.2832); ctx.clip();
+    ctx.globalAlpha = 1 - alpha;
     desenharVilaNormal();
-    const alpha = (ZOOM_LIMIAR - cam.z) / (ZOOM_LIMIAR - ZOOM_TRANSICAO_FIM);
-    desenharVisaoDistante(alpha);
+    ctx.restore();
     return;
   }
   desenharVilaNormal();
