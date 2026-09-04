@@ -1440,9 +1440,34 @@ function montarChunk(cx, cy) {
   return ch;
 }
 
+/*
+   Orçamento de bake por quadro. Andar de vila em zoom normal só revela
+   chunk novo aos poucos, tile a tile de câmera — nunca esbarrou nisso. A
+   camada Região expôs o problema: dá pra arrastar o mapa vendo uma área
+   MUITO maior de uma vez, e cada chunk que entra na tela pede a MESMA bake
+   fina (grama, rachadura) que perto de casa — várias de uma vez, no mesmo
+   quadro, mediram 23,7ms parado nisso sozinho (arrastando sem soltar).
+   Acima do orçamento, devolve um chunk vazio (não guardado no cache — o
+   próprio pedido volta no quadro seguinte) em vez de assar: o buraco
+   preenche sozinho ao longo de uns poucos quadros, sem travar nenhum.
+*/
+let chunksNovosNesteQuadro = 0;
+// Medido ao vivo: UM 'montarChunk' sozinho já custa ~22-26ms (a bake fina —
+// grama, rachadura — numa canvas 672² com super-amostra 2x). Mais de 1 por
+// quadro estoura o quadro de 16,7ms de qualquer forma; o orçamento não
+// existe pra "caber tudo rápido", existe pra nunca deixar acumular mais de
+// UM estouro por vez.
+const CHUNKS_NOVOS_POR_QUADRO = 1;
+let chunkVazioCv = null;
+function chunkVazio() {
+  if (!chunkVazioCv) { chunkVazioCv = document.createElement('canvas'); chunkVazioCv.width = chunkVazioCv.height = 1; }
+  return { cv: chunkVazioCv, nos: [], visto: agora };
+}
 function pegarChunk(cx, cy) {
   const ch = chunks.get(cx + ',' + cy);
   if (ch) { ch.visto = agora; return ch; }
+  if (chunksNovosNesteQuadro >= CHUNKS_NOVOS_POR_QUADRO) return chunkVazio();
+  chunksNovosNesteQuadro++;
   return montarChunk(cx, cy);
 }
 function invalidarChunkDoTile(tx, ty) { chunks.delete(Math.floor(tx / CHUNK) + ',' + Math.floor(ty / CHUNK)); }
@@ -8901,6 +8926,7 @@ function quadro(t) {
   agora = t;
   let dt = (t - ultimo) / 1000;
   ultimo = t;
+  chunksNovosNesteQuadro = 0;   // orçamento de bake por quadro — ver 'pegarChunk'
 
   /*
      O tempo fora do ar é cobrado pelo RELÓGIO DE PAREDE, não pelos eventos.

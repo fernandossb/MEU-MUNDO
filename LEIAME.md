@@ -1760,6 +1760,60 @@ Falta só a etapa 6 (passe de performance).
 
 ---
 
+## Sistema multi-escala: passe de performance (etapa 6 de 6, plano concluído)
+
+Última etapa do plano: zoom saindo e voltando rápido pelas quatro camadas,
+medindo tempo de quadro de verdade em vez de confiar que "deve estar bom".
+
+**Achado real: a camada Região tinha um buraco de desempenho ao arrastar.**
+`desenharRegiao()` reaproveita `pegarChunk` (o mesmo bitmap fino da vila) —
+o plano previa isso como "quase grátis", mas medir revelou o contrário:
+cozinhar UM chunk novo (`montarChunk`) custa sozinho **22 a 26ms**, mais
+que o quadro inteiro a 60fps. Arrastando o mapa na Região, cada chunk novo
+que entra na tela pagava esse custo inteiro na hora, sem limite de quantos
+por quadro — o mesmo padrão de "orçamento por quadro" que `ORCAMENTO_SIMULACAO`
+já usa pra IA, só que faltando aqui pro desenho.
+
+Corrigido com o mesmo idioma: `pegarChunk` agora aceita no máximo
+`CHUNKS_NOVOS_POR_QUADRO` (1) chunk novo por quadro — pedidos além disso
+recebem `chunkVazio()` (uma canvas 1×1 reaproveitada, sem custo) só nesse
+quadro, e voltam a pedir o chunk de verdade no próximo, até o cache
+alcançar tudo que está visível. Testado com arrasto NA VELOCIDADE REAL de
+um dedo (30px de mundo por quadro): média caiu de 22,9-23,8ms sustentados
+para **4,48ms** (p90 21,3ms — só o quadro que efetivamente cozinha o chunk
+novo custa mais, os outros ficam baratos). Até no arrasto absurdamente
+rápido usado só pra estressar (400px/quadro) o pior quadro individual
+ficou em 48,8ms, um soluço pontual, não um travamento contínuo.
+
+**As outras duas suspeitas do plano não eram problema de verdade:**
+- O custo de `planetaTextura()` refazendo a bake ao arrastar dentro do
+  planeta (a etapa 4 tinha deixado isso como "candidato a ajuste fino") —
+  medido de novo agora com arrasto realista: 3,15ms em média, pior quadro
+  13ms. Até no arrasto de estresse (400px/quadro) ficou em 14,8ms médio,
+  27,8ms pior caso. Sem problema, sem mudança necessária.
+- Cozinhar um setor da camada Território (`montarSetorTerritorio`) custa
+  ~1ms cada, e uma tela cheia de setores novos do zero sai por ~2,5ms — não
+  precisa de orçamento por quadro como o chunk fino precisou. Um teste
+  inicial de varredura contínua de zoom (ponta a ponta, instantânea, sem
+  pausa entre quadros) mostrou picos isolados de centenas de ms — mas
+  repetindo a mesma varredura três vezes o pico pulava pra um zoom
+  diferente a cada vez, sem relação com território ou qualquer camada
+  específica: é pausa de coleta de lixo do próprio teste sintético (80+
+  quadros sem nenhuma folga entre eles, o que uma sessão de jogo real nunca
+  faz), não custo do código.
+
+Com o gargalo real corrigido, plano das 6 etapas está completo: vila,
+região, território e planeta mostram o mesmo mundo, na mesma posição, em
+qualquer zoom — com detalhe (LOD) crescendo suavemente conforme a câmera
+se aproxima, sem trocar de mapa em nenhuma fronteira.
+
+Testado ao vivo: arrasto realista na Região sem buraco nem lentidão visível
+(chunk placeholder nunca aparece como buraco perceptível — o chunk real
+chega dentro de 1-2 quadros), mesmo teste no celular, sem erro no console —
+mobile e desktop.
+
+---
+
 ## Estrutura
 
 ```
