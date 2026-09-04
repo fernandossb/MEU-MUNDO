@@ -1535,6 +1535,43 @@ desktop.
 
 ---
 
+## O planeta, parte 2: a troca virou seca demais
+
+Reportado assim que publicado: "funcionou, porém a mudança ficou muito
+brusca". Fazia sentido — o corte era exatamente no `ZOOM_LIMIAR`, sem
+gradação nenhuma: um quadro é vila cheia, o próximo é disco de planeta.
+
+Criada uma FAIXA de transição entre `ZOOM_LIMIAR` (0.55, como sempre) e um
+novo `ZOOM_TRANSICAO_FIM` (0.40). Dentro dela, `desenhar()` chama as duas
+visões no mesmo quadro — a vila (renomeada `desenharVilaNormal`, sem
+mudança nenhuma no próprio desenho) primeiro, e o planeta por cima com uma
+transparência que cresce de 0 a 1 ao longo da faixa. Fora da faixa, só uma
+das duas roda — o dobro de desenho fica restrito a uma janela de zoom
+estreita, não à sessão inteira.
+
+`desenharVisaoDistante` ganhou o parâmetro `alpha`: aplicado uma vez em
+`ctx.globalAlpha` logo no início, e como o resto da função só usa cor com
+opacidade própria (`rgba(...)`) ou cor sólida — nunca reatribui
+`globalAlpha` de novo —, tudo dentro dela (fundo do espaço, disco, relevo,
+pontos, nuvem, borda) sai multiplicado pela mesma transparência sem
+precisar tocar em cada trecho um por um. Único cuidado: o loop de estrelas
+JÁ mexia em `globalAlpha` pra variar o brilho de cada uma — teve que
+multiplicar por `alpha` ali também, senão a transparência externa se
+perdia assim que a primeira estrela era desenhada.
+
+`prof` (o quanto o disco encolhe conforme desce o zoom) continua com a
+conta de sempre, sobre a faixa toda (`ZOOM_LIMIAR` a `ZOOM_MIN`) — não
+depende da mistura, então o disco segue encolhendo suave mesmo depois que
+a troca com a vila já terminou.
+
+Testado ao vivo em três pontos da faixa (perto do topo: vila quase pura
+com o planeta mal visível por cima; meio; perto do fim: planeta quase
+opaco com a vila apenas insinuada nos cantos) e nos dois extremos (acima
+de 0.55 e abaixo de 0.40, cada um só com a própria visão, sem sobra da
+outra) — mobile e desktop.
+
+---
+
 ## Estrutura
 
 ```

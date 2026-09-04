@@ -5465,7 +5465,10 @@ let selecao = [];
 // Abaixo do zoom mínimo de sempre (ZOOM_LIMIAR — antigo "chão" do pinça/roda)
 // a câmera entra na faixa nova, só de vestígio de civilização e decoração —
 // ver 'desenharVisaoDistante'. ZOOM_MIN é o novo chão, bem mais longe.
-const ZOOM_LIMIAR = 0.55, ZOOM_MIN = 0.15, ZOOM_MAX = 1.8;
+// Entre ZOOM_LIMIAR e ZOOM_TRANSICAO_FIM as duas visões se misturam (ver
+// 'desenhar') — sem essa faixa a troca era um corte seco, reportado como
+// "mudança muito brusca".
+const ZOOM_LIMIAR = 0.55, ZOOM_TRANSICAO_FIM = 0.40, ZOOM_MIN = 0.15, ZOOM_MAX = 1.8;
 
 function redimensionar() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -9056,10 +9059,17 @@ function passo(dt) {
    a passos enormes.
 */
 const ESCALA_PLANETA = 0.01; // px de mundo -> px de disco
-function desenharVisaoDistante() {
+// 'alpha' é o quanto o planeta já tomou conta da tela — 1 fora da faixa de
+// transição (visão distante pura), fracionário dentro dela, multiplicado em
+// tudo que este desenho põe no canvas pra misturar com a vila por baixo (ver
+// 'desenhar'). 'prof' (o quanto o zoom já desceu dentro da faixa toda,
+// ZOOM_LIMIAR até ZOOM_MIN) continua a mesma conta de sempre, sem depender
+// de alpha — é o que faz o disco continuar encolhendo suavemente mesmo
+// depois que a mistura com a vila já terminou.
+function desenharVisaoDistante(alpha) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.globalAlpha = alpha;
   const cx = W / 2, cy = H / 2;
-  // 0 bem no limiar (disco grande, quase a vila de novo); 1 no fundo do poço
   const prof = Math.min(1, Math.max(0, (ZOOM_LIMIAR - cam.z) / (ZOOM_LIMIAR - ZOOM_MIN)));
   const raio = Math.min(W, H) * (0.62 - prof * 0.16);
   const t = agora / 1000;
@@ -9070,11 +9080,11 @@ function desenharVisaoDistante() {
   for (let i = 0; i < 70; i++) {
     const sx = hash2(i, 11, 777) * W, sy = hash2(i, 22, 777) * H;
     if (Math.hypot(sx - cx, sy - cy) < raio + 6) continue;
-    ctx.globalAlpha = 0.2 + hash2(i, 33, 777) * 0.6;
+    ctx.globalAlpha = (0.2 + hash2(i, 33, 777) * 0.6) * alpha;
     ctx.fillStyle = '#fff';
     ctx.fillRect(sx, sy, 1.4, 1.4);
   }
-  ctx.globalAlpha = 1;
+  ctx.globalAlpha = alpha;
 
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, raio, 0, 6.2832); ctx.clip();
@@ -9135,14 +9145,36 @@ function desenharVisaoDistante() {
   ctx.fillStyle = rim;
   ctx.beginPath(); ctx.arc(cx, cy, raio, 0, 6.2832); ctx.fill();
 
-  ctx.fillStyle = 'rgba(255,255,255,.5)';
-  ctx.textAlign = 'center';
-  ctx.font = '600 12px system-ui, sans-serif';
-  ctx.fillText('aproxime para voltar à vila', cx, cy + raio + 24);
+  if (alpha > 0.7) {
+    ctx.fillStyle = 'rgba(255,255,255,.5)';
+    ctx.textAlign = 'center';
+    ctx.font = '600 12px system-ui, sans-serif';
+    ctx.fillText('aproxime para voltar à vila', cx, cy + raio + 24);
+  }
+  ctx.globalAlpha = 1;
 }
 
+/*
+   Sem faixa de transição, a troca entre vila e planeta era um corte seco no
+   exato ZOOM_LIMIAR — reportado como "mudança muito brusca". Agora, entre
+   ZOOM_LIMIAR e ZOOM_TRANSICAO_FIM, as duas visões se misturam: a vila
+   continua desenhada por baixo (ainda é ela quem o jogador vê primeiro) e o
+   planeta entra por cima com transparência crescente, até tomar conta de
+   vez. Fora dessa faixa, cada visão desenha sozinha — sem gastar o dobro
+   fora da transição.
+*/
 function desenhar() {
-  if (cam.z < ZOOM_LIMIAR) { desenharVisaoDistante(); return; }
+  if (cam.z < ZOOM_TRANSICAO_FIM) { desenharVisaoDistante(1); return; }
+  if (cam.z < ZOOM_LIMIAR) {
+    desenharVilaNormal();
+    const alpha = (ZOOM_LIMIAR - cam.z) / (ZOOM_LIMIAR - ZOOM_TRANSICAO_FIM);
+    desenharVisaoDistante(alpha);
+    return;
+  }
+  desenharVilaNormal();
+}
+
+function desenharVilaNormal() {
   const z = cam.z, vw0 = W / z, vh0 = H / z;
   const camIso = mundoParaIso(cam.x, cam.y);
 
