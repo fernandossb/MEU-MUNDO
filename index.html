@@ -9162,35 +9162,57 @@ function desenharVisaoDistante(alpha) {
 }
 
 /*
-   Primeira versão misturava as duas visões por transparência, no lugar —
-   "funcionou, mas a mudança ficou muito brusca". O pedido era outro: o
-   mapa "ir diminuindo gradualmente, como o Google Earth" — lá o mapa não
-   troca de imagem, ele ENCOLHE até virar globo. Sem geometria 3D não dá
-   pra encolher/curvar o mapa de verdade, mas dá pra imitar o efeito: o
-   planeta desenha primeiro, cobrindo a tela inteira; a vila desenha por
-   cima, mas só dentro de uma JANELA CIRCULAR que fecha — no topo da faixa
-   (ZOOM_LIMIAR) a janela é maior que a tela, sem corte visível nenhum; no
-   fundo dela (ZOOM_TRANSICAO_FIM) a janela já fechou exatamente na borda
-   do disco. A vila também esmaece dentro da janela (a mesma transparência
-   de antes), mas agora é o ENCOLHER que carrega o efeito — a
-   transparência só suaviza o traço final da borda.
+   CAMADAS DE ZOOM. Cada entrada sabe desenhar A SI MESMA cheia
+   ('desenhar()') e, se não for a mais distante da lista, até onde o zoom
+   precisa cair pra ela dar lugar de vez à próxima ('zPuro' = acima disso é
+   só ela; 'zFimTransicao' = nesse ponto ela já sumiu por completo) e o
+   raio de janela que ela precisa encolher até bater exatamente na borda da
+   próxima ('raioNoFim' — sem isso a transição fecha num tamanho diferente
+   do que a camada de trás já está desenhando, e sobra uma quina visível
+   bem no fim). A ÚLTIMA da lista é a mais distante (hoje 'planeta') — ela
+   é o caso base, sempre "pura" quando o zoom cai até ela, sem precisar de
+   nada dessas três propriedades.
+
+   O TRUQUE DE TRANSIÇÃO (a mesma "janela circular fechando", não um
+   cross-fade — ver o histórico dessa decisão) é escrito UMA VEZ aqui e
+   vale pra qualquer par de camadas vizinhas da lista, não só vila↔planeta:
+   a de trás desenha cheia primeiro; a da frente desenha por cima, só
+   dentro de uma janela circular que encolhe de "maior que a tela" (no
+   início da faixa dela) até o raio da de trás (no fim), esmaecendo junto.
 */
+const CAMADAS_ZOOM = [
+  {
+    nome: 'vila',
+    desenhar: desenharVilaNormal,
+    zPuro: ZOOM_LIMIAR,
+    zFimTransicao: ZOOM_TRANSICAO_FIM,
+    raioNoFim: raioDoPlaneta,
+  },
+  {
+    nome: 'planeta',
+    desenhar: () => desenharVisaoDistante(1),
+  },
+];
+
 function desenhar() {
-  if (cam.z < ZOOM_TRANSICAO_FIM) { desenharVisaoDistante(1); return; }
-  if (cam.z < ZOOM_LIMIAR) {
-    desenharVisaoDistante(1);   // o planeta já cobre a tela inteira
-    const alpha = (ZOOM_LIMIAR - cam.z) / (ZOOM_LIMIAR - ZOOM_TRANSICAO_FIM);  // 0 no topo, 1 no fundo
-    const raioGrande = Math.hypot(W, H) / 2 + 20;   // maior que a diagonal: nenhum corte visível ainda
-    const raioJanela = raioGrande + (raioDoPlaneta() - raioGrande) * alpha;
-    ctx.save();
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-    ctx.beginPath(); ctx.arc(W / 2, H / 2, raioJanela, 0, 6.2832); ctx.clip();
-    ctx.globalAlpha = 1 - alpha;
-    desenharVilaNormal();
-    ctx.restore();
-    return;
+  for (let i = 0; i < CAMADAS_ZOOM.length - 1; i++) {
+    const c = CAMADAS_ZOOM[i];
+    if (cam.z >= c.zPuro) { c.desenhar(); return; }
+    if (cam.z >= c.zFimTransicao) {
+      CAMADAS_ZOOM[i + 1].desenhar();   // a de trás, cheia, por baixo
+      const alpha = (c.zPuro - cam.z) / (c.zPuro - c.zFimTransicao);   // 0 no topo, 1 no fundo
+      const raioGrande = Math.hypot(W, H) / 2 + 20;   // maior que a diagonal: nenhum corte visível ainda
+      const raioJanela = raioGrande + (c.raioNoFim() - raioGrande) * alpha;
+      ctx.save();
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+      ctx.beginPath(); ctx.arc(W / 2, H / 2, raioJanela, 0, 6.2832); ctx.clip();
+      ctx.globalAlpha = 1 - alpha;
+      c.desenhar();
+      ctx.restore();
+      return;
+    }
   }
-  desenharVilaNormal();
+  CAMADAS_ZOOM[CAMADAS_ZOOM.length - 1].desenhar();   // a mais distante, pura
 }
 
 function desenharVilaNormal() {
