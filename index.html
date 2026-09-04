@@ -8201,9 +8201,11 @@ function caixaDoPredio(pr, q, dx0, dy0) {
   const w = pr.def.w * TILE, h = pr.def.h * TILE;
   // A largura NUNCA passa do próprio lote — prédio baixo e largo (a praça,
   // sem parede vertical pra disfarçar) esticava 1,3x pros dois lados e
-  // invadia a rua ou o lote vizinho. Altura continua livre: crescer pra
-  // cima é o que faz o prédio parecer mais imponente, sem invadir ninguém.
-  const dw = Math.min(w, q[4] * ESCALA_PREDIO), dh = q[5] * ESCALA_PREDIO;
+  // invadia a rua ou o lote vizinho. MESMA escala nos dois eixos (nunca só
+  // na largura): travar um eixo sozinho distorce a proporção da arte
+  // isométrica e desalinha o ângulo dela do ângulo da rua.
+  const escala = Math.min(ESCALA_PREDIO, w / q[4]);
+  const dw = q[4] * escala, dh = q[5] * escala;
   return {
     dx: pr.tx * TILE + (w - dw) / 2 + dx0,
     dy: pr.ty * TILE + h - dh + dy0,
