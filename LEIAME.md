@@ -1150,7 +1150,7 @@ dos quatro cantos (escura ou clara) — nenhuma lista manual de exceções.
 
 A Fazenda de novo ficou de fora (nenhum dos 37 é lavoura) e continua
 reaproveitada da primeira leva. `ferramentas/extrair-individuais.js` é a
-ferramenta desta rodada — mantém `anexar-fazenda.js` como estava.
+ferramenta desta rodada.
 
 **Correção rápida, no mesmo dia**: a arte publicada saiu borrada/em blocos.
 Causa direta — estes 37 arquivos chegaram bem menores que as levas
@@ -1169,6 +1169,15 @@ demais para a folga, guarda na resolução NATIVA, sem tocar, e deixa o
 próprio canvas do jogo suavizar ao desenhar (`ctx.imageSmoothingEnabled`
 já vem ligado) — um redimensionamento melhor do que o filtro de caixa faria
 de qualquer forma.
+
+**A correção ficou pela metade**: consertei só `extrair-individuais.js`
+(as 37 peças novas) e esqueci que a Fazenda continua vindo de
+`anexar-fazenda.js` — outro arquivo, com a mesma conta de ESCALA copiada e
+colada, e o mesmo bug. A fonte dela (`fazendapequena1.png`, sobra da
+primeira leva) é só 128×128, bem menor que a folga pedia, então toda vez
+que o pipeline rodava ela saía ampliada e em blocos — só que agora era a
+ÚNICA construção ainda assim, o que ficou óbvio por comparação com as
+outras 36. Mesma decisão binária, copiada para o segundo arquivo.
 
 ---
 
@@ -1329,6 +1338,34 @@ volta do ano 9; depois, mais de 1400 habitantes e comida sobrando no ano 3,
 com as quatro vilas rivais igualmente vivas e saudáveis. A migração continua
 funcionando nos dois sentidos quando o desequilíbrio é de verdade — testado
 forçando fome numa vila rival e vendo gente dela se mudar para a sua.
+
+---
+
+## Corrigido: prédio baixo e plano parecia flutuar sobre o chão
+
+Reportado com print: a Praça (e "algumas outras construções") pareciam
+sobrepostas à rua, como se estivessem flutuando, em vez de apoiadas nela.
+
+Causa: a arte fotográfica (todas as três levas) nunca trouxe sombra de
+contato — nenhuma das 39 peças tem um ponto escuro sob a base sugerindo
+apoio no chão. Prédio com parede vertical (casa, sobrado, castelo) disfarça
+isso — a silhueta já lê como "em pé" mesmo sem sombra. A Praça não tem
+parede nenhuma: é uma plataforma de pedra achatada, cortada rente à
+silhueta, colada sobre a grama sem nenhuma pista visual de apoio. O
+resultado é o clássico "sticker flutuando" de sprite 2D sem sombra própria.
+
+A correção não mexe na arte nem no recorte — é desenho, em
+`desenharPredio()`: uma elipse escura e translúcida embaixo de todo prédio
+pronto com arte da folha, do mesmo jeito que árvore e carroça já ganham a
+delas via `sombraNoChao()` (existente, só nunca tinha sido chamada para
+prédio). Centrada na base do lote, com raio proporcional à largura
+desenhada do prédio — sem precisar saber qual chave é "baixa" e qual é
+"alta", a mesma sombra funciona para as dezesseis.
+
+Testado visualmente, desktop e mobile: a Praça (as duas variantes com
+canteiro de flor na borda e a do jardim grande) ganhou apoio visível no
+chão; casas e castelo, que já liam bem, ficaram com uma sombra sutil a mais
+— não chamou atenção nem destoou.
 
 ---
 

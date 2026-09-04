@@ -98,8 +98,13 @@ let dw = 3 * TILE, dh = dw / razao;
 const teto = 3 * TILE * ALTURA_MAX;
 if (dh > teto) { dh = teto; dw = dh * razao; }
 dw = Math.round(dw); dh = Math.round(dh);
-const fL = Math.max(1, Math.round(dw*ESCALA)), fA = Math.max(1, Math.round(dh*ESCALA));
-const quadro = reduzir(rec, fL, fA);
+// Mesma decisão binária da terceira leva (extrair-individuais.js): esta fonte
+// é só 128x128 — bem menor que a folga de ESCALA pedia — e 'reduzir' amplia
+// mal (é filtro de caixa, feito pra encolher). Só reduz se a origem tiver
+// pixel de sobra; senão guarda nativo e deixa o canvas suavizar ao desenhar.
+const alvoL = Math.max(1, Math.round(dw*ESCALA)), alvoA = Math.max(1, Math.round(dh*ESCALA));
+const cabeSemAmpliar = alvoL <= rec.larg && alvoA <= rec.alt;
+const quadro = cabeSemAmpliar ? reduzir(rec, alvoL, alvoA) : rec;
 
 const DEGRAU = +(process.env.DEGRAU || 1);
 if (DEGRAU > 1) for (let i=0;i<quadro.px.length;i+=4) { if (quadro.px[i+3]===0) continue;
