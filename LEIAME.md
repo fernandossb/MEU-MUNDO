@@ -1659,6 +1659,45 @@ camada, passe de performance).
 
 ---
 
+## Sistema multi-escala: camada Território (etapa 3 de 6)
+
+Terceira camada, entre região e planeta. A área visível aqui é grande o
+bastante pra que o truque da Região (chunk fino de sempre, `pegarChunk`)
+ficasse caro — dezenas de chunks caberiam na tela ao mesmo tempo, cada um
+com a mesma bake fina (grama, rachadura) que a vila usa de perto, sem
+ninguém for ver esse detalhe daquela distância.
+
+Em vez disso, `desenharTerritorio()` amostra `elevacao`/`biomaEm` a cada
+`TERRITORIO_STRIDE` (6) tiles — uma célula preenchida por amostra, não
+tile a tile — reaproveitando `corTerrenoDe` (a mesma função de cor que o
+chunk fino usa) pra manter a paleta idêntica à da região, só mais grossa.
+Células agrupadas em "setores" de 12×12 e cacheadas (`territorios`, Map
+com o mesmo padrão de expiração por tempo não visto que `chunks` já usa) —
+o número de setores visíveis não cresce com a distância, então o custo
+fica limitado independente de quanto o jogador afastar dentro desta
+camada. Marcador de vila maior que na região (pedido do plano — "daqui de
+cima o ponto pequeno não se acharia mais").
+
+**Só a fronteira território→planeta ganhou a janela circular** (curvatura
+começando a aparecer); vila→região e região→território continuam
+cross-fade simples, retângulo contra retângulo. Isso segue o pedido
+original ao pé da letra — curvatura só "numa altitude extremamente alta",
+perto do fim da jornada, não antes.
+
+Faixas de zoom recalculadas do zero pras quatro camadas caberem, cada
+teto de camada do meio deliberadamente MENOR que o piso da anterior (a
+regra aprendida corrigindo o bug da etapa 2, documentada em comentário no
+código junto das constantes agora).
+
+Testado ao vivo: território puro (com marcador maior e mesma água visível
+que já aparecia na região), as duas transições novas, planeta puro no
+novo piso, vila normal sem nenhuma mudança — mobile e desktop.
+
+Faltam as etapas 4-6 (planeta com dado real, UI por camada, passe de
+performance).
+
+---
+
 ## Estrutura
 
 ```

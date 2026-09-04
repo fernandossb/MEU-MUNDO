@@ -5462,17 +5462,26 @@ let W = 0, H = 0, DPR = 1;
 const cam = { x:0, y:0, z:1 };
 let selecao = [];
 
-// Sistema multi-escala (vila → região → planeta, plano em
+// Sistema multi-escala (vila → região → território → planeta, plano em
 // C:\Users\PPCP\.claude\plans\robust-conjuring-reef.md). Cada camada do
-// meio (hoje só 'região') precisa de DOIS pares de limiar — um de cada
-// lado — porque ela mistura com a vizinha de cada ponta: ZOOM_LIMIAR/
-// ZOOM_TRANSICAO_FIM cercam a faixa vila→região (vila pura acima do
-// primeiro, região pura abaixo do segundo); REGIAO_LIMIAR/ZOOM_MIN cercam
-// região→planeta do mesmo jeito. Reaproveitar ZOOM_TRANSICAO_FIM como teto
-// de "região pura" TAMBÉM foi tentado e falhou — colapsava a faixa inteira
-// da região em transição, sem sobrar zona pura nenhuma; por isso o par de
-// cada fronteira é dedicado, não compartilhado.
-const ZOOM_LIMIAR = 0.55, ZOOM_TRANSICAO_FIM = 0.40, REGIAO_LIMIAR = 0.30, ZOOM_MIN = 0.15, ZOOM_MAX = 1.8;
+// meio precisa de DOIS pares de limiar — um de cada lado — porque ela
+// mistura com a vizinha de cada ponta. Regra aprendida corrigindo um bug
+// real (ver histórico): o teto de uma camada do meio NUNCA pode repetir o
+// piso da camada anterior — tem que ser um valor MENOR, senão a zona pura
+// dela colapsa pra zero e ela nunca aparece sozinha, só em transição.
+//   vila     [ZOOM_LIMIAR, ∞)
+//   ↕ transição
+//   região   [REGIAO_LIMIAR, ZOOM_TRANSICAO_FIM)
+//   ↕ transição
+//   território [TERRITORIO_LIMIAR, REGIAO_TRANSICAO_FIM)
+//   ↕ transição
+//   planeta  (0, TERRITORIO_TRANSICAO_FIM] — ZOOM_MIN é o piso que o
+//            pinça/roda deixam alcançar; igual a TERRITORIO_TRANSICAO_FIM
+//            de propósito (nesse ponto o território já esmaeceu por
+//            completo, o resultado já é visualmente o planeta puro).
+const ZOOM_LIMIAR = 0.55, ZOOM_TRANSICAO_FIM = 0.40, REGIAO_LIMIAR = 0.30,
+      REGIAO_TRANSICAO_FIM = 0.20, TERRITORIO_LIMIAR = 0.12, TERRITORIO_TRANSICAO_FIM = 0.06,
+      ZOOM_MIN = 0.06, ZOOM_MAX = 1.8;
 
 function redimensionar() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -9245,6 +9254,103 @@ function desenharRegiao() {
   ctx.shadowBlur = 0;
 }
 
+/*
+   CAMADA TERRITÓRIO. Área visível aqui é bem maior que na região — nas
+   pontas da faixa de zoom dela, dezenas de chunks caberiam na tela, e cada
+   um custaria a MESMA bake fina (grama, rachadura, areia) que a vila usa.
+   Em vez de 'pegarChunk', uma amostra de 'elevacao'/'biomaEm' a cada
+   TERRITORIO_STRIDE tiles, uma célula preenchida por amostra — o número de
+   células cabe folgado em qualquer zoom desta faixa, não cresce com a
+   distância. Cache próprio ('territorios'), mesmo padrão de expiração por
+   tempo não visto que 'chunks' já usa.
+
+   É só na fronteira território→planeta que a visão começa a ficar curva
+   (ver CAMADAS_ZOOM) — o pedido original descreve a curvatura aparecendo
+   só "numa altitude extremamente alta", perto do fim da jornada, não
+   antes.
+*/
+const TERRITORIO_STRIDE = 6;    // tiles por célula
+const TERRITORIO_SETOR = 12;    // células por lado do setor cacheado
+const TERRITORIO_SPX = TERRITORIO_STRIDE * TILE;              // px de mundo por célula
+const TERRITORIO_SETOR_PX = TERRITORIO_SETOR * TERRITORIO_SPX; // px de mundo por setor
+const territorios = new Map();
+
+function montarSetorTerritorio(sx, sy) {
+  const N = TERRITORIO_SETOR;
+  const cv = document.createElement('canvas');
+  cv.width = N; cv.height = N;   // 1px por célula — ampliado na hora de desenhar, com suavização
+  const g = cv.getContext('2d');
+  const img = g.createImageData(N, N);
+  for (let ly = 0; ly < N; ly++)
+    for (let lx = 0; lx < N; lx++) {
+      const tx = (sx * N + lx) * TERRITORIO_STRIDE, ty = (sy * N + ly) * TERRITORIO_STRIDE;
+      const e = elevacao(tx, ty);
+      const eO = elevacao(tx - TERRITORIO_STRIDE, ty), eN = elevacao(tx, ty - TERRITORIO_STRIDE);
+      const m = e > 0.405 ? umidade(tx, ty) : 0.5;
+      const [r, gg, b] = corTerrenoDe(e, eO, eN, m, tx, ty);
+      const i = (ly * N + lx) * 4;
+      img.data[i] = r; img.data[i + 1] = gg; img.data[i + 2] = b; img.data[i + 3] = 255;
+    }
+  g.putImageData(img, 0, 0);
+  return { cv, visto: agora };
+}
+function pegarSetorTerritorio(sx, sy) {
+  const k = sx + ',' + sy;
+  let s = territorios.get(k);
+  if (!s) { s = montarSetorTerritorio(sx, sy); territorios.set(k, s); }
+  s.visto = agora;
+  return s;
+}
+
+function desenharTerritorio() {
+  const z = cam.z, vw0 = W / z, vh0 = H / z;
+  const camIso = mundoParaIso(cam.x, cam.y);
+  const cantos = [
+    isoParaMundo(camIso.x - vw0 / 2, camIso.y - vh0 / 2),
+    isoParaMundo(camIso.x + vw0 / 2, camIso.y - vh0 / 2),
+    isoParaMundo(camIso.x - vw0 / 2, camIso.y + vh0 / 2),
+    isoParaMundo(camIso.x + vw0 / 2, camIso.y + vh0 / 2),
+  ];
+  const camX = Math.min(cantos[0].x, cantos[1].x, cantos[2].x, cantos[3].x);
+  const camXmax = Math.max(cantos[0].x, cantos[1].x, cantos[2].x, cantos[3].x);
+  const camY = Math.min(cantos[0].y, cantos[1].y, cantos[2].y, cantos[3].y);
+  const camYmax = Math.max(cantos[0].y, cantos[1].y, cantos[2].y, cantos[3].y);
+
+  ctx.setTransform(DPR * z, 0, 0, DPR * z, W * DPR / 2 - camIso.x * DPR * z, H * DPR / 2 - camIso.y * DPR * z);
+  ctx.imageSmoothingEnabled = true;
+
+  const s0x = Math.floor(camX / TERRITORIO_SETOR_PX), s0y = Math.floor(camY / TERRITORIO_SETOR_PX);
+  const s1x = Math.floor(camXmax / TERRITORIO_SETOR_PX), s1y = Math.floor(camYmax / TERRITORIO_SETOR_PX);
+  ctx.save();
+  ctx.transform(ISO_A, ISO_B, ISO_C, ISO_D, 0, 0);
+  for (let sy = s0y; sy <= s1y; sy++)
+    for (let sx = s0x; sx <= s1x; sx++) {
+      const s = pegarSetorTerritorio(sx, sy);
+      ctx.drawImage(s.cv, sx * TERRITORIO_SETOR_PX, sy * TERRITORIO_SETOR_PX, TERRITORIO_SETOR_PX, TERRITORIO_SETOR_PX);
+    }
+  ctx.restore();
+
+  // Marcador de vila maior que na região — daqui de cima o ponto pequeno
+  // não se acharia mais.
+  const marcas = [];
+  const centro = typeof centroDaVila === 'function' && centroDaVila();
+  if (centro) marcas.push({ x: centro.cx, y: centro.cy, cor: '#ffe08a' });
+  for (const v of rivaisVivas()) marcas.push({ x: v.tx * TILE, y: v.ty * TILE, cor: v.cor });
+  for (const m of marcas) {
+    const p = mundoParaIso(m.x, m.y);
+    ctx.fillStyle = m.cor;
+    ctx.shadowBlur = 12 / z; ctx.shadowColor = m.cor;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 16 / z, 0, 6.2832); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 2 / z;
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  // Mesmo padrão de 'chunks' (linha ~9752) — setor é uma canvas pequena
+  // (12x12px), então um teto bem mais folgado ainda é barato.
+  if (territorios.size > 200) for (const [k, s] of territorios) if (agora - s.visto > 5000) territorios.delete(k);
+}
+
 const CAMADAS_ZOOM = [
   {
     nome: 'vila',
@@ -9256,8 +9362,14 @@ const CAMADAS_ZOOM = [
     nome: 'regiao',
     desenhar: desenharRegiao,
     zPuro: REGIAO_LIMIAR,
-    zFimTransicao: ZOOM_MIN,
-    raioNoFim: raioDoPlaneta,
+    zFimTransicao: REGIAO_TRANSICAO_FIM,
+  },
+  {
+    nome: 'territorio',
+    desenhar: desenharTerritorio,
+    zPuro: TERRITORIO_LIMIAR,
+    zFimTransicao: TERRITORIO_TRANSICAO_FIM,
+    raioNoFim: raioDoPlaneta,   // só esta fronteira entra na visão curva — ver nota acima de 'desenharTerritorio'
   },
   {
     nome: 'planeta',
