@@ -8201,21 +8201,17 @@ function caixaDoPredio(pr, q, dx0, dy0) {
   const w = pr.def.w * TILE, h = pr.def.h * TILE;
 
   /*
-     Tentativa revertida: escalar a Praça pra bater exatamente com o losango
-     isométrico do lote (w+h em vez de só w) deixava o tamanho geometricamente
-     "certo" pra um lote isolado, mas prédio vizinho também vaza um pouco da
-     própria arte pra fora do lote dele (é o que deixa casa e castelo em pé) —
-     duas peças do tamanho exato do próprio lote colidem numa vila apertada.
-     Perfeição isolada não sobrevive a vizinho perto. Preço aceito: a praça
-     fica um pouco menor que o losango perfeito, mas não invade ninguém.
+     Travar a largura no lote (nunca passar de w) só faz sentido pra Praça —
+     é a única peça sem parede vertical pra disfarçar um alargamento de 1,3x
+     invadindo o lote vizinho (as outras têm; ver 'deslocaV' abaixo). Travar
+     a largura pra TODO mundo (tentativa anterior) zerava sozinho o
+     crescimento de 1,3x pra quase todos os prédios — a largura salva na
+     folha já nasce igual à do lote pra quase toda peça, então
+     'min(ESCALA_PREDIO, w/q[4])' dava sempre 1, sem folga nenhuma pra
+     crescer. Resultado: tudo ficou pequeno de novo, o problema que o
+     ESCALA_PREDIO existia pra resolver.
   */
-
-  // A largura NUNCA passa do próprio lote — prédio baixo e largo (sem
-  // parede vertical pra disfarçar) esticava 1,3x pros dois lados e invadia
-  // a rua ou o lote vizinho. MESMA escala nos dois eixos (nunca só na
-  // largura): travar um eixo sozinho distorce a proporção da arte
-  // isométrica e desalinha o ângulo dela do ângulo da rua.
-  const escala = Math.min(ESCALA_PREDIO, w / q[4]);
+  const escala = pr.def.praca ? Math.min(ESCALA_PREDIO, w / q[4]) : ESCALA_PREDIO;
   const dw = q[4] * escala, dh = q[5] * escala;
   // Vertical: prédio alto (dh > h) continua ancorado na base, crescendo pra
   // cima do próprio lote — é o que faz casa e castelo parecerem em pé. Mas
