@@ -1378,6 +1378,63 @@ vazar.
 
 ---
 
+## Mais uma volta na praça, e um bug de verdade nas sombras
+
+Depois de travar a largura só da Praça (a única sem parede pra disfarçar),
+mais três rodadas de ajuste fino nela, cada uma com o próprio efeito
+colateral — vale registrar os dois problemas de verdade que sobraram,
+porque um deles derrubou uma frase escrita algumas seções acima.
+
+**"A praça não está centralizada nos tiles" (com print do contorno verde de
+"Movendo")**: ancoragem vertical sempre colava a arte na base do lote — faz
+sentido pra prédio alto (cresce pra cima do próprio chão), mas a praça não
+cresce mais além do lote, então colar na base sobrava como desalinhamento.
+Corrigido centralizando quando o prédio cabe no lote (`dh <= h`), mantendo
+ancoragem na base só pra quem ainda cresce além dele.
+
+**Daí veio a comparação direta com o losango**: a praça, mesmo centralizada,
+renderizava visivelmente menor que o próprio lote. Causa real — numa
+projeção isométrica 2:1, a largura na tela de um lote w×h é `(w+h)*TILE`,
+não `w*TILE`; a conta usa só a largura desde a primeira leva de arte.
+Escalar a praça pro tamanho exato do losango resolveu — E quebrou outra
+coisa: prédio vizinho também vaza um pouco da própria arte pra fora do
+lote dele (mesmo motivo do parágrafo anterior a este bloco), então duas
+peças do tamanho exato do próprio lote colidem numa vila apertada.
+Revertido pro tamanho anterior (um pouco menor que o losango perfeito, mas
+que não invade ninguém) — depois de tanta ida e volta nesse ajuste fino
+específico, esse foi o trade-off aceito.
+
+**Efeito colateral do trava-largura que quase passou despercebido**: a
+largura salva na folha já nasce igual à do próprio lote pra quase toda
+peça (não só a praça) — então travar a largura de TODO MUNDO, tentativa
+que durou algumas versões, zerava sozinho o `ESCALA_PREDIO` pra quase todo
+prédio, não só pra praça. Reportado como "tudo parece muito pequeno,
+exceto fazenda grande e praça". Corrigido: só a Praça trava a largura; todo
+o resto volta a crescer os 1,3x de sempre.
+
+**E o bug de verdade, sem relação nenhuma com tamanho ou posição**: "quando
+apagou o fundo preto tirou também a sombra de algumas casas". A leva atual
+tinha uma segunda passada (`removerAureola`) pensada pra comer uma
+auréola escura que pareceria sobra de drop shadow da ferramenta de recorte
+do usuário — só que **a maioria das peças tinha mesmo uma sombra de
+contato própria**, e sombra colada no prédio é exatamente tão escura
+quanto um artefato de recorte pra um flood-fill que só olha "é escuro".
+A segunda passada comia as duas coisas juntas, silenciosamente, desde a
+publicação da terceira leva. Isso contradiz o que ficou escrito acima
+("nenhuma das 39 peças fotográficas tem um ponto escuro sob a base") — era
+verdade pra Praça (conferido, ela mesma não tem sombra própria), mas não
+para o resto; a frase generalizou de menos dado.
+
+Confirmado comparando bruto × processado numa folha de contato dos 29
+arquivos de fundo claro: `removerFundo` sozinho, sem a segunda passada, já
+limpa o fundo sem sobra nenhuma em TODOS os 29 — a segunda passada nunca
+foi necessária. Removida (função e chamada), pipeline reprocessado do
+zero. Sombra de contato de volta em casa, castelo, moinho, tudo — e de
+brinde, ajuda a "grudar" a própria praça no chão, sem precisar de nenhuma
+elipse sintética.
+
+---
+
 ## Estrutura
 
 ```
