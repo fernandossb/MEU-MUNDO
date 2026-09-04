@@ -2373,6 +2373,7 @@ function atualizarPessoa(p, dt) {
           anotarFluxo('pedra', 'ruas', custoTrecho);
           jogo.estradas.add(nk(t[0], t[1]));
           limparNo(t[0], t[1]);   // a rua passa por cima da mata
+          limparArvoresRentesA(t[0], t[1]);
           obra.feitos++;
         } else { obra.feitos = obra.tiles.length; }   // sem pedra, a obra para
         if (obra.feitos >= obra.tiles.length) {
@@ -4306,7 +4307,7 @@ function ruaFundadora(centro) {
   jogo.malhaOx = Math.floor(centro.cx / TILE) - 5;
   jogo.malhaOy = Math.floor(centro.cy / TILE) - 5;
   const por = (tx, ty) => {
-    if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); }
+    if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); limparArvoresRentesA(tx, ty); }
   };
   const [bx, by] = quarteiraoDoCentro();
   for (let lado = 0; lado < 4; lado++)
@@ -5100,6 +5101,30 @@ function flutuarNoMercado(de, para, quanto) {
   if (m) flutuar(m.cx, m.cy - 22, RECURSO[de].icone + '→' + quanto + RECURSO[para].icone);
 }
 
+// A copa da árvore é desenhada mais larga que o próprio tile (dá volume,
+// evita fileira de palito) — encostada numa rua, ela passa por cima do
+// calçamento. 'jogo.estradas.has(k)' sozinho só barra nascer NA rua; falta
+// barrar nascer COLADO nela. Vizinhança de um tile já cobre a folga da copa.
+function pertoDeRua(tx, ty) {
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++)
+      if (jogo.estradas.has(nk(tx + dx, ty + dy))) return true;
+  return false;
+}
+
+// Some com árvore de pé colada demais numa rua RECÉM-CALÇADA (tx,ty é o tile
+// da rua) — chamada junto de 'limparNo' nos três lugares que abrem rua. Não
+// espera a virada da primavera: a copa já está sobrando na tela agora.
+function limparArvoresRentesA(tx, ty) {
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = tx + dx, ny = ty + dy;
+      const n = noEm(nx, ny);
+      if (n && n.tipo === 'madeira') { restante.set(nk(nx, ny), 0); removerNoDoChunk(nx, ny); }
+    }
+}
+
 // A floresta se recupera na primavera. Sem isso o mapa em volta da vila fica
 // pelado para sempre e a cidade vira um deserto cercado de tocos.
 function rebrotarMata() {
@@ -5108,7 +5133,7 @@ function rebrotarMata() {
   for (const [k, q] of [...restante.entries()]) {
     if (q > 0) continue;
     const [tx, ty] = k.split(',').map(Number);
-    if (ocupado.has(k) || jogo.estradas.has(k)) continue;
+    if (ocupado.has(k) || pertoDeRua(tx, ty)) continue;
     const tipo = noNatural(tx, ty);
     if (!tipo || tipo === 'pedra') continue;      // pedra não rebrota
     if (rnd() > 0.28) continue;
@@ -5370,6 +5395,7 @@ function recuperarOffline(segundos) {
         jogo.recursos.pedra -= 1;
         jogo.estradas.add(nk(t[0], t[1]));
         limparNo(t[0], t[1]);
+        limparArvoresRentesA(t[0], t[1]);
         obra.feitos++;
         trechos--;
       }
@@ -9524,6 +9550,12 @@ function carregar() {
     restante.clear();
     for (const [k, v] of (s.nos || [])) restante.set(k, v);
     jogo.estradas = new Set(s.estradas || []);
+    // Save de antes de 'limparArvoresRentesA' existir pode ter árvore de pé
+    // colada numa rua já calçada há tempos — a limpeza só dispara ao abrir
+    // rua NOVA, então quem já tinha o problema nunca seria varrido sozinho.
+    // Uma varredura por cima das ruas já salvas (não do mapa inteiro) resolve
+    // o que ficou pra trás, uma vez só, no carregamento.
+    for (const k of jogo.estradas) { const [tx, ty] = k.split(',').map(Number); limparArvoresRentesA(tx, ty); }
     jogo.obrasEstrada = (s.obrasEstrada || []).map(o => ({ tiles:o.t, feitos:o.f, t:0 }));
 
     jogo.predios = []; ocupado.clear();
