@@ -8206,9 +8206,16 @@ function caixaDoPredio(pr, q, dx0, dy0) {
   // isométrica e desalinha o ângulo dela do ângulo da rua.
   const escala = Math.min(ESCALA_PREDIO, w / q[4]);
   const dw = q[4] * escala, dh = q[5] * escala;
+  // Vertical: prédio alto (dh > h) continua ancorado na base, crescendo pra
+  // cima do próprio lote — é o que faz casa e castelo parecerem em pé. Mas
+  // prédio que já cabe no lote (dh <= h, o caso comum agora que a largura
+  // trava) não tem por que colar na base — centralizado, como a horizontal
+  // já é, é o que faz a praça (que não cresce mais) parecer no lugar certo.
+  const folgaV = h - dh;
+  const deslocaV = folgaV >= 0 ? folgaV / 2 : folgaV;
   return {
     dx: pr.tx * TILE + (w - dw) / 2 + dx0,
-    dy: pr.ty * TILE + h - dh + dy0,
+    dy: pr.ty * TILE + deslocaV + dy0,
     dw, dh,
   };
 }
