@@ -1433,6 +1433,18 @@ zero. Sombra de contato de volta em casa, castelo, moinho, tudo — e de
 brinde, ajuda a "grudar" a própria praça no chão, sem precisar de nenhuma
 elipse sintética.
 
+**Esse diagnóstico também saiu errado — e rápido: publicado, virou "borda
+preta ao redor das construções".** A folha de contato que "provou" a
+sombra tinha uns 120px por peça; nesse tamanho a faixa escura ao redor da
+silhueta e uma sombra de verdade se confundem a olho nu. Medindo pixel a
+pixel (não mais olhando miniatura): numa linha horizontal cortando o TOPO
+do telhado de uma casa — onde sombra de chão jamais chegaria — havia uma
+faixa sólida, opaca, de 13 a 15px, cor (32,32,32), idêntica à faixa medida
+na altura da parede. Largura constante ao redor de toda a silhueta, sem
+gradiente nenhum: perfil de artefato de recorte, não de sombra alguma. A
+segunda passada (`removerAureola`) estava certa desde o início; a versão
+que a removeu é que criou o problema. Restaurada como era.
+
 ---
 
 ## Estrutura

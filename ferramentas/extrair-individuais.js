@@ -1,20 +1,25 @@
 /*
    Terceira leva de arte: desta vez o usuário recortou cada prédio à mão, um
    arquivo por peça (1.PNG a 37.PNG) — muito mais confiável que eu medir uma
-   montagem na régua. Os recortes têm dois fundos diferentes, dependendo de
-   qual ferramenta gerou cada um (preto chapado nos primeiros, claro na
-   maioria) — mas os dois removem do mesmo jeito, por proximidade com a cor
-   do canto; qual delas é só decide o valor de referência.
+   montagem na régua. Mas os recortes têm DOIS estilos de fundo diferentes,
+   dependendo de qual ferramenta gerou cada um:
 
-   CORRIGIDO: uma segunda passada (removerAureola) chegou a existir aqui,
-   pensada pra comer uma "auréola escura" que pareceria um resto de drop
-   shadow da ferramenta de recorte do usuário. Era a sombra de contato de
-   verdade que cada prédio já tinha na própria arte — a segunda passada
-   comia ela inteira, silenciosamente, porque sombra grudada no prédio é
-   exatamente tão escura quanto um artefato de recorte. Removida: só
-   'removerFundo' já limpa o fundo sem sobra em nenhum dos 29 arquivos
-   claros (conferido visualmente, folha de contato completa), e devolve a
-   sombra que tinha sumido de bom número de casas.
+   - fundo PRETO CHAPADO (poucos arquivos, os primeiros) — a mesma remoção
+     por proximidade de cor que já se usava;
+   - fundo CLARO com uma AURÉOLA ESCURA contornando toda a silhueta (a
+     maioria) — um "drop shadow" que a ferramenta de recorte do usuário
+     deixou. Remover só o fundo claro sobra com essa faixa escura grudada
+     nas bordas do prédio; precisa de uma SEGUNDA passada, que começa onde o
+     fundo já foi removido e continua comendo pixel escuro até ele acabar.
+
+   REVERTIDO um engano meu: cheguei a tirar essa segunda passada achando
+   que ela comia uma sombra de contato legítima. Não comia — medido pixel a
+   pixel nas 5 casas, a faixa escura ao redor de toda a silhueta (inclusive
+   no TOPO do telhado, onde sombra de chão nunca chegaria) é sólida, opaca e
+   de largura consistente (6 a 14px), sem gradiente nenhum — exatamente o
+   perfil de um artefato de recorte, não de sombra. Sem a segunda passada
+   ela sobrava inteira como uma borda preta ao redor do prédio. A passada
+   está de volta.
 */
 const fs = require('fs');
 const { decodificar, codificar } = require('./png.js');
@@ -97,6 +102,32 @@ function removerFundo(im, limiar) {
   return im;
 }
 
+/* Passo 2 (só quando o fundo era claro): come a auréola escura que sobra
+   colada na silhueta — flood-fill a partir de qualquer pixel JÁ transparente,
+   agora por "é escuro", não mais "parece com o canto". Para sozinho quando
+   os pixels ao redor deixam de ser escuros — ou seja, ao alcançar o prédio
+   de verdade. */
+function removerAureola(im, limiarEscuro) {
+  const { larg: w, alt: h, px } = im;
+  const visitado = new Uint8Array(w*h);
+  const jaTransparente = i => px[i*4+3] === 0;
+  const escuro = i => px[i*4]<=limiarEscuro && px[i*4+1]<=limiarEscuro && px[i*4+2]<=limiarEscuro;
+  const fila = [];
+  for (let i=0;i<w*h;i++) if (jaTransparente(i)) { visitado[i]=1; fila.push(i); }
+  while (fila.length) {
+    const i = fila.pop();
+    const x=i%w, y=(i/w)|0;
+    for (const [nx,ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]) {
+      if (nx<0||ny<0||nx>=w||ny>=h) continue;
+      const ni=ny*w+nx;
+      if (visitado[ni]) continue;
+      visitado[ni]=1;
+      if (escuro(ni)) { px[ni*4+3]=0; fila.push(ni); }
+    }
+  }
+  return im;
+}
+
 function manterMaiorIlha(im) {
   const { larg, alt, px } = im;
   const visitado = new Uint8Array(larg * alt);
@@ -161,6 +192,7 @@ function tamanhoNaTela(w, h, im) {
 }
 
 const LIMIAR_FUNDO = +(process.env.LIMIAR || 40);
+const LIMIAR_ESCURO = +(process.env.LIMIAR_ESCURO || 55);
 const porChave = {};
 const quadros = [];
 let estiloClaroN = 0, estiloEscuroN = 0;
@@ -172,6 +204,7 @@ for (const [num, chave, w, h] of PECAS) {
   if (claro) estiloClaroN++; else estiloEscuroN++;
 
   let im = removerFundo(bruto, LIMIAR_FUNDO);
+  if (claro) im = removerAureola(im, LIMIAR_ESCURO);
   im = manterMaiorIlha(im);
   const rec = recortarAlfa(im);
 
