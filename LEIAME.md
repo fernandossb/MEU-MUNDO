@@ -1490,6 +1490,51 @@ tinham. Pedra e moita (arbusto) continuam vetoriais — só árvore foi pedida.
 
 ---
 
+## O planeta
+
+Pedido: dar zoom além do limite de hoje e ver o mundo de longe, "como um
+planeta girando" — sem oceano gigante atrapalhando. Antes de sair
+implementando, uma pergunta de escopo: planeta de verdade (3D, giro real
+de esfera) exigiria trocar o motor do jogo inteiro (canvas 2D puro, nunca
+teve WebGL) por uma engine 3D — mudança de projeto, não de feature. A
+resposta escolhida foi o meio-termo: planeta ESTILIZADO — um efeito visual
+decorativo, não o mapa de verdade renderizado de cima.
+
+**O que é real e o que é decoração.** Abaixo de `ZOOM_LIMIAR` (o chão de
+zoom de sempre, 0.55) a câmera não sai mais da vila pra sempre — antes
+disso ela era o limite. Agora `ZOOM_MIN` (0.15) abre uma faixa nova, onde
+`desenharVisaoDistante()` assume por inteiro:
+
+- **disco do planeta**: gradiente radial fixo (luz de cima-esquerda,
+  escurece pra borda — o "rim-light" é o que vende esfera sem nenhuma
+  geometria 3D), puramente decorativo;
+- **relevo de montanha**: blobs com posição estável por hash (não é
+  `elevacao()` de verdade), decoração, deriva bem lenta;
+- **pontos de civilização**: esses SIM são dado real — todo quarteirão
+  com dono em `jogo.dono` (seu ou de vila rival) vira um ponto colorido,
+  na cor de quem é dono, posicionado pela coordenada de mundo de verdade
+  (via `origemMalha`) numa escala fixa pequena (`ESCALA_PLANETA`),
+  centrada na câmera — arrastar o mapa aqui ainda "anda pela superfície",
+  só que a passos enormes;
+- **nuvens**: blobs claros, deriva bem mais rápida que o relevo. É essa
+  DIFERENÇA de velocidade entre as duas camadas — não qualquer rotação de
+  verdade — que o olho lê como "o planeta girando por baixo das nuvens".
+
+Truque simples, sem física nem 3D nenhuma: duas camadas de blob 2D
+andando em velocidades diferentes por cima de um gradiente parado.
+
+Zoom out geral também ficou mais generoso na vila mesmo (`ZOOM_MIN`
+substitui os `0.55` antigos nos dois controles de zoom, roda e pinça — o
+zoom inicial de partida de jogo não mudou).
+
+Testado ao vivo: transição exata no limiar (vila cheia de um lado, planeta
+do outro, nada de meio-termo quebrado), pontos de civilização com dado
+semeado à mão (não tinha vila rival no save de teste), deriva de nuvem
+confirmada comparando dois quadros bem afastados no tempo, mobile e
+desktop.
+
+---
+
 ## Estrutura
 
 ```

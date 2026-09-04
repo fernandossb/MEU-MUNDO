@@ -5462,6 +5462,11 @@ let W = 0, H = 0, DPR = 1;
 const cam = { x:0, y:0, z:1 };
 let selecao = [];
 
+// Abaixo do zoom mínimo de sempre (ZOOM_LIMIAR — antigo "chão" do pinça/roda)
+// a câmera entra na faixa nova, só de vestígio de civilização e decoração —
+// ver 'desenharVisaoDistante'. ZOOM_MIN é o novo chão, bem mais longe.
+const ZOOM_LIMIAR = 0.55, ZOOM_MIN = 0.15, ZOOM_MAX = 1.8;
+
 function redimensionar() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = window.innerWidth; H = window.innerHeight;
@@ -5542,7 +5547,7 @@ cv.addEventListener('touchmove', e => {
   for (const t of e.changedTouches) if (toques.has(t.identifier)) toques.set(t.identifier, { x:t.clientX, y:t.clientY });
   if (pinca && toques.size >= 2) {
     const [a, b] = [...toques.values()];
-    cam.z = Math.max(0.55, Math.min(1.8, pinca.z0 * (Math.hypot(a.x - b.x, a.y - b.y) / pinca.d0)));
+    cam.z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, pinca.z0 * (Math.hypot(a.x - b.x, a.y - b.y) / pinca.d0)));
   } else if (desenhandoRua) {
     const t = [...e.changedTouches].find(t => t.identifier === (arraste && arraste.id));
     if (t) tracarAte(t.clientX, t.clientY);
@@ -5604,7 +5609,7 @@ addEventListener('mouseup', () => {
 });
 cv.addEventListener('wheel', e => {
   e.preventDefault();
-  cam.z = Math.max(0.55, Math.min(1.8, cam.z * (e.deltaY < 0 ? 1.12 : 0.89)));
+  cam.z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cam.z * (e.deltaY < 0 ? 1.12 : 0.89)));
 }, { passive:false });
 
 const teclas = new Set();
@@ -9034,7 +9039,110 @@ function passo(dt) {
    gente e árvore, a própria posição).
 */
 
+/*
+   VISÃO DISTANTE. Abaixo de ZOOM_LIMIAR a câmera sai da vila de vez e passa
+   a ver o mundo de longe — um planeta estilizado, decorativo (não é o mapa
+   de verdade renderizado de cima; ver conversa que definiu o escopo). Três
+   camadas, nessa ordem: relevo de montanha (decoração, posição estável por
+   hash — não é 'elevacao()' de verdade, só sugere terreno) e pontos de
+   civilização (esses sim de dado real — todo quarteirão com dono, seu ou de
+   rival, vira um ponto colorido); por cima, nuvens, que andam mais rápido
+   que o relevo — é essa diferença de velocidade que lê como o planeta
+   girando, sem precisar de nenhuma geometria 3D.
+
+   Os pontos de civilização usam a posição real de mundo (convertida do
+   quarteirão via 'origemMalha') numa escala fixa e pequena, centrada na
+   câmera — arrastar o mapa aqui continua "andando pela superfície", só que
+   a passos enormes.
+*/
+const ESCALA_PLANETA = 0.01; // px de mundo -> px de disco
+function desenharVisaoDistante() {
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  const cx = W / 2, cy = H / 2;
+  // 0 bem no limiar (disco grande, quase a vila de novo); 1 no fundo do poço
+  const prof = Math.min(1, Math.max(0, (ZOOM_LIMIAR - cam.z) / (ZOOM_LIMIAR - ZOOM_MIN)));
+  const raio = Math.min(W, H) * (0.62 - prof * 0.16);
+  const t = agora / 1000;
+
+  // --- espaço ao redor, com estrelas fixas (hash, não mexe no rnd() do jogo) ---
+  ctx.fillStyle = '#0a0e17';
+  ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 70; i++) {
+    const sx = hash2(i, 11, 777) * W, sy = hash2(i, 22, 777) * H;
+    if (Math.hypot(sx - cx, sy - cy) < raio + 6) continue;
+    ctx.globalAlpha = 0.2 + hash2(i, 33, 777) * 0.6;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(sx, sy, 1.4, 1.4);
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.save();
+  ctx.beginPath(); ctx.arc(cx, cy, raio, 0, 6.2832); ctx.clip();
+
+  // --- corpo do planeta, luz vindo de cima-esquerda ---
+  const base = ctx.createRadialGradient(cx - raio * 0.35, cy - raio * 0.38, raio * 0.1, cx, cy, raio * 1.15);
+  base.addColorStop(0, '#93b567'); base.addColorStop(0.55, '#5c8a48'); base.addColorStop(1, '#213018');
+  ctx.fillStyle = base;
+  ctx.fillRect(cx - raio, cy - raio, raio * 2, raio * 2);
+
+  // --- relevo: blobs decorativos, deriva bem lenta (mais devagar que a nuvem) ---
+  const derivaRelevo = t * 3;
+  for (let i = 0; i < 14; i++) {
+    const ang = hash2(i, 1, 42) * 6.2832, r = hash2(i, 2, 42) * raio * 0.92;
+    const x = cx + Math.cos(ang) * r + derivaRelevo * 0.15, y = cy + Math.sin(ang) * r * 0.94;
+    const tam = raio * (0.05 + hash2(i, 3, 42) * 0.09);
+    ctx.fillStyle = 'rgba(40,44,30,.28)';
+    ctx.beginPath(); ctx.ellipse(x + tam * 0.15, y + tam * 0.2, tam, tam * 0.62, 0.4, 0, 6.2832); ctx.fill();
+    ctx.fillStyle = 'rgba(150,140,110,.35)';
+    ctx.beginPath(); ctx.ellipse(x, y, tam * 0.8, tam * 0.5, 0.4, 0, 6.2832); ctx.fill();
+  }
+
+  // --- vestígios de civilização: um ponto por quarteirão com dono, cor real ---
+  const { ox, oy } = origemMalha();
+  ctx.shadowBlur = 5;
+  for (const k in jogo.dono) {
+    const dono = jogo.dono[k];
+    const [bx, by] = k.split(',').map(Number);
+    const wx = ox + (bx + 0.5) * PERIODO_MALHA * TILE, wy = oy + (by + 0.5) * PERIODO_MALHA * TILE;
+    const x = cx + (wx - cam.x) * ESCALA_PLANETA, y = cy + (wy - cam.y) * ESCALA_PLANETA;
+    if (Math.hypot(x - cx, y - cy) > raio - 2) continue;
+    const v = dono ? jogo.vilas.find(vv => vv.id === dono) : null;
+    const cor = dono === 0 ? '#ffe08a' : (v ? v.cor : null);
+    if (!cor) continue;
+    ctx.shadowColor = cor;
+    ctx.fillStyle = cor;
+    ctx.beginPath(); ctx.arc(x, y, dono === 0 ? 2.4 : 1.7, 0, 6.2832); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+
+  // --- nuvens: deriva mais rápida que o relevo — a diferença lê como giro ---
+  const derivaNuvem = t * 14;
+  for (let i = 0; i < 9; i++) {
+    const ang = hash2(i, 5, 88) * 6.2832, r = hash2(i, 6, 88) * raio * 0.95;
+    let x = cx + Math.cos(ang) * r + derivaNuvem;
+    x = cx + ((x - cx + raio) % (raio * 2) + raio * 2) % (raio * 2) - raio;
+    const y = cy + Math.sin(ang) * r * 0.92;
+    const tam = raio * (0.06 + hash2(i, 7, 88) * 0.1);
+    ctx.fillStyle = 'rgba(255,255,255,.5)';
+    ctx.beginPath(); ctx.ellipse(x, y, tam, tam * 0.45, 0.15, 0, 6.2832); ctx.fill();
+  }
+
+  ctx.restore();  // fecha o clip do disco
+
+  // --- rim-light: escurece a borda, é o que vende "esfera" sem geometria 3D ---
+  const rim = ctx.createRadialGradient(cx, cy, raio * 0.8, cx, cy, raio);
+  rim.addColorStop(0, 'rgba(0,0,0,0)'); rim.addColorStop(1, 'rgba(0,0,0,.6)');
+  ctx.fillStyle = rim;
+  ctx.beginPath(); ctx.arc(cx, cy, raio, 0, 6.2832); ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,.5)';
+  ctx.textAlign = 'center';
+  ctx.font = '600 12px system-ui, sans-serif';
+  ctx.fillText('aproxime para voltar à vila', cx, cy + raio + 24);
+}
+
 function desenhar() {
+  if (cam.z < ZOOM_LIMIAR) { desenharVisaoDistante(); return; }
   const z = cam.z, vw0 = W / z, vh0 = H / z;
   const camIso = mundoParaIso(cam.x, cam.y);
 
