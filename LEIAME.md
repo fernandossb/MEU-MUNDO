@@ -1611,6 +1611,54 @@ sem salto nenhum com o disco puro do outro lado — mobile e desktop.
 
 ---
 
+## Sistema multi-escala: da decoração pro dado real (etapas 1 e 2 de 6)
+
+Pedido grande, com escopo definido em plano escrito antes de qualquer
+código (`.claude/plans/robust-conjuring-reef.md`, aprovado por você):
+transformar o planeta de decoração pura em algo que preserva a posição
+real de tudo, com câmera subindo em camadas de detalhe — vila, região,
+território, planeta — em vez de só vila e um disco decorativo. Decisão de
+arquitetura confirmada antes de escrever: **o mundo continua infinito**
+(não vira um globo fechado com fronteira) — a "curvatura de planeta" no
+zoom máximo é a mesma malha de ruído infinita de sempre, só vista de muito
+longe, dentro de um horizonte redondo. Um mundo finito de verdade
+(circundável) seria um projeto ainda maior e diferente deste.
+
+**Etapa 1 — generalizar o dispatcher.** `desenhar()` virou um loop sobre
+uma lista de camadas (`CAMADAS_ZOOM`) em vez do bloco fixo de duas visões.
+A transição em si ganhou DUAS variantes, escritas uma vez e reaproveitadas
+por qualquer par de camadas vizinhas: cross-fade simples (duas visões
+retângulo-contra-retângulo, sem curvatura ainda) e a janela circular
+fechando (só pro par que entra na visão curva do planeta). Publicada sem
+nenhuma mudança visual, só provando que a generalização não quebrou nada.
+
+**Etapa 2 — camada Região.** Nova, entre vila e planeta: mesmo terreno de
+verdade (`pegarChunk`, o mesmo bitmap de sempre), sem o loop de prédio/
+gente/árvore individual — no lugar de cada prédio, um ponto na posição
+REAL de cada vila (a sua e as rivais vivas), pela primeira vez fora do
+zoom de jogo normal. "Vestígio de civilização" deixou de ser decoração.
+
+**Um bug real no meio do caminho**: a primeira tentativa de dar à Região
+seus próprios limiares reaproveitou `ZOOM_TRANSICAO_FIM` (o fim da vila)
+como o TETO da região também — o que colapsava a faixa inteira da região
+em transição contínua com o planeta, sem sobrar nenhum ponto realmente
+"só região". Cada fronteira entre camadas precisa do PRÓPRIO par de
+limiares — por isso `REGIAO_LIMIAR` (teto da região) é uma constante nova,
+separada de `ZOOM_TRANSICAO_FIM` (que já era o piso da vila). Achado e
+corrigido antes de publicar, testando ao vivo em cada zoom candidato, não
+só nos extremos.
+
+Testado ao vivo: vila pura, transição vila→região (blend visível, sutil
+porque os dois usam o mesmo terreno de baixo — só prédio/árvore que
+esmaece), região pura (com o ponto da vila certo), transição região→
+planeta (janela fechando, mesmo terreno visível encolhendo dentro dela),
+planeta puro — mobile e desktop.
+
+Faltam as etapas 3-6 do plano (território, planeta com dado real, UI por
+camada, passe de performance).
+
+---
+
 ## Estrutura
 
 ```

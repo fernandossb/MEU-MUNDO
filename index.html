@@ -5462,13 +5462,17 @@ let W = 0, H = 0, DPR = 1;
 const cam = { x:0, y:0, z:1 };
 let selecao = [];
 
-// Abaixo do zoom mínimo de sempre (ZOOM_LIMIAR — antigo "chão" do pinça/roda)
-// a câmera entra na faixa nova, só de vestígio de civilização e decoração —
-// ver 'desenharVisaoDistante'. ZOOM_MIN é o novo chão, bem mais longe.
-// Entre ZOOM_LIMIAR e ZOOM_TRANSICAO_FIM as duas visões se misturam (ver
-// 'desenhar') — sem essa faixa a troca era um corte seco, reportado como
-// "mudança muito brusca".
-const ZOOM_LIMIAR = 0.55, ZOOM_TRANSICAO_FIM = 0.40, ZOOM_MIN = 0.15, ZOOM_MAX = 1.8;
+// Sistema multi-escala (vila → região → planeta, plano em
+// C:\Users\PPCP\.claude\plans\robust-conjuring-reef.md). Cada camada do
+// meio (hoje só 'região') precisa de DOIS pares de limiar — um de cada
+// lado — porque ela mistura com a vizinha de cada ponta: ZOOM_LIMIAR/
+// ZOOM_TRANSICAO_FIM cercam a faixa vila→região (vila pura acima do
+// primeiro, região pura abaixo do segundo); REGIAO_LIMIAR/ZOOM_MIN cercam
+// região→planeta do mesmo jeito. Reaproveitar ZOOM_TRANSICAO_FIM como teto
+// de "região pura" TAMBÉM foi tentado e falhou — colapsava a faixa inteira
+// da região em transição, sem sobrar zona pura nenhuma; por isso o par de
+// cada fronteira é dedicado, não compartilhado.
+const ZOOM_LIMIAR = 0.55, ZOOM_TRANSICAO_FIM = 0.40, REGIAO_LIMIAR = 0.30, ZOOM_MIN = 0.15, ZOOM_MAX = 1.8;
 
 function redimensionar() {
   DPR = Math.min(window.devicePixelRatio || 1, 2);
@@ -9173,19 +9177,86 @@ function desenharVisaoDistante(alpha) {
    é o caso base, sempre "pura" quando o zoom cai até ela, sem precisar de
    nada dessas três propriedades.
 
-   O TRUQUE DE TRANSIÇÃO (a mesma "janela circular fechando", não um
-   cross-fade — ver o histórico dessa decisão) é escrito UMA VEZ aqui e
-   vale pra qualquer par de camadas vizinhas da lista, não só vila↔planeta:
-   a de trás desenha cheia primeiro; a da frente desenha por cima, só
-   dentro de uma janela circular que encolhe de "maior que a tela" (no
-   início da faixa dela) até o raio da de trás (no fim), esmaecendo junto.
+   TRANSIÇÃO ENTRE CAMADAS — duas variantes, escritas uma vez aqui, e vale
+   pra qualquer par vizinho da lista:
+
+   - Só 'zPuro'/'zFimTransicao' (sem 'raioNoFim'): CROSS-FADE simples — as
+     duas camadas são retângulo cheio (nenhuma virou disco de planeta
+     ainda), então a de trás só precisa esmaecer por baixo enquanto a da
+     frente esmaece por cima. Sobe pra cima, o zoom pedido descreve
+     curvatura só bem no fim da jornada — cross-fade é o efeito certo
+     enquanto isso não chegou.
+   - Com 'raioNoFim': a "janela circular fechando" (não cross-fade — ver o
+     histórico dessa decisão) — pro par que entra na visão curva do
+     planeta, a de trás desenha cheia primeiro; a da frente desenha por
+     cima, só dentro de uma janela circular que encolhe de "maior que a
+     tela" (no início da faixa dela) até o raio da de trás (no fim),
+     esmaecendo junto.
 */
+/*
+   CAMADA REGIÃO. Mesmo terreno de verdade da vila — mesmo bitmap de chunk,
+   'pegarChunk' de sempre, mesmo cálculo de quanto de mundo a câmera
+   alcança — só sem o loop de prédio/gente/árvore individual, que é o que
+   pesa e o que não faz sentido enxergar daqui de cima. No lugar de cada
+   prédio, um ícone na posição REAL de cada vila (a sua e as rivais vivas)
+   — aqui "vestígio de civilização" já é dado de verdade, não decoração.
+*/
+function desenharRegiao() {
+  const z = cam.z, vw0 = W / z, vh0 = H / z;
+  const camIso = mundoParaIso(cam.x, cam.y);
+  const cantos = [
+    isoParaMundo(camIso.x - vw0 / 2, camIso.y - vh0 / 2),
+    isoParaMundo(camIso.x + vw0 / 2, camIso.y - vh0 / 2),
+    isoParaMundo(camIso.x - vw0 / 2, camIso.y + vh0 / 2),
+    isoParaMundo(camIso.x + vw0 / 2, camIso.y + vh0 / 2),
+  ];
+  const camX = Math.min(cantos[0].x, cantos[1].x, cantos[2].x, cantos[3].x);
+  const camXmax = Math.max(cantos[0].x, cantos[1].x, cantos[2].x, cantos[3].x);
+  const camY = Math.min(cantos[0].y, cantos[1].y, cantos[2].y, cantos[3].y);
+  const camYmax = Math.max(cantos[0].y, cantos[1].y, cantos[2].y, cantos[3].y);
+
+  ctx.setTransform(DPR * z, 0, 0, DPR * z, W * DPR / 2 - camIso.x * DPR * z, H * DPR / 2 - camIso.y * DPR * z);
+  ctx.imageSmoothingEnabled = true;
+
+  const c0x = Math.floor(camX / CPX), c0y = Math.floor(camY / CPX);
+  const c1x = Math.floor(camXmax / CPX), c1y = Math.floor(camYmax / CPX);
+  ctx.save();
+  ctx.transform(ISO_A, ISO_B, ISO_C, ISO_D, 0, 0);
+  for (let cy = c0y; cy <= c1y; cy++)
+    for (let cx = c0x; cx <= c1x; cx++) {
+      const ch = pegarChunk(cx, cy);
+      ctx.drawImage(ch.cv, cx * CPX, cy * CPX);
+    }
+  ctx.restore();
+
+  // Ícones de vila — raio fixo EM TELA (dividido por z, já que a matriz
+  // ativa multiplica por z): não some nem vira bola gigante conforme
+  // a região encolhe/cresce dentro da própria faixa de zoom.
+  const marcas = [];
+  const centro = typeof centroDaVila === 'function' && centroDaVila();
+  if (centro) marcas.push({ x: centro.cx, y: centro.cy, cor: '#ffe08a' });
+  for (const v of rivaisVivas()) marcas.push({ x: v.tx * TILE, y: v.ty * TILE, cor: v.cor });
+  for (const m of marcas) {
+    const p = mundoParaIso(m.x, m.y);
+    ctx.fillStyle = m.cor;
+    ctx.shadowBlur = 8 / z; ctx.shadowColor = m.cor;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 9 / z, 0, 6.2832); ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+}
+
 const CAMADAS_ZOOM = [
   {
     nome: 'vila',
     desenhar: desenharVilaNormal,
     zPuro: ZOOM_LIMIAR,
     zFimTransicao: ZOOM_TRANSICAO_FIM,
+  },
+  {
+    nome: 'regiao',
+    desenhar: desenharRegiao,
+    zPuro: REGIAO_LIMIAR,
+    zFimTransicao: ZOOM_MIN,
     raioNoFim: raioDoPlaneta,
   },
   {
@@ -9201,11 +9272,13 @@ function desenhar() {
     if (cam.z >= c.zFimTransicao) {
       CAMADAS_ZOOM[i + 1].desenhar();   // a de trás, cheia, por baixo
       const alpha = (c.zPuro - cam.z) / (c.zPuro - c.zFimTransicao);   // 0 no topo, 1 no fundo
-      const raioGrande = Math.hypot(W, H) / 2 + 20;   // maior que a diagonal: nenhum corte visível ainda
-      const raioJanela = raioGrande + (c.raioNoFim() - raioGrande) * alpha;
       ctx.save();
-      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-      ctx.beginPath(); ctx.arc(W / 2, H / 2, raioJanela, 0, 6.2832); ctx.clip();
+      if (c.raioNoFim) {
+        const raioGrande = Math.hypot(W, H) / 2 + 20;   // maior que a diagonal: nenhum corte visível ainda
+        const raioJanela = raioGrande + (c.raioNoFim() - raioGrande) * alpha;
+        ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+        ctx.beginPath(); ctx.arc(W / 2, H / 2, raioJanela, 0, 6.2832); ctx.clip();
+      }
       ctx.globalAlpha = 1 - alpha;
       c.desenhar();
       ctx.restore();
