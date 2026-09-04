@@ -9087,6 +9087,38 @@ function raioDoPlaneta() {
   return Math.min(W, H) * (0.62 - prof * 0.16);
 }
 
+/*
+   TEXTURA DO PLANETA. Amostra REAL de 'elevacao' (a mesma rampa de cor,
+   'corDaRampa', que colore o chão de perto) num grid grosso, coberta numa
+   canvas pequena — trocando os blobs de relevo por hash (decoração) por
+   geografia de verdade, sem custar 9 mil chamadas de ruído por quadro.
+   Cacheada e só refeita quando a câmera andou o bastante ou o raio do
+   disco mudou — parado olhando o planeta, o custo é só o primeiro quadro.
+*/
+const PLANETA_TEX_N = 96;
+let planetaTex = null, planetaTexRaio = null, planetaTexCamX = null, planetaTexCamY = null;
+function planetaTextura(raio) {
+  if (planetaTex && planetaTexRaio === raio &&
+      Math.hypot(cam.x - planetaTexCamX, cam.y - planetaTexCamY) < 300) return planetaTex;
+  const N = PLANETA_TEX_N;
+  const cv = document.createElement('canvas');
+  cv.width = N; cv.height = N;
+  const g = cv.getContext('2d');
+  const img = g.createImageData(N, N);
+  const passoMundo = (raio * 2 / N) / ESCALA_PLANETA;   // px de mundo por célula da textura
+  for (let iy = 0; iy < N; iy++)
+    for (let ix = 0; ix < N; ix++) {
+      const wx = cam.x + (ix - N / 2 + 0.5) * passoMundo;
+      const wy = cam.y + (iy - N / 2 + 0.5) * passoMundo;
+      const [r, gg, b] = corDaRampa(elevacao(Math.round(wx / TILE), Math.round(wy / TILE)));
+      const i = (iy * N + ix) * 4;
+      img.data[i] = r; img.data[i + 1] = gg; img.data[i + 2] = b; img.data[i + 3] = 255;
+    }
+  g.putImageData(img, 0, 0);
+  planetaTex = cv; planetaTexRaio = raio; planetaTexCamX = cam.x; planetaTexCamY = cam.y;
+  return cv;
+}
+
 function desenharVisaoDistante(alpha) {
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
   ctx.globalAlpha = alpha;
@@ -9109,23 +9141,15 @@ function desenharVisaoDistante(alpha) {
   ctx.save();
   ctx.beginPath(); ctx.arc(cx, cy, raio, 0, 6.2832); ctx.clip();
 
-  // --- corpo do planeta, luz vindo de cima-esquerda ---
-  const base = ctx.createRadialGradient(cx - raio * 0.35, cy - raio * 0.38, raio * 0.1, cx, cy, raio * 1.15);
-  base.addColorStop(0, '#93b567'); base.addColorStop(0.55, '#5c8a48'); base.addColorStop(1, '#213018');
-  ctx.fillStyle = base;
+  // --- corpo do planeta: geografia real (ver 'planetaTextura'), com uma luz
+  //     leve por cima vindo de cima-esquerda — só volume, não é mais dado ---
+  const tex = planetaTextura(raio);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(tex, cx - raio, cy - raio, raio * 2, raio * 2);
+  const luz = ctx.createRadialGradient(cx - raio * 0.35, cy - raio * 0.38, raio * 0.1, cx, cy, raio * 1.15);
+  luz.addColorStop(0, 'rgba(255,255,255,.16)'); luz.addColorStop(0.55, 'rgba(255,255,255,0)'); luz.addColorStop(1, 'rgba(0,0,0,.22)');
+  ctx.fillStyle = luz;
   ctx.fillRect(cx - raio, cy - raio, raio * 2, raio * 2);
-
-  // --- relevo: blobs decorativos, deriva bem lenta (mais devagar que a nuvem) ---
-  const derivaRelevo = t * 3;
-  for (let i = 0; i < 14; i++) {
-    const ang = hash2(i, 1, 42) * 6.2832, r = hash2(i, 2, 42) * raio * 0.92;
-    const x = cx + Math.cos(ang) * r + derivaRelevo * 0.15, y = cy + Math.sin(ang) * r * 0.94;
-    const tam = raio * (0.05 + hash2(i, 3, 42) * 0.09);
-    ctx.fillStyle = 'rgba(40,44,30,.28)';
-    ctx.beginPath(); ctx.ellipse(x + tam * 0.15, y + tam * 0.2, tam, tam * 0.62, 0.4, 0, 6.2832); ctx.fill();
-    ctx.fillStyle = 'rgba(150,140,110,.35)';
-    ctx.beginPath(); ctx.ellipse(x, y, tam * 0.8, tam * 0.5, 0.4, 0, 6.2832); ctx.fill();
-  }
 
   // --- vestígios de civilização: um ponto por quarteirão com dono, cor real ---
   const { ox, oy } = origemMalha();

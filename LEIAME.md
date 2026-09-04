@@ -1698,6 +1698,38 @@ performance).
 
 ---
 
+## Sistema multi-escala: planeta com dado real (etapa 4 de 6)
+
+Últimos blobs decorativos caem: o "relevo" do planeta (posição por hash,
+nunca foi terreno de verdade) virou amostra real de `elevacao`, colorida
+pela MESMA rampa (`corDaRampa`) que pinta o chão de perto — o planeta
+passa a mostrar a geografia de verdade ao redor da vila (água, floresta,
+rocha, neve), não uma textura genérica.
+
+Amostrar `elevacao` ponto a ponto a cada quadro (o grid cobre uma boa
+faixa do disco) seria caro demais parado olhando pro planeta — por isso
+`planetaTextura()` cozinha uma canvas pequena (96×96) e GUARDA: só refaz
+quando a câmera anda mais de 300px de mundo desde a última vez, ou o raio
+do disco muda. Medido ao vivo: ~1,7ms por quadro parado (a textura já
+cacheada, só reaproveitada), ~18ms por quadro arrastando o mapa sem parar
+dentro do planeta (pior caso, refazendo a textura toda hora) — no limite
+de 60fps mas não quebra; candidato a ajuste fino na etapa 6 (passo de
+amostragem maior, ou distância maior antes de refazer) se o arrasto
+contínuo no planeta ficar sensivelmente pesado num aparelho real.
+
+Nuvem, estrelas e rim-light continuam exatamente como estavam — só o
+relevo do meio (que sempre foi a peça "falsa" da composição) virou dado
+real; o resto já era atmosfera, não mapa.
+
+Testado ao vivo: geografia reconhecível (lago, floresta, neve) visível no
+disco, pontos de civilização certos por cima do terreno real, transição
+território→planeta com cores batendo dos dois lados, tempo de quadro
+medido parado e arrastando — mobile e desktop.
+
+Faltam as etapas 5-6 (UI por camada, passe de performance).
+
+---
+
 ## Estrutura
 
 ```
