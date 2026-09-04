@@ -1447,6 +1447,49 @@ que a removeu é que criou o problema. Restaurada como era.
 
 ---
 
+## Prédios 50% maiores, e a árvore ganhou foto
+
+Dois pedidos diretos depois de ver a vila com os tamanhos corrigidos: mais
+escala nos prédios (a leva anterior tinha restaurado os 30% de sempre,
+`ESCALA_PREDIO` foi pra 1,5 — só isso, mesmo mecanismo, praça continua de
+fora pelo próprio teto), e duas coisas nas árvores.
+
+**Copa em cima da rua.** A árvore é desenhada mais larga que o próprio tile
+(dá volume, evita fileira de palito) — encostada numa rua, a copa passa
+visivelmente por cima do calçamento. `jogo.estradas.has(k)` só impedia
+NASCER em cima da rua; faltava impedir nascer COLADO nela. Três frentes:
+`pertoDeRua()` barra a rebrota (`rebrotarMata`, primavera) a um tile de
+qualquer rua, não só em cima dela; `limparArvoresRentesA()` remove árvore
+de pé colada numa rua recém-aberta, chamada nos três lugares que constroem
+rua — não espera a próxima primavera; e a mesma limpeza roda uma vez sobre
+as ruas já salvas no carregamento, pra quem já tinha o problema de sessões
+anteriores.
+
+**Árvore fotográfica.** Trocado o desenho vetorial (`spriteArvore`/
+`spriteConifera`) por fotos — 10 arquivos do usuário (`C:\Users\PPCP\
+Downloads\ÁRVORES`), fundo preto chapado, mesma técnica da primeira leva
+de prédio (jpeg → png via System.Drawing do .NET, sem instalar nada;
+flood-fill a partir da borda). Cada espécie tem uma foto "normal" e uma
+irmã "com neve" do mesmo molde — o pareamento saiu do CONTEÚDO da imagem,
+não do número do arquivo (`NORMAL1`=bidoeiro↔`NEVE3`, `NORMAL2`=conífera↔
+`NEVE2`, `NORMAL3`=carvalho↔`NEVE4`, `NORMAL4`=morta/seca↔`NEVE1`,
+`FRUTIFERA1`↔`FRUTIFERANEVE1`).
+
+A escolha de espécie preserva o que já existia: conífera continua vindo da
+elevação do terreno (`coniferaEm`, monte vira pinheiro), e as outras quatro
+espécies se revezam pela semente do próprio nó — não é aleatório a cada
+quadro, é sempre a mesma árvore no mesmo lugar. Neve é a mesma flag de
+bioma que já existia. Âncora replicada do vetorial que substituiu: centro
+horizontal, base do tronco ~3px abaixo do centro do tile — sem isso a
+árvore nova ficaria flutuando ou afundada em relação ao lugar onde a
+antiga sempre encostou.
+
+Ferramenta nova, `ferramentas/extrair-arvores.js` — mesmo cuidado de nunca
+ampliar além da origem (fonte é só 128×128) que as levas de prédio já
+tinham. Pedra e moita (arbusto) continuam vetoriais — só árvore foi pedida.
+
+---
+
 ## Estrutura
 
 ```
