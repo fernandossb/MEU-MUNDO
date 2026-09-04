@@ -94,7 +94,19 @@
   #bar::-webkit-scrollbar { display:none; }
   #bar .btn { flex:0 0 auto; flex-direction:column; gap:3px; min-width:62px; padding:7px 9px; scroll-snap-align:start; }
   #bar .ic { font-size:18px; }
-  #bar.escondido { display:none; }
+  #bar.escondido, #bar.zoom-distante { display:none; }
+  /* Rótulo da camada de zoom (região/território/planeta) — só existe fora
+     do zoom de vila, ver 'atualizarUiDeZoom'. */
+  /* Embaixo, não em cima: é exatamente onde a barra de construção (que some
+     junto, mesma condição) deixa de ocupar espaço — em vez de brigar com o
+     painel de recursos lá em cima, que em tela estreita já usa a largura
+     toda e não sobra onde encaixar um rótulo centralizado sem sobrepor. */
+  #camadaZoom {
+    position:absolute; left:50%; bottom:calc(env(safe-area-inset-bottom) + 8px);
+    transform:translateX(-50%); padding:6px 16px; font-size:12px; font-weight:600;
+    letter-spacing:.04em; text-transform:uppercase; opacity:.85; display:none;
+  }
+  #camadaZoom.on { display:block; }
   /* Etiqueta da categoria: fica na vertical para ocupar quase nada de largura. */
   #bar .cat {
     flex:0 0 auto; display:flex; align-items:center; justify-content:center;
@@ -264,6 +276,7 @@
 <canvas id="game"></canvas>
 
 <div id="ui">
+  <div id="camadaZoom" class="panel"></div>
   <div id="topo">
     <div id="res" class="panel">
       <span>🌳<b id="r-madeira">0</b></span>
@@ -6007,7 +6020,21 @@ elCal.veloc.onclick = () => {
 // O painel do calendário precisa receber toque só neste botão; o resto
 // continua deixando o dedo passar para o mapa.
 el('calendario').style.pointerEvents = 'none';
-const barEl = el('bar'), placeEl = el('place'), placeNome = el('placenome');
+const barEl = el('bar'), placeEl = el('place'), placeNome = el('placenome'), camadaZoomEl = el('camadaZoom');
+const NOME_DA_CAMADA = { vila: null, regiao: 'Região', territorio: 'Território', planeta: 'Planeta' };
+let camadaZoomAtual = '';
+// Construir/selecionar só faz sentido perto o bastante pra ver casa e gente
+// individualmente — nas camadas de longe a barra de construção some (mesma
+// classe 'zoom-distante', que não briga com o 'escondido' que os outros
+// fluxos de UI já usam) e um rótulo pequeno avisa em qual camada você está.
+function atualizarUiDeZoom(nome) {
+  if (nome === camadaZoomAtual) return;
+  camadaZoomAtual = nome;
+  barEl.classList.toggle('zoom-distante', nome !== 'vila');
+  const rotulo = NOME_DA_CAMADA[nome];
+  camadaZoomEl.classList.toggle('on', !!rotulo);
+  if (rotulo) camadaZoomEl.textContent = rotulo;
+}
 
 function atualizarHUD() {
   elRes.madeira.textContent = Math.floor(jogo.recursos.madeira);
@@ -9404,9 +9431,10 @@ const CAMADAS_ZOOM = [
 function desenhar() {
   for (let i = 0; i < CAMADAS_ZOOM.length - 1; i++) {
     const c = CAMADAS_ZOOM[i];
-    if (cam.z >= c.zPuro) { c.desenhar(); return; }
+    if (cam.z >= c.zPuro) { c.desenhar(); atualizarUiDeZoom(c.nome); return; }
     if (cam.z >= c.zFimTransicao) {
-      CAMADAS_ZOOM[i + 1].desenhar();   // a de trás, cheia, por baixo
+      const farCam = CAMADAS_ZOOM[i + 1];
+      farCam.desenhar();   // a de trás, cheia, por baixo
       const alpha = (c.zPuro - cam.z) / (c.zPuro - c.zFimTransicao);   // 0 no topo, 1 no fundo
       ctx.save();
       if (c.raioNoFim) {
@@ -9418,10 +9446,12 @@ function desenhar() {
       ctx.globalAlpha = 1 - alpha;
       c.desenhar();
       ctx.restore();
+      atualizarUiDeZoom(alpha < 0.5 ? c.nome : farCam.nome);
       return;
     }
   }
   CAMADAS_ZOOM[CAMADAS_ZOOM.length - 1].desenhar();   // a mais distante, pura
+  atualizarUiDeZoom(CAMADAS_ZOOM[CAMADAS_ZOOM.length - 1].nome);
 }
 
 function desenharVilaNormal() {

@@ -1730,6 +1730,36 @@ Faltam as etapas 5-6 (UI por camada, passe de performance).
 
 ---
 
+## Sistema multi-escala: UI por camada (etapa 5 de 6)
+
+Construir e selecionar só fazem sentido perto o bastante pra ver casa e
+gente — nas camadas de longe (região, território, planeta) a barra de
+construção some, e um rótulo pequeno avisa em qual camada você está.
+
+`atualizarUiDeZoom()`, chamada de dentro de `desenhar()` (já sabe qual
+camada está ativa, ou quais duas em transição — durante a mistura, mostra
+o nome de quem tem mais peso visual no momento, trocando no meio da
+faixa). A barra ganhou uma classe nova (`zoom-distante`) em vez de mexer
+na `escondido` que os outros fluxos de UI (folha aberta, colocando prédio,
+traçando rua) já usam — as duas classes escondem independente uma da
+outra, então não há risco de uma pisar na lógica da outra.
+
+**Um acerto de posição no meio do caminho**: o rótulo nasceu centralizado
+no topo, do lado do painel de recursos — e em tela de celular, que é
+estreita, o painel de recursos já usa quase a largura toda, então o
+rótulo caiu por baixo dele, coberto (`#topo` vem depois no HTML, pinta por
+cima). Resolvido reposicionando pra baixo, onde a barra de construção
+"deixou vago" — mesma condição de visibilidade das duas (`zoom-distante`),
+nunca vão competir pelo mesmo espaço ao mesmo tempo.
+
+Testado ao vivo: barra sumindo/voltando exatamente na fronteira da vila,
+rótulo certo nas três camadas de longe e ausente na vila, sem sobreposição
+com o painel de recursos — mobile e desktop.
+
+Falta só a etapa 6 (passe de performance).
+
+---
+
 ## Estrutura
 
 ```
