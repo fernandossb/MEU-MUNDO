@@ -2078,6 +2078,78 @@ visual (desktop e mobile): castelo e casa da mesma vila, cores batendo.
 
 ---
 
+## Vila rival no mesmo ritmo, e o painel "Vilas rivais"
+
+Pedido explícito, três partes: vila rival crescer no mesmo ritmo que a sua
+(só a cor muda), isso valer com o tempo acelerado, e dar pra VER o
+desempenho de cada uma. Plano em `.claude/plans/robust-conjuring-reef.md`.
+
+**O relógio já era o mesmo — investigado, não era isso.** `quadro()` roda
+`passo(dt)` até `velocidade` vezes por quadro, e é dentro de `passo()` que
+`tickDia()` dispara ao cruzar um dia — a mesma chamada que processa
+nascimento/morte da sua vila E roda `tickVilas()` pra cada rival.
+Acelerar pra 16× não desacopla os dois: os dois avançam dia a dia juntos,
+pela mesma chamada.
+
+**O painel "Vilas rivais"** (🏘️ novo na barra lateral, só aparece com
+`emDisputa()`) veio primeiro de propósito — item 3 do pedido, e também a
+ferramenta que tornou possível medir os itens 1 e 2 de verdade, com número
+do jogo real em vez de suposição. Mesmo padrão visual de "📊 Produção da
+vila" (as classes já existiam); reaproveita a mesma fórmula de economia da
+vizinha só pra LER (`saldoDiarioRival`, não muda estoque — quem muda é
+sempre `diaDaVilaRival`), e mostra por vila: população/capacidade,
+comida/madeira/pedra (estoque sobre teto + saldo por dia), prédios,
+quarteirões — com a sua vila resumida no topo, pra comparar sem trocar de
+tela.
+
+**O que a medição achou — dois bugs de verdade, não a vizinha sendo lenta
+por natureza.**
+
+Medindo emparelhado (jogador e uma vila rival, mesmo ponto de partida,
+mesmos dias, usando `recuperarOffline` — a MESMA rotina que o jogo já usa
+pra avançar sua vila quando você estava fora, reaproveitada pra medir em
+vez de esperar dias de verdade passarem): nos primeiros ~280 dias os dois
+cresciam parecido. Depois, a SUA vila disparava — 8→481 pessoas em 480
+dias, contra a vizinha crescendo devagar e constante. Isso não era "a
+vizinha devagar" — era a SUA vila rápida demais.
+
+**Bug 1 — `avancarObras` (o motor de construção de `recuperarOffline`)
+dava o ritmo INTEIRO pra CADA canteiro aberto, não pra vila toda.**
+O comentário do próprio código já dizia a intenção: "1,65 é o ritmo que o
+jogo sempre teve sem você — um operário e meio martelando", no SINGULAR,
+descrevendo a vila inteira. Mas o código aplicava esse 1,65 a CADA prédio
+em obra independentemente — com até três ao mesmo tempo (`OBRAS_AO_MESMO_
+TEMPO`), uma casa (tempo:70) terminava em bem menos de um dia, e o
+conselho enfileirava outra no dia seguinte, sem parar: um circuito
+casa→gente→trabalhador→recurso→casa girando livre, sem o freio de mão de
+obra que o jogo aberto sempre teve (equipe pequena por obra, gente ocupada
+com outra coisa). Corrigido: reparte o mesmo 1,65 entre os canteiros
+abertos, não dá um inteiro pra cada.
+
+**Bug 2 — a vizinha só sabia construir `casa` (5 de teto), nunca
+`sobrado` (9), mesmo com prédio e recurso de sobra.** Mesmo com o Bug 1
+corrigido e sem teto artificial de tentativas por dia (ver "Três ajustes
+de simulação" — o teto de 4 tentativas fazia sentido pro problema que
+resolvia, mas virou gargalo novo numa vila grande com mais de quatro
+coisas genuinamente faltando no mesmo dia), a população da vizinha ainda
+ficava bem atrás da sua numa vila grande — porque o TETO de moradia dela
+crescia mais devagar, preso a `casa` só, enquanto a sua já escolhe sobrado
+a partir de pop 20 (mesmo `conselho()`). `capacidadeMoradiaRival` soma de
+verdade sobre os prédios da vizinha (funciona pra qualquer mistura de
+tipo), e `chaveDeMoradiaRival` aplica o MESMO limiar de pop 20 que o seu
+conselho já usa.
+
+**Testado ao vivo, medição pareada de verdade (não só o primeiro dia):**
+com as três correções, jogador e vizinha ficaram próximos (proporção
+0,8–1,2, a vizinha às vezes até na frente em prédio) por um bom trecho —
+até uns 350 dias simulados. Depois disso ainda sobra uma divergência
+menor, plausivelmente o próprio mecanismo de migração (`migrarEntreVilas`)
+puxando gente pro lado mais próspero — que é a disputa territorial
+FUNCIONANDO como já era pra funcionar, não um bug novo; fica registrado
+como algo a olhar de novo se continuar incomodando, não escondido.
+
+---
+
 ## Estrutura
 
 ```

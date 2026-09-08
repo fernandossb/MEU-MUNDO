@@ -308,6 +308,7 @@
   <div id="lateral">
     <div id="btn-centro" class="btn panel">🏰</div>
     <div id="btn-producao" class="btn panel">📊</div>
+    <div id="btn-rivais" class="btn panel" style="display:none">🏘️</div>
     <div id="btn-pedidos" class="btn panel">🧾<span id="badge-pedidos" class="badge" style="display:none">0</span></div>
     <div id="btn-missoes" class="btn panel">🎯</div>
     <div id="btn-cronica" class="btn panel">📜</div>
@@ -420,6 +421,13 @@
     <p class="hint">Medido, não estimado: cada entrada e saída é anotada quando acontece. Os números são por dia de jogo.</p>
     <div class="lista" id="producao-lista"></div>
     <div class="btn" id="producao-fechar">Fechar</div>
+  </div>
+
+  <div id="rivais" class="folha">
+    <h2>🏘️ Vilas rivais</h2>
+    <p class="hint">Mesmo objetivo que o seu — construir uma civilização —, mesmo ritmo. Só a cor muda.</p>
+    <div class="lista" id="rivais-lista"></div>
+    <div class="btn" id="rivais-fechar">Fechar</div>
   </div>
 
   <div id="pedidos" class="folha">
@@ -3091,7 +3099,7 @@ function prosperidadeMinha() {
 function prosperidadeDe(v) {
   if (!v.pop) return 0;
   const dias = v.comida / Math.max(0.01, v.pop * COMIDA_POR_ANO / DIAS_NO_ANO);
-  return nota(dias, Math.max(0, v.casas * 5 - v.pop), v.blocos.length, v.pop);
+  return nota(dias, Math.max(0, capacidadeMoradiaRival(v) - v.pop), v.blocos.length, v.pop);
 }
 
 /* ---------------------------------------------------- o dia da vizinha --- */
@@ -3117,6 +3125,27 @@ function pagarVilaRival(v, custo) {
 const contarRival = (v, chave) => v.predios.filter(p => p.chave === chave).length;
 
 /*
+   BUG ACHADO MEDINDO — mesmo com prédio proativo e sem teto de tentativas
+   (as duas correções acima), a população da vizinha ainda ficava bem atrás
+   da sua numa vila grande: 386 contra 131 aos 500 dias, com prédio contado
+   quase igual (156 contra 89). A causa: a vizinha só sabia construir
+   'casa' (5 de teto) — nunca 'sobrado' (9) nem melhoria nenhuma —, então
+   mesmo com prédio de sobra o teto de população dela cresce bem mais
+   devagar que o seu, que já escolhe sobrado a partir de pop 20 (mesmo
+   'conselho()'). 'capacidadeMoradiaRival' substitui a conta antiga
+   'v.casas*5' (que só sabia contar casa) por uma soma de verdade sobre
+   'v.predios' — funciona pra qualquer mistura de casa e sobrado.
+*/
+const capacidadeMoradiaRival = v => v.predios.reduce((s, p) => s + (p.def.moradia ? p.def.pop : 0), 0);
+
+// Mesmo teto de pop 20 que o conselho do jogador já usa pra preferir
+// sobrado (ver conselho(), seção de teto) — casa e sobrado cabem no MESMO
+// lote, e sobrado dá quase o dobro de gente por construção.
+function chaveDeMoradiaRival(v) {
+  return v.pop >= 20 && podeVilaRivalPagar(v, PREDIO.sobrado.custo) ? 'sobrado' : 'casa';
+}
+
+/*
    O QUE CONSTRUIR HOJE — mesma prioridade do conselho do jogador (comida
    primeiro, depois teto, depois o resto por proporção de população), só mais
    simples porque a vizinha não tem fila de pedido nem aprovação: decide e já
@@ -3133,8 +3162,11 @@ function tentarConstruirNaVilaRival(v) {
   if (querLavoura && podeVilaRivalPagar(v, PREDIO.fazenda.custo)) {
     if (erguerNaVilaRival(v, 'fazenda')) { pagarVilaRival(v, PREDIO.fazenda.custo); v.lavouras++; return true; }
   }
-  if (v.casas * 5 - v.pop < 3 && podeVilaRivalPagar(v, PREDIO.casa.custo)) {
-    if (erguerNaVilaRival(v, 'casa')) { pagarVilaRival(v, PREDIO.casa.custo); v.casas++; return true; }
+  if (capacidadeMoradiaRival(v) - v.pop < 3) {
+    const chave = chaveDeMoradiaRival(v);
+    if (podeVilaRivalPagar(v, PREDIO[chave].custo) && erguerNaVilaRival(v, chave)) {
+      pagarVilaRival(v, PREDIO[chave].custo); return true;
+    }
   }
   // Mina só entra na lista perto de rocha de verdade — 'erguerNaVilaRival'
   // agora exige isso no lote (mesma regra do jogador); sem essa checagem
@@ -3160,25 +3192,46 @@ function tentarConstruirNaVilaRival(v) {
      "só rua depois do primeiro quarteirão"). Constrói casa mesmo sem
      precisar ainda — mesma filosofia do conselho do jogador ("a vila não
      espera lotar para construir") — e o efeito é duplo: preenche o
-     quarteirão vazio E levanta o teto de população (v.casas*5), que por sua
-     vez destrava fazenda/oficina/mina — todos os gatilhos acima — mais
-     cedo, puxando a vizinha pra fora do próprio estagnamento.
+     quarteirão vazio E levanta o teto de população, que por sua vez
+     destrava fazenda/oficina/mina — todos os gatilhos acima — mais cedo,
+     puxando a vizinha pra fora do próprio estagnamento.
 
      MAS com teto: primeira versão disto (sem a segunda condição) chegou a
      395 casas para 6 fazendas e 19 de população, medido ao vivo — nascimento
      é lento demais pra acompanhar teto de moradia sem limite nenhum. Só
-     constrói proativamente enquanto a vaga ociosa (casas*5 - pop) for MENOR
-     que a própria população — ou seja, no máximo o dobro de teto sobre gente
-     de verdade. Depois disso, se ainda sobrar quarteirão vazio, é a
-     população mesmo que está devagar, não falta de tentativa — aceita a
+     constrói proativamente enquanto a vaga ociosa (capacidade - pop) for
+     MENOR que a própria população — ou seja, no máximo o dobro de teto
+     sobre gente de verdade. Depois disso, se ainda sobrar quarteirão vazio,
+     é a população mesmo que está devagar, não falta de tentativa — aceita a
      lacuna, do jeito que uma vila de verdade tem borda de terra ainda crua.
   */
   const semPredio = v.blocos.length - v.predios.length;
-  const casasOciosas = v.casas * 5 - v.pop;
-  if (semPredio > 8 && casasOciosas < v.pop * 3 && podeVilaRivalPagar(v, PREDIO.casa.custo)) {
-    if (erguerNaVilaRival(v, 'casa')) { pagarVilaRival(v, PREDIO.casa.custo); v.casas++; return true; }
+  const capacidadeOciosa = capacidadeMoradiaRival(v) - v.pop;
+  if (semPredio > 8 && capacidadeOciosa < v.pop * 3) {
+    const chave = chaveDeMoradiaRival(v);
+    if (podeVilaRivalPagar(v, PREDIO[chave].custo) && erguerNaVilaRival(v, chave)) {
+      pagarVilaRival(v, PREDIO[chave].custo); return true;
+    }
   }
   return false;
+}
+
+/*
+   O MESMO CÁLCULO DE 'diaDaVilaRival' ABAIXO, SÓ QUE SEM MEXER EM NADA —
+   pro painel "Vilas rivais" (item 3 do pedido) mostrar quanto a vila ganha
+   e perde por dia sem ter que rodar um dia de verdade só pra descobrir.
+   Se a conta de comida/madeira/pedra mudar lá embaixo, muda aqui junto —
+   as duas leem os mesmos nomes (LAVOURA_SEG, TAXA, etc.), não duas fórmulas
+   que podem se descolar uma da outra.
+*/
+function saldoDiarioRival(v) {
+  const seg = ANO_DIA;
+  const daLavoura = v.lavouras * LAVOURA_SEG * fatorLavoura() * seg;
+  const doMato = Math.min(v.pop, v.blocos.length * 2) * TAXA * MATO_COMIDA *
+                 estacaoNoMato() * 0.30 * seg;
+  const comida = daLavoura + doMato - v.pop * COMIDA_POR_ANO * (seg / ANO);
+  const bracos = Math.min(v.pop, v.blocos.length * 3);
+  return { comida, madeira: bracos * TAXA * 0.30 * seg, pedra: bracos * TAXA * 0.12 * seg };
 }
 
 function diaDaVilaRival(v) {
@@ -3208,21 +3261,25 @@ function diaDaVilaRival(v) {
   } else if (v.fome && v.comida > v.pop * 2) v.fome = false;
 
   /*
-     Obras: mais de uma tentativa por dia quando sobra quarteirão sem prédio
-     nenhum. Território cresce por pressão de prosperidade (ver
-     'avancarFronteira' abaixo), sem custar recurso — sozinho, UM prédio por
-     dia nunca alcança isso, e a vizinha acaba com rua avançando e prédio só
-     perto da fundação (era exatamente o sintoma: só o primeiro quarteirão
-     tinha prédio de verdade). O número de tentativas cresce com o tamanho
-     da lacuna e volta a 1 assim que ela é preenchida.
+     Obras: quantas fizerem sentido no dia, sem teto arbitrário. Antes o
+     número de tentativas parava em 4 (calculado a partir de quanto
+     território sobrava sem prédio — bom pra resolver O SINTOMA original,
+     "só rua depois do primeiro quarteirão", mas um teto pensado pra ESSE
+     problema virou gargalo NOUTRO: numa vila grande e próspera, com gente e
+     recurso de sobra, 'tentarConstruirNaVilaRival' às vezes tem mais de
+     quatro coisas genuinamente precisando sair do papel no mesmo dia
+     (fazenda, casa, mina, oficina, tudo faltando ao mesmo tempo), e o teto
+     travava mesmo sobrando o que construir. 'tentarConstruirNaVilaRival'
+     já devolve false assim que não sobra necessidade real nem recurso pra
+     bancar — o próprio recurso finito (madeira/pedra por dia, vindos do
+     território, sempre limitados) já impede rodar pra sempre; não precisa
+     de outro teto por cima disso.
   */
-  const semPredio = Math.max(0, v.blocos.length - v.predios.length);
-  const tentativas = Math.min(4, 1 + Math.floor(semPredio / 3));
-  for (let t = 0; t < tentativas; t++) if (!tentarConstruirNaVilaRival(v)) break;
+  while (tentarConstruirNaVilaRival(v)) {}
 
   // Nascimento: devagar, como na sua vila, e só com despensa e teto.
   const dias = v.comida / Math.max(0.01, v.pop * COMIDA_POR_ANO / DIAS_NO_ANO);
-  if (!v.fome && dias > 60 && v.pop < v.casas * 5 && rnd() < 0.26 * v.pop / 2 / DIAS_NO_ANO)
+  if (!v.fome && dias > 60 && v.pop < capacidadeMoradiaRival(v) && rnd() < 0.26 * v.pop / 2 / DIAS_NO_ANO)
     v.pop++;
   if (rnd() < v.pop * 0.022 / DIAS_NO_ANO) v.pop = Math.max(0, v.pop - 1);   // velhice
 
@@ -5727,13 +5784,30 @@ function recuperarOffline(segundos) {
      meio martelando sem parar.
   */
   const OBRA_POR_SEGUNDO = 1.65;
+  /*
+     BUG ACHADO MEDINDO — a vila crescia rápido demais sem você, bem mais
+     rápido que com você. "1,65... um operário e meio martelando" descreve
+     o ritmo da VILA, mas o código dava esse ritmo INTEIRO pra CADA canteiro
+     aberto ao mesmo tempo (até três, o teto de OBRAS_AO_MESMO_TEMPO) — uma
+     casa (tempo:70) terminava em bem menos de um dia, o conselho enfileirava
+     outra no dia seguinte, sem parar. Medido ao vivo: 8 pra 481 pessoas em
+     480 dias fora (contra 5 pra 8 em 8 dias de jogo aberto, o mesmo período
+     proporcional) — um circuito casa→gente→trabalhador→recurso→casa girando
+     livre, sem o freio de mão de obra que o jogo aberto sempre teve (equipe
+     pequena por obra, gente ocupada com outra coisa, canteiro "parado" sem
+     ninguém). Reparte o mesmo punhado de gente entre os canteiros abertos —
+     três construções ao mesmo tempo dividem o mesmo ritmo, não recebem um
+     cada — em vez de dar mais rápido pra quem tem mais.
+  */
   function avancarObras(seg) {
     const braços = jogo.pessoas.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA).length;
     if (!braços || seg <= 0) return;
 
-    for (const pr of jogo.predios) {
-      if (pr.progresso >= 1) continue;
-      pr.progresso += (seg * OBRA_POR_SEGUNDO) / pr.def.tempo;
+    const emObra = jogo.predios.filter(p => p.progresso < 1);
+    if (!emObra.length) return;
+    const ritmoPorObra = OBRA_POR_SEGUNDO / emObra.length;
+    for (const pr of emObra) {
+      pr.progresso += (seg * ritmoPorObra) / pr.def.tempo;
       if (pr.progresso >= 1) { concluirPredio(pr); rel.obras++; }
     }
 
@@ -6419,6 +6493,7 @@ function atualizarHUD() {
   }
   elRes.pop.textContent     = popAtual() + '/' + popMax();
   el('r-territ-w').style.display = emDisputa() ? '' : 'none';
+  el('btn-rivais').style.display = emDisputa() ? '' : 'none';
   if (emDisputa()) {
     const total = Object.keys(jogo.dono).length;
     el('r-territ').textContent = meusBlocos() + '/' + total;
@@ -7016,6 +7091,8 @@ el('btn-centro').onclick = () => {
 };
 el('btn-producao').onclick = abrirProducao;
 el('producao-fechar').onclick = fecharFolhas;
+el('btn-rivais').onclick = abrirRivais;
+el('rivais-fechar').onclick = fecharFolhas;
 el('btn-missoes').onclick = abrirMissoes;
 el('missoes-fechar').onclick = fecharFolhas;
 el('predio-menu-fechar').onclick = fecharFolhas;
@@ -7885,6 +7962,76 @@ function abrirProducao() {
 
   fecharFolhas();
   el('producao').classList.add('on');
+}
+
+/*
+   PAINEL "VILAS RIVAIS" — item 3 do pedido ("quero poder ver como está o
+   desempenho das outras vilas"). Mesmo padrão visual de 'abrirProducao'
+   logo acima (classes '.prod'/'.topo'/'.titulo'/'.saldo'/'.linhas'/
+   '.mais'/'.menos' já existem pra isso, não inventa layout novo) e mesma
+   fórmula de economia da vizinha ('saldoDiarioRival', só lê — quem muda o
+   estoque de verdade é sempre 'diaDaVilaRival'). Ordenado da mais próspera
+   pra menos ('prosperidadeDe' já existe — é a mesma nota que decide
+   fronteira e migração — então a ordem aqui já é "quem está ganhando").
+*/
+function abrirRivais() {
+  const lista = el('rivais-lista');
+  lista.innerHTML = '';
+
+  const linhaFluxo = (icone, nome, estoque, teto, saldoDia) => {
+    const classe = saldoDia >= 0 ? 'mais' : 'menos';
+    const sinal = saldoDia >= 0 ? '+' : '−';
+    return '<div class="' + classe + '"><span>' + icone + ' ' + nome + ' — ' +
+      Math.round(estoque) + '/' + teto + '</span><span class="v">' +
+      sinal + Math.abs(saldoDia).toFixed(1) + '/dia</span></div>';
+  };
+
+  // Sua vila primeiro, pra comparar sem trocar de tela.
+  const minha = document.createElement('div');
+  minha.className = 'prod';
+  minha.style.borderLeftColor = 'rgba(220,190,120,.8)';
+  const tetoMeu = tetoEstoque();
+  const bMinha = rec => balancoDe(rec).saldo;
+  minha.innerHTML =
+    '<div class="topo"><span class="titulo">🏰 ' + jogo.nome + ' (você)</span>' +
+    '<span class="saldo">' + popAtual() + ' de ' + popMax() + '</span></div>' +
+    '<div class="linhas">' +
+      linhaFluxo('🌾', 'comida', jogo.recursos.comida, tetoMeu, bMinha('comida')) +
+      linhaFluxo('🪵', 'madeira', jogo.recursos.madeira, tetoMeu, bMinha('madeira')) +
+      linhaFluxo('⛏', 'pedra', jogo.recursos.pedra, tetoMeu, bMinha('pedra')) +
+      '<div><span>prédios</span><span class="v">' + jogo.predios.length + '</span></div>' +
+      '<div><span>quarteirões</span><span class="v">' + (emDisputa() ? meusBlocos() : '—') + '</span></div>' +
+    '</div>';
+  lista.appendChild(minha);
+
+  const vivas = rivaisVivas().slice().sort((a, b) => prosperidadeDe(b) - prosperidadeDe(a));
+  for (const v of vivas) {
+    const saldo = saldoDiarioRival(v);
+    const teto = 300 + v.blocos.length * 220;
+    const d = document.createElement('div');
+    d.className = 'prod';
+    d.style.borderLeftColor = v.cor;
+    d.innerHTML =
+      '<div class="topo"><span class="titulo">🏳️ ' + v.nome + '</span>' +
+      '<span class="saldo">' + Math.round(v.pop) + ' de ' + capacidadeMoradiaRival(v) + '</span></div>' +
+      '<div class="linhas">' +
+        linhaFluxo('🌾', 'comida', v.comida, teto, saldo.comida) +
+        linhaFluxo('🪵', 'madeira', v.madeira, teto, saldo.madeira) +
+        linhaFluxo('⛏', 'pedra', v.pedra, teto, saldo.pedra) +
+        '<div><span>prédios</span><span class="v">' + v.predios.length + '</span></div>' +
+        '<div><span>quarteirões</span><span class="v">' + v.blocos.length + '</span></div>' +
+      '</div>';
+    lista.appendChild(d);
+  }
+  if (!vivas.length) {
+    const vazio = document.createElement('div');
+    vazio.className = 'hint';
+    vazio.textContent = 'Nenhuma vila rival por perto ainda.';
+    lista.appendChild(vazio);
+  }
+
+  fecharFolhas();
+  el('rivais').classList.add('on');
 }
 
 // Quem está atrás de cada recurso, em uma linha.
