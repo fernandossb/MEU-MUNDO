@@ -1897,6 +1897,30 @@ voltando a preencher com comida escassa, nos dois sentidos.
 
 ---
 
+## Território rival aparece no minimapa
+
+O zoom normal já pinta o quarteirão de vila rival na cor dela desde a Fase 7
+("A DISPUTA, NO CHÃO") — mas isso só se vê andando pela vila. O minimapa
+mostrava só um pontinho no centro de cada rival, sem a FRONTEIRA: dava pra
+saber que existe uma vila ali, não quanto território ela já tomou nem onde
+sua terra encosta na dela.
+
+`desenharMinimapa()` agora tinge cada quarteirão de `jogo.dono` com a cor da
+vila dona, amostrado em BLOCO (não tile a tile — caro demais pra rodar todo
+quadro) dentro da janela visível do minimapa, do mesmo jeito que o zoom
+normal já faz. Território seu (`id 0`) fica sem tingir, também igual ao zoom
+normal — você já vê onde é seu pelos prédios; só a terra de vizinha precisa
+do aviso extra. Só roda quando há disputa (`emDisputa()`), então sem vila
+rival o minimapa continua exatamente como sempre foi.
+
+Testado ao vivo (não só visual — lido pixel a pixel do canvas do minimapa):
+um quarteirão confirmado de uma vila rival no `jogo.dono` bate EXATAMENTE
+com a cor dela (`#d2704a` → pixel `[210,112,74]`) na posição esperada do
+minimapa; um quarteirão seu, na mesma checagem, não pega a cor de nenhuma
+vila — fica por conta de outra camada (prédio, rua).
+
+---
+
 ## Estrutura
 
 ```

@@ -7249,6 +7249,38 @@ function desenharMinimapa() {
     mmTerreno = img; mmCentro = [ptx, pty]; mmSeed = SEED;
   }
   mmx.putImageData(mmTerreno, 0, 0);
+
+  /*
+     TERRITÓRIO NO MINIMAPA. A disputa já pinta o quarteirão da vila dona no
+     zoom normal ("A DISPUTA, NO CHÃO" mais abaixo) — mas isso só se vê
+     andando pela vila; o minimapa mostrava só um pontinho no centro de cada
+     rival, sem dar pra ver a FRONTEIRA de longe, que é justamente o que
+     ajuda a saber se está disputando terra com alguém. Mesmo dado
+     ('jogo.dono'), só amostrado em BLOCO (não tile a tile — caro demais pra
+     rodar todo quadro) dentro da janela visível do minimapa. Território seu
+     (id 0) fica sem tingir, do mesmo jeito que o zoom normal já faz — você
+     já vê onde é seu pelos prédios; só a terra de vizinha precisa de aviso.
+  */
+  if (emDisputa()) {
+    const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
+    const meioMM = (MMS / 2) * MMP;
+    const bx0 = Math.floor((ptx - meioMM - ox) / P) - 1, bx1 = Math.ceil((ptx + meioMM - ox) / P) + 1;
+    const by0 = Math.floor((pty - meioMM - oy) / P) - 1, by1 = Math.ceil((pty + meioMM - oy) / P) + 1;
+    const ladoMM = P / MMP + 1;   // +1: fecha a costura entre blocos vizinhos da mesma dona
+    for (let by = by0; by <= by1; by++)
+      for (let bx = bx0; bx <= bx1; bx++) {
+        const id = jogo.dono[blocoK(bx, by)];
+        if (!id) continue;                       // undefined = ninguém, 0 = você
+        const v = vilaPorId(id);
+        if (!v) continue;
+        const tx = ox + bx * P, ty = oy + by * P;
+        const x = MMS / 2 + (tx - ptx) / MMP, y = MMS / 2 + (ty - pty) / MMP;
+        if (x < -ladoMM || x > MMS || y < -ladoMM || y > MMS) continue;
+        mmx.fillStyle = v.cor + '55';
+        mmx.fillRect(x, y, ladoMM, ladoMM);
+      }
+  }
+
   mmx.fillStyle = '#e8d9a8';
   for (const k of jogo.estradas) {
     const [tx, ty] = k.split(',').map(Number);
