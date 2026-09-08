@@ -2001,6 +2001,53 @@ re-testada sem nenhuma mudança de comportamento.
 
 ---
 
+## Vila rival: por que só um adulto trabalhava
+
+Duas causas achadas lendo o código, as duas em `distribuirTrabalhoRival`
+(o "emprego" da vizinha, roda uma vez por dia junto do resto do conselho
+rival) e em `transferirPredio` (a função que muda um prédio de dono).
+
+**1 — moradia comia toda gente nova antes de emprego.** Medido numa vila
+real simulada por 800 dias: 8 pessoas morando, só 3 trabalhando, com 7
+prédios de emprego de pé — a maioria vazia mesmo tendo prédio pronto. Causa:
+`distribuirTrabalhoRival` varria `v.predios` em ordem de CONSTRUÇÃO,
+misturando casa e prédio de trabalho na mesma passada. Casa nasce um pouco
+à frente da necessidade de propósito (mesma filosofia de "não espera lotar
+pra construir" — ver "Três ajustes de simulação"), então quase sempre tem
+vaga de moradia sobrando; como é sempre a mais numerosa e aparece cedo na
+lista, a gente nova (o pingo diário de crescimento da população) era sempre
+consumida ali primeiro — fazenda, mina, oficina nunca chegavam a ter vez.
+Corrigido: emprego agora é uma passada própria, sempre ANTES de moradia. Só
+sobra pra morar quem já não tinha vaga de trabalho pra ocupar. Medido de
+novo depois: 5-6 trabalhando contra 5 morando, 5-6 de 6-7 prédios de
+emprego com gente (~85%, contra ~43% antes).
+
+**2 — achado investigando: prédio duplicado ao reclamar o próprio
+abandonado.** `donoDoPredio` devolve 0 (convenção "sem dono de vila") pra
+QUALQUER prédio abandonado, não importa de quem era antes. Mas
+`transferirPredio` usava esse 0 pra achar a LISTA de origem
+(`listaDaFaccao(0)` sempre aponta pra `jogo.predios`, a sua) — então
+reclamar uma fazenda abandonada de uma VILA RIVAL nunca achava essa fazenda
+em `jogo.predios` (ela nunca esteve lá), o `splice` não tirava de lugar
+nenhum, e o `push` final criava uma cópia nova sem apagar a antiga.
+Medido ao vivo: uma vila sozinha acumulou o mesmo id de fazenda duas vezes
+na própria lista em 800 dias, só de reclamar prédio abandonado seu mesmo (o
+caso mais comum — job-holder morre, prédio abandona, dia seguinte alguém
+novo reclama). Corrigido: em vez de confiar em `donoDoPredio` (que não sabe
+mais de quem era, justamente por já estar abandonado), procura o prédio em
+TODAS as listas que existem — a sua e a de cada vila — e tira de onde ele
+estiver de verdade. Save antigo que já tinha acumulado essa sobra ganha uma
+limpeza automática no carregamento (duas construções nunca dividem o mesmo
+tile de origem — qualquer colisão só pode ser essa sobra).
+
+Testado ao vivo, duas vilas criadas juntas (do jeito que o jogo faz de
+verdade — `criarRivais` só roda uma vez, na criação do mundo) simuladas por
+1000 dias: zero prédio duplicado nas duas, ~85% dos prédios de emprego com
+trabalhador nas duas, confirmado visualmente (desktop e mobile) gente
+trabalhando em fazenda/oficina/mina ao mesmo tempo, não só uma pessoa.
+
+---
+
 ## Estrutura
 
 ```

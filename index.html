@@ -3575,28 +3575,45 @@ function sincronizarGenteRival(v) {
    ocupa prédio abandonado ao alcance (seu de origem ou de qualquer outra
    vila), que é a metade rival do item 6/7: conquista territorial acontece
    pelos dois lados, não só quando o jogador manda gente ocupar.
+
+   EMPREGO ANTES DE MORADIA — achado visitando vila rival de verdade: quase
+   todo mundo virava morador, quase ninguém trabalhador (medido: 8 morando
+   contra só 3 trabalhando, com 7 prédios de emprego de pé). Casa nasce um
+   pouco à frente da necessidade de propósito (mesma filosofia do conselho —
+   'tentarConstruirNaVilaRival' —, "não espera lotar pra construir"), então
+   quase sempre tem vaga de moradia sobrando. A ordem antiga varria
+   'v.predios' em ordem de CONSTRUÇÃO, misturando casa e prédio de trabalho:
+   como casa é sempre a mais numerosa e tem vaga sobrando o tempo todo, a
+   gente nova (o pingo diário de crescimento) era sempre consumida ali
+   primeiro — fazenda, mina, oficina ficavam vazias mesmo de pé, porque a
+   vez delas nunca chegava. Agora emprego é uma passada própria, sempre
+   ANTES de moradia — só sobra pra morar quem já não tinha vaga de trabalho
+   pra ocupar.
 */
 function distribuirTrabalhoRival(v) {
   const livres = v.gente.filter(p => !p.predioId && faseDaIdade(p.idade) !== FASE.CRIANCA && !p.emCombate);
   if (!livres.length) return;
   let i = 0;
-  const vagasProprias = v.predios;
   const vagasAlheiasAbandonadas = todosOsPredios().filter(pr =>
     predioAbandonado(pr) && !v.predios.includes(pr) && dentroOuPertoDoTerritorio(v, pr));
+  const vagas = v.predios.filter(pr => pr.progresso >= 1).concat(vagasAlheiasAbandonadas);
 
-  const empregar = pr => {
+  const reivindicar = pr => { if (predioAbandonado(pr)) transferirPredio(pr, v.id); };
+
+  for (const pr of vagas) {
     if (i >= livres.length) return;
-    if (predioAbandonado(pr)) transferirPredio(pr, v.id);
-    if (pr.def.moradia) {
-      while (pr.moradores.length < pr.def.pop && i < livres.length) {
-        const p = livres[i++]; p.predioId = pr.id; p.papel = 'morador'; pr.moradores.push(p.id);
-      }
-    } else if ((pr.def.posto || pr.def.fazenda || pr.def.pesca) && !pr.trabalhador) {
-      const p = livres[i++]; p.predioId = pr.id; p.papel = 'trabalhador'; pr.trabalhador = p.id;
+    if (!((pr.def.posto || pr.def.fazenda || pr.def.pesca) && !pr.trabalhador)) continue;
+    reivindicar(pr);
+    const p = livres[i++]; p.predioId = pr.id; p.papel = 'trabalhador'; pr.trabalhador = p.id;
+  }
+  for (const pr of vagas) {
+    if (i >= livres.length) return;
+    if (!pr.def.moradia) continue;
+    reivindicar(pr);
+    while (pr.moradores.length < pr.def.pop && i < livres.length) {
+      const p = livres[i++]; p.predioId = pr.id; p.papel = 'morador'; pr.moradores.push(p.id);
     }
-  };
-  for (const pr of vagasProprias) { if (pr.progresso < 1) continue; empregar(pr); if (i >= livres.length) return; }
-  for (const pr of vagasAlheiasAbandonadas) { empregar(pr); if (i >= livres.length) return; }
+  }
 }
 
 // Perto o bastante do próprio território para valer a pena mandar gente:
@@ -3735,15 +3752,36 @@ function listaDaFaccao(faccao) {
   return v ? v.predios : jogo.predios;
 }
 
-// Migra o prédio para a lista da facção nova. Chamado toda vez que alguém
-// (jogador ou rival) ocupa um prédio abandonado, inclusive o seu próprio
-// dono de origem reocupando o que já era dele.
+/*
+   Migra o prédio para a lista da facção nova. Chamado toda vez que alguém
+   (jogador ou rival) ocupa um prédio abandonado, inclusive o seu próprio
+   dono de origem reocupando o que já era dele.
+
+   BUG ACHADO AO VIVO — prédio duplicado na lista de quem reclamava o
+   próprio abandonado: 'donoDoPredio' devolve 0 pra QUALQUER prédio
+   abandonado, seja lá de quem tenha sido antes (é a convenção — "sem dono
+   de vila nenhuma"). Mas 'listaDaFaccao(0)' aponta pra 'jogo.predios' (a
+   SUA lista) — então tentar achar um cais/fazenda abandonado de uma VILA
+   RIVAL nessa lista nunca acha nada (ele nunca esteve em 'jogo.predios'), o
+   'splice' não tira de lugar nenhum, e o 'push' final cria uma cópia nova
+   sem apagar a antiga, que fica pra trás na lista de origem de verdade.
+   Medido: uma vila sozinha acumulou fazenda com o MESMO id duas vezes na
+   própria lista em 800 dias, só de reclamar prédio abandonado seu mesmo.
+
+   Correção: em vez de confiar em 'donoDoPredio' (que não sabe mais de quem
+   era, justamente por já estar abandonado), procura o prédio em TODAS as
+   listas que existem — a sua e a de cada vila, viva ou não — e tira de onde
+   ele estiver de verdade.
+*/
 function transferirPredio(pr, novaFaccao) {
-  const listaAtual = listaDaFaccao(donoDoPredio(pr));
-  const i = listaAtual.indexOf(pr);
-  if (i >= 0) listaAtual.splice(i, 1);
+  const todasAsListas = [jogo.predios, ...(jogo.vilas || []).map(vv => vv.predios)];
+  for (const lista of todasAsListas) {
+    const i = lista.indexOf(pr);
+    if (i >= 0) { lista.splice(i, 1); break; }
+  }
   pr.vila = novaFaccao || undefined;
-  listaDaFaccao(novaFaccao).push(pr);
+  const destino = listaDaFaccao(novaFaccao);
+  if (!destino.includes(pr)) destino.push(pr);
   recontarDonoDoQuarteirao(...quarteiraoDe(pr.tx, pr.ty));
 }
 
@@ -10379,6 +10417,29 @@ function carregar() {
       const pr = criarPredio(d.c, d.tx, d.ty, d.pr, reservaSalva);
       pr.id = d.id; pr.moradores = d.mor || []; pr.produzindo = d.prod || 0; pr.trabalhador = d.trab || null;
     }
+
+    /*
+       LIMPEZA DE SAVE ANTIGO — 'transferirPredio' (corrigido nesta versão)
+       podia deixar uma cópia fantasma pra trás ao reclamar prédio abandonado
+       (bug achado ao vivo: fazenda com o mesmo tile duplicada na lista de
+       uma vila rival). Duas construções nunca dividem o mesmo tile de
+       origem de verdade — qualquer colisão de (tx,ty) aqui, em qualquer
+       lista, seja sua ou de vila rival, só pode ser essa sobra antiga.
+       Mantém só a primeira encontrada.
+    */
+    (function limparPrediosDuplicados() {
+      const sobreviventes = new Map();   // 'tx,ty' -> prédio mantido
+      const limpa = lista => {
+        for (let i = 0; i < lista.length; i++) {
+          const pr = lista[i], k = pr.tx + ',' + pr.ty;
+          if (sobreviventes.has(k)) { lista.splice(i, 1); i--; }
+          else sobreviventes.set(k, pr);
+        }
+      };
+      limpa(jogo.predios);
+      for (const v of jogo.vilas) limpa(v.predios);
+      for (const pr of sobreviventes.values()) marcarOcupacao(pr, true);
+    })();
 
     jogo.pessoas = [];
     for (const d of (s.pessoas || [])) {
