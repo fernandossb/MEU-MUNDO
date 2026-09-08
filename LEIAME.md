@@ -2150,6 +2150,53 @@ como algo a olhar de novo se continuar incomodando, não escondido.
 
 ---
 
+## A caminho de um motor só pra toda vila (etapa 1 de 8)
+
+Pedido novo, revendo a decisão anterior de vila rival ser um modelo
+simplificado: toda vila — a sua e cada rival — deve rodar o MESMO
+mecanismo e as MESMAS regras. Plano de 8 etapas em
+`.claude/plans/robust-conjuring-reef.md`. Dois sintomas concretos
+motivaram: gente rival visivelmente mais devagar que a sua, e no máximo
+uns 3 aldeões rivais visíveis na tela ao mesmo tempo (mesmo com população
+grande).
+
+**Conserto imediato, sem esperar as próximas etapas**: `VELOCIDADE_GENTE_
+RIVAL` (o passo de quem anda por uma vila rival) era menos de um terço de
+`VEL` (o passo do jogador) — 16 contra 47, sem motivo pra ser diferente.
+Agora aponta pro mesmo `VEL`, nunca mais descola.
+
+**Etapa 1 — a base, antes de qualquer coisa arriscada**: dar a cada vila
+rival uma malha (`estradas`, um Set de verdade) e fila de obra de rua
+(`obrasEstrada`) própria, no lugar do `v.ruas` puramente decorativo de
+hoje — pré-requisito pras próximas etapas poderem usar o A* de verdade
+(`acharCaminho`) e o resto do motor de movimento do jogador pra gente
+rival.
+
+**Bug evitado ANTES de acontecer, achado investigando (não vivido ainda,
+mas real)**: os caches de malha (`indiceDeRuas`, `pedacoPrincipal`,
+`quarteiroesPorPerto`) se invalidavam comparando só o TAMANHO da malha
+contra a última vez — certo enquanto só existia UM `estradas` (o seu).
+Assim que uma vila rival também tiver `estradas` própria e as próximas
+etapas passarem a trocar entre elas, duas malhas de vilas diferentes com o
+MESMO tamanho por coincidência fariam o cache devolver a malha ERRADA, sem
+avisar nada. Corrigido antes de expor o risco: os três caches agora também
+conferem a IDENTIDADE do Set, não só o tamanho.
+
+Testado ao vivo, não só teoria: criei um Set do MESMO tamanho que a malha
+real mas com tiles completamente diferentes, troquei `jogo.estradas` pra
+ele — o índice de rua mudou de verdade (não serviu o cache velho),
+confirmado comparando a primeira chave de cada índice (`-5,-5` contra
+`9000,9000`); restaurando a malha original, o índice voltou a bater
+exatamente com o de antes. Malha normal do jogo (índice, quarteirão por
+perto, pedaço principal) re-testada sem nenhuma mudança de comportamento.
+
+Faltam as etapas 2-8 (troca de contexto entre vilas, gente rival com o
+mesmo molde que a sua, motor único de verdade, "ao vivo" vs "adormecida"
+como freio de desempenho, teto de população medido, migração de save,
+conferência visual) — trabalho grande, contínuo nas próximas sessões.
+
+---
+
 ## Estrutura
 
 ```

@@ -1570,9 +1570,21 @@ const emEstrada = (x, y) => jogo.estradas.has(nk(Math.floor(x / TILE), Math.floo
 */
 let compRua = new Map();
 let compRuaTam = -1;
+/*
+   BUG EM POTENCIAL, ACHADO ANTES DE ACONTECER — o cache invalidava só
+   comparando TAMANHO do Set contra a última vez. Enquanto só existia
+   'jogo.estradas' (um Set só, o do jogador), tamanho igual SEMPRE
+   significava mesma malha. Com troca de contexto entre vilas (cada uma
+   com seu próprio Set de estradas), duas vilas diferentes podem ter o
+   MESMO tamanho de malha por coincidência — tamanho batendo, o cache
+   devolveria a malha ERRADA sem avisar. 'compRuaDe' guarda qual Set (por
+   IDENTIDADE do objeto, não conteúdo) gerou o índice atual.
+*/
+let compRuaDe = null;
 
 function indiceDeRuas() {
-  if (compRuaTam === jogo.estradas.size) return compRua;
+  if (compRuaDe === jogo.estradas && compRuaTam === jogo.estradas.size) return compRua;
+  compRuaDe = jogo.estradas;
   compRuaTam = jogo.estradas.size;
   compRua = new Map();
   let cor = 0;
@@ -1623,10 +1635,14 @@ function daParaChegar(x, y, tx, ty) {
 /* Qual é a malha "de verdade": a maior. Perguntar pelo pedaço do Centro da
    Vila não funciona — o tile do meio de um prédio 3x3 não encosta em rua
    nenhuma, e a resposta vinha sempre 0. */
-let pedacoMaiorCache = 0, pedacoMaiorTam = -1;
+let pedacoMaiorCache = 0, pedacoMaiorTam = -1, pedacoMaiorDe = null;
 function pedacoPrincipal() {
   const idx = indiceDeRuas();
-  if (pedacoMaiorTam === idx.size) return pedacoMaiorCache;
+  // Mesma correção de identidade que 'indiceDeRuas' — 'idx' é um objeto
+  // NOVO toda vez que o índice é refeito (linha acima), então comparar a
+  // referência já basta, sem precisar de um Set separado pra apontar.
+  if (pedacoMaiorDe === idx && pedacoMaiorTam === idx.size) return pedacoMaiorCache;
+  pedacoMaiorDe = idx;
   pedacoMaiorTam = idx.size;
   const conta = new Map();
   for (const c of idx.values()) conta.set(c, (conta.get(c) || 0) + 1);
@@ -2975,6 +2991,16 @@ function criarRivais(quantas) {
       lavouras: 0, casas: 1,
       pressao: 0, migra: 0, viva: true, fome: false,
       predios: [], ruas: [], blocos: [], gente: [],
+      /*
+         ETAPA 1 do motor único — malha e obra de rua DE VERDADE, no lugar
+         do 'ruas' decorativo acima (que continua existindo só pra desenho;
+         'v.ruas' nunca é lido por pathfinding nenhum, só marca "não
+         construir aqui"). 'estradas' é o mesmo tipo de Set que
+         'jogo.estradas' — a peça que falta pra 'acharCaminho'/'bloqueado'/
+         etc. funcionarem pra esta vila quando o contexto for trocado pra
+         ela (index.html — ver 'trocarContexto', etapa 2 do plano).
+      */
+      estradas: new Set(), obrasEstrada: [],
     };
     // Nome repetido entre vizinhas confunde mais do que enfeita.
     while (jogo.vilas.some(o => o.nome === v.nome))
@@ -3746,7 +3772,15 @@ function rotinaRival(v, p, dt) {
   }
 }
 
-const VELOCIDADE_GENTE_RIVAL = 16;
+/*
+   BUG ACHADO — a vizinha andava bem mais devagar que a sua gente, visível a
+   olho nu. 'VEL' (índice 1496) é o passo do jogador, 47; este aqui era 16,
+   menos de um terço. Não tinha razão de ser diferente — os dois são
+   "andando de um ponto a outro", não trabalho (isso já tem sua própria
+   constante mais lenta, 'VELOCIDADE_NO_SULCO'). Aponta pro MESMO 'VEL' —
+   nunca mais descola de novo, porque lê o mesmo número em vez de copiar.
+*/
+const VELOCIDADE_GENTE_RIVAL = VEL;
 
 /*
    Rodízio igual ao 'atualizarPovo' do jogador: até quatro vilas de até 550
@@ -4267,12 +4301,16 @@ function anelCompleto(bx, by) {
    nunca removidas, então o tamanho da malha serve de versão — o mesmo truque
    do índice de pedaços.
 */
-let fechadosCache = null, fechadosRuas = -1;
+let fechadosCache = null, fechadosRuas = -1, fechadosDe = null;
 
 function quarteiroesPorPerto() {
-  if (fechadosCache && fechadosRuas === jogo.estradas.size) return fechadosCache;
+  // Mesma correção de identidade que 'indiceDeRuas' (índice de pedaços) —
+  // tamanho batendo por coincidência entre a malha de duas vilas diferentes
+  // não pode devolver a lista de quarteirão da vila ERRADA.
+  if (fechadosCache && fechadosDe === jogo.estradas && fechadosRuas === jogo.estradas.size) return fechadosCache;
   const [cbx, cby] = quarteiraoDoCentro();
   const dist = b => Math.abs(b[0] - cbx) + Math.abs(b[1] - cby);
+  fechadosDe = jogo.estradas;
   fechadosRuas = jogo.estradas.size;
   fechadosCache = quarteiroesAbertos()
     .filter(([bx, by]) => anelCompleto(bx, by))
