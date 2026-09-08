@@ -2853,10 +2853,19 @@ const NOMES_DE_VILA = [
 const CORES_DE_VILA = ['#d2704a', '#7a6fd0', '#4aa38c', '#c9a03c', '#c05a86'];
 
 const MAX_RIVAIS = 4;
-// Antes eram 46 — o suficiente para uma malha de estradas, curto demais para
-// uma população de verdade que anda sozinha e pode se topar em patrulha. Cem
-// tiles dá um bom tanto de anos de sossego antes do primeiro encontro.
-const DIST_ENTRE_VILAS = 100;
+/*
+   Antes eram 46, depois 100 — o suficiente para uma malha de estradas, curto
+   demais pra sentir DISTÂNCIA de verdade num mundo sem borda nenhuma. Cem
+   tiles a pé nem chega a ser um passeio; não tem por que economizar espaço
+   quando o mapa é infinito. Oitocentos tiles é escala de quilômetro, não de
+   quarteirão — dá pra caminhar até lá se você decidir ir, mas o encontro
+   normal acontece anos depois, quando o TERRITÓRIO de cada lado (que agora
+   cresce de um jeito muito mais contido — ver o freio na fronteira, item 1
+   da seção "Três ajustes de simulação") avança o bastante pra fronteira se
+   tocar. É esse reencontro gradual, não a distância inicial, que carrega a
+   disputa.
+*/
+const DIST_ENTRE_VILAS = 800;
 
 const blocoK = (bx, by) => bx + ',' + by;
 

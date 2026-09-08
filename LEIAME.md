@@ -1921,6 +1921,26 @@ vila — fica por conta de outra camada (prédio, rua).
 
 ---
 
+## Vila rival nasce bem mais longe
+
+`DIST_ENTRE_VILAS` foi de 46 pra 100 numa fase anterior — o bastante pra uma
+malha de estrada, curto demais pra sentir distância de verdade num mundo sem
+borda nenhuma. Cem tiles a pé nem chega a ser um passeio. Foi pra **800**
+(escala de quilômetro, não de quarteirão) — dá pra chegar lá se você decidir
+ir andando, mas o encontro normal com uma vizinha passa a acontecer anos
+depois, quando o TERRITÓRIO de cada lado avança o bastante pra fronteira se
+tocar (e agora que o freio na fronteira existe — ver "Três ajustes de
+simulação" — esse avanço é bem mais contido, então o reencontro é mesmo
+gradual, não instantâneo).
+
+Mesma busca de terreno de sempre (`lugarDeVilaRival`), só partindo mais
+longe — testado em 12 seeds diferentes, as quatro vilas (cantos
+noroeste/nordeste/sudoeste/sudeste) sempre nasceram na primeira distância
+tentada, sem precisar de nenhum dos passos de busca extra que já existiam
+pra terreno difícil.
+
+---
+
 ## Estrutura
 
 ```
