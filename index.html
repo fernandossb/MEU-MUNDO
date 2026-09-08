@@ -3045,6 +3045,7 @@ function fundarVilaRival(v) {
   erguerNaVilaRival(v, 'casa');
   anelDoQuarteirao(v, ...quarteiraoDe(v.tx, v.ty));
   sincronizarGenteRival(v);
+  sincronizarPessoasRival(v);   // etapa 3 — gente de verdade em paralelo, ainda sem consumo
   distribuirTrabalhoRival(v);
 }
 
@@ -3377,6 +3378,7 @@ function diaDaVilaRival(v) {
   if (rnd() < v.pop * 0.022 / DIAS_NO_ANO) v.pop = Math.max(0, v.pop - 1);   // velhice
 
   sincronizarGenteRival(v);   // a turma visível acompanha a população nova
+  sincronizarPessoasRival(v); // etapa 3 — o mesmo, em paralelo, no molde de verdade
   distribuirTrabalhoRival(v);
 }
 
@@ -3717,6 +3719,53 @@ function sincronizarGenteRival(v) {
   }
   if (criancasArr.length > alvoCriancas)
     for (let i = alvoCriancas; i < criancasArr.length; i++) removerGenteRival(v, criancasArr[i]);
+}
+
+/*
+   ETAPA 3 do motor único — gente rival de VERDADE, no mesmo molde
+   'criarPessoa' que a sua gente já usa: idade, sexo, oficio, casaId,
+   conjugeId, campo de caminho pra A*, tudo — os mesmos nove campos por
+   trás de cada morador seu, criados AQUI mas ainda sem ninguém lendo
+   'v.pessoas' pra valer (é 'v.gente', do modelo antigo, quem continua
+   andando, trabalhando e aparecendo na tela por enquanto).
+
+   'criarPessoa'/'removerPessoa' de propósito rodam DENTRO do contexto
+   trocado (ver 'trocarContexto', etapa 2): escrevem direto em
+   'jogo.pessoas', que durante a troca É o mesmo array que 'v.pessoas'
+   (mesma referência) — a gente nova já nasce no lugar certo, sem copiar
+   nada de volta.
+
+   Mesmo teto de simulação que 'sincronizarGenteRival' já usa
+   (TETO_ADULTOS_RIVAL/TETO_CRIANCAS_RIVAL) — pensado pro custo de
+   simular gente, que a etapa 5 vai medir de verdade com pathfinding
+   ligado e a etapa 6 ajusta com base na medição; até lá, mesma régua pros
+   dois modelos rodando em paralelo.
+
+   A etapa 4 troca o CONSUMO de 'v.gente' pra 'v.pessoas' (conselho(),
+   distribuirOficios(), atualizarPessoa — o motor de verdade, sem mudar
+   uma linha dele) e aposenta 'v.gente'/'criarGenteRival'/
+   'sincronizarGenteRival' de vez.
+*/
+function sincronizarPessoasRival(v) {
+  const alvoAdultos = Math.min(TETO_ADULTOS_RIVAL, Math.round(v.pop * 0.88));
+  const alvoCriancas = Math.min(TETO_CRIANCAS_RIVAL, Math.round(v.pop * 0.12));
+  const alvo = alvoAdultos + alvoCriancas;
+
+  trocarContexto(v);
+  try {
+    while (jogo.pessoas.length < alvo) {
+      const criasNecessarias = alvoCriancas - jogo.pessoas.filter(p => faseDaIdade(p.idade) === FASE.CRIANCA).length;
+      const criança = criasNecessarias > 0;
+      const p0 = pontoNoTerritorioRival(v);
+      criarPessoa({ x: p0.x, y: p0.y, idade: criança ? entre(1, 16) : entre(18, 55) });
+    }
+    // Civis primeiro, do mesmo jeito que 'sincronizarGenteRival' já prefere:
+    // perder quem já tem ofício ou casa desmancha trabalho de verdade.
+    while (jogo.pessoas.length > alvo) {
+      const civil = jogo.pessoas.find(p => p.oficio === 'nenhum' && !p.casaId) || jogo.pessoas[0];
+      removerPessoa(civil);
+    }
+  } finally { restaurarContexto(); }
 }
 
 /*

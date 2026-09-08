@@ -2246,6 +2246,44 @@ enquanto o jogador voltou com os nove campos intactos, byte a byte
 e não corrompeu nada — `restaurarContexto()` ainda devolveu os dados do
 jogador certos.
 
+## Gente rival de verdade, em paralelo (etapa 3 de 8)
+
+Continuação do plano. `sincronizarPessoasRival(v)` cria gente rival no
+MESMO molde `criarPessoa` que a sua gente já usa — idade, sexo, nome,
+sobrenome, ofício, casaId, conjugeId, geração, o que nasce e o que
+morre registrado no mesmo cemitério (`jogo.ancestrais`) — rodando DENTRO
+do contexto trocado da vila (etapa 2): `criarPessoa`/`removerPessoa`
+escrevem direto em `jogo.pessoas`, que durante a troca é o mesmo array
+que `v.pessoas`, então a gente nova já nasce no lugar certo sem copiar
+nada de volta. Usa o mesmo teto de simulação que o modelo antigo
+(`TETO_ADULTOS_RIVAL`/`TETO_CRIANCAS_RIVAL`), até a etapa 5/6 medir e
+ajustar de vez.
+
+**Ainda não é o que anda na tela.** `v.gente` (o modelo antigo — papel
+morador/trabalhador, sem A*) continua sendo quem se move, trabalha e
+aparece, exatamente como hoje — `v.pessoas` cresce e encolhe do lado,
+com gente de verdade mas parada (ninguém tem ofício nem casa atribuídos
+ainda: isso é `distribuirOficios()`/`conselho()`, que só passam a rodar
+pra vila rival na etapa 4). É a mesma lógica de escada da etapa 1
+(`estradas` sem ninguém usando o A* ainda) e da etapa 2 (`trocarContexto`
+sem ninguém chamando fora de teste ainda): cada etapa entrega uma peça
+testável isolada, sem arriscar quebrar o que já funciona pro jogador ou
+pro visual da vila rival hoje.
+
+Testado ao vivo: criei gente pra duas vilas rivais (12 e 6 de população)
+com `sincronizarPessoasRival` — todo mundo saiu com nome/sobrenome/sexo/
+idade coerentes, ofício 'nenhum', casaId/conjugeId nulos, id sequencial
+saindo do MESMO contador global que o jogador usa (`jogo.proxId` foi de
+135 a 153, os 18 criados pras duas vilas). Contexto do jogador (prédios,
+pessoas, próximo id) idêntico antes e depois. Reduzi a população de uma
+vila de 12 para 4 — `sincronizarPessoasRival` removeu 8 pessoas usando o
+`removerPessoa` de verdade (não um truncamento cru): os 8 foram
+registrados no cemitério igual a qualquer morte real, e `v.gente` (modelo
+antigo) ficou intacto do lado, sem interferência. Devolvi a população a
+12 e conferi que voltou a crescer certo. `trocarContexto`/
+`restaurarContexto` ficaram limpos (sem contexto pendurado) em todas as
+chamadas. Sem erro no console depois de recarregar.
+
 ---
 
 ## Estrutura
