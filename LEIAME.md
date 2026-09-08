@@ -2284,6 +2284,52 @@ antigo) ficou intacto do lado, sem interferência. Devolvi a população a
 `restaurarContexto` ficaram limpos (sem contexto pendurado) em todas as
 chamadas. Sem erro no console depois de recarregar.
 
+## Aldeão vai buscar material não importa a distância
+
+Pedido explícito: "os aldeões devem ir buscar o material necessário o
+quanto longe for necessário, materiais básicos não podem chegar a zero,
+eles devem ir atrás não importa a distância".
+
+O raio de busca de recurso (`acharNo`) era o freio contra o aldeão
+atravessar o mapa atrás de uma árvore — 45 tiles para o próprio ofício,
+16 para "qualquer recurso", e o mesmo 45 para a vila decidir se vale abrir
+rua nova até um recurso sem calçamento por perto. Curto demais para uma
+vila que já cresceu ou pousou numa região pobre num dos três materiais:
+sem achar nada dentro do raio, o aldeão nunca soube que aquele material
+existia mais longe, e a vila nunca puxou rua até lá — o estoque só descia.
+
+Três lugares decidem "até onde vale a pena procurar" e agora usam o mesmo
+raio bem maior: `RAIO_RECURSO_LARGO` (260 tiles — vila rival nasce a 800
+de distância da outra, `DIST_ENTRE_VILAS`, e território alheio já é
+bloqueado à parte dentro do próprio `acharNo`, então esse raio nunca sai
+comendo terra de vizinha) no lugar do 45 antigo, tanto para o aldeão ir
+colher sozinho (`procurarTrabalho`) quanto para a vila decidir abrir rua
+nova até o recurso (o pedido que o próprio aldeão dispara, e o item 2 do
+`conselho()`). `RAIO_RECURSO_QUALQUER` (90, era 16) para o fallback "não
+achei o meu, pego o que tiver".
+
+**Medido o custo antes de subir o número**: `acharNo` só é caro quando NÃO
+acha nada — aí varre o raio inteiro em anéis. Com 260 tiles, uma busca sem
+resultado nenhum levou ~1s (medido ao vivo). Como é exatamente numa vila
+em crise — vários aldeões sem material ao mesmo tempo, cada um tentando
+de novo a cada ~2s (`procurarTrabalho` roda por aldeão ocioso) — que essa
+busca cara mais aconteceria, sem freio o próprio conserto travaria o jogo
+bem na hora que mais precisa não travar. `acharNoLonge` resolve isso
+memorizando por 15 segundos reais quando a busca grande não achou nada de
+um tipo — todo aldeão que perguntar de novo nesse intervalo aceita o "não
+tem" sem pagar a varredura de novo. Não é um teto de distância disfarçado:
+o freio é só no RITMO da tentativa cara, e assim que o intervalo passa (ou
+assim que alguém já achou aquele tipo), a busca de verdade volta a valer.
+
+Testado ao vivo: 30 chamadas simultâneas simulando uma vila em crise
+inteira perguntando pelo mesmo recurso ausente levaram ~1,37s no total —
+praticamente só o custo da PRIMEIRA (as outras 29 bateram no cache e
+saíram de graça), contra os ~30s que 30 varreduras cheias custariam sem o
+freio. Busca por recurso que existe de verdade (madeira/comida/pedra reais
+da vila) continuou achando normalmente e não fica presa em cache de "não
+tem" — só a busca que falhou é que memoriza. Jogo recarregado, sem erro no
+console, aldeões andando e trabalhando normalmente.
+
 ---
 
 ## Estrutura

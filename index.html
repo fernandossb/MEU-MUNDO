@@ -978,8 +978,14 @@ function limparNo(tx, ty) {
    ITEM 4: o recurso não precisa mais encostar na rua. Como o aldeão pode
    entrar no mato para colher, o que importa é ele conseguir CHEGAR — e disso
    cuidam o prazo por alvo e a lista negra, que desistem sozinhos de um alvo
-   impossível. O raio de busca é o freio: ninguém atravessa o mapa atrás de uma
-   árvore.
+   impossível.
+
+   O raio de busca ('maxTiles') não é mais um freio contra atravessar o mapa —
+   PEDIDO EXPLÍCITO: material básico não pode zerar por estar longe demais,
+   o aldeão vai atrás não importa a distância (ver RAIO_RECURSO_LARGO logo
+   abaixo, e os chamadores em 'procurarTrabalho'/'pedirObraParaTrabalhar'/
+   'conselho()'). Continua finito só por causa do CUSTO — sem achar nada, a
+   busca varre o raio inteiro em anéis — nunca por escolha de design.
 */
 function acharNo(x, y, tipo, maxTiles, qualquerLugar) {
   const tx0 = Math.floor(x / TILE), ty0 = Math.floor(y / TILE);
@@ -1002,6 +1008,52 @@ function acharNo(x, y, tipo, maxTiles, qualquerLugar) {
     if (melhor) return melhor;
   }
   return null;
+}
+
+/*
+   PEDIDO EXPLÍCITO: material básico (madeira/comida/pedra) não pode chegar a
+   zero por falta de alcance — o aldeão vai atrás não importa a distância. Os
+   três chamadores que decidem "até onde vale a pena procurar" (o aldeão indo
+   colher sozinho, o pedido de rua que ele mesmo dispara, e o item 2 do
+   conselho) usam este raio em vez de um número curto próprio. Vila rival
+   nasce a 800 tiles de distância da outra (DIST_ENTRE_VILAS) — ainda sobra
+   território de sobra dentro da própria vila pra um raio bem maior que o
+   antigo (45) sem nunca varrer terra alheia (território de vizinha já é
+   bloqueado à parte, dentro de 'acharNo', não por este número).
+*/
+const RAIO_RECURSO_LARGO = 260;
+// Fallback de "qualquer recurso, já que o meu não apareceu" — mais folgado
+// que o antigo (16), mas ainda menor que o de cima: só troca de ofício por
+// necessidade, não sai do caminho por um recurso qualquer do outro lado do
+// mapa enquanto talvez o próprio ainda apareça um pouco mais perto.
+const RAIO_RECURSO_QUALQUER = 90;
+
+/*
+   MEDIDO AO VIVO: 'acharNo' só é caro quando NÃO acha nada — aí varre o raio
+   inteiro em anéis (260 tiles deu ~1s no pior caso, sem achar nada). No caso
+   comum (recurso perto, que é a maioria do tempo) o custo é desprezível, pára
+   no primeiro anel com algo. O risco é justo na hora que este pedido existe
+   para resolver: vila em crise, vários aldeões sem material ao mesmo tempo,
+   cada um tentando de novo a cada ~2s ('procurarTrabalho' roda por aldeão
+   ocioso) — sem freio, isso empilha vários segundos de varredura cara no
+   mesmo quadro e trava o jogo bem na hora que mais importa não travar.
+
+   'acharNoLonge' é o mesmo 'acharNo', só que memoriza por alguns segundos
+   quando a varredura grande NÃO achou nada de um tipo — todo aldeão que
+   perguntar de novo nesse intervalo aceita o "não tem" sem pagar a varredura
+   de novo. Não é um teto de distância disfarçado: assim que o intervalo
+   passa, ou assim que alguém já achou aquele tipo em outro lugar, a busca de
+   verdade volta a rodar — o freio é só no RITMO da tentativa cara, nunca na
+   distância em si.
+*/
+const RAIO_LONGE_ESPERA = 15;   // segundos reais antes de tentar de novo um "não achei"
+const semRecursoLonge = {};     // 'tipo|qualquerLugar' -> jogo.tempo até quando aceitar o "não tem"
+function acharNoLonge(x, y, tipo, raio, qualquerLugar) {
+  const chave = tipo + '|' + (qualquerLugar ? 1 : 0);
+  if ((semRecursoLonge[chave] || 0) > jogo.tempo) return null;
+  const n = acharNo(x, y, tipo, raio, qualquerLugar);
+  if (!n) semRecursoLonge[chave] = jogo.tempo + RAIO_LONGE_ESPERA;
+  return n;
 }
 
 /* ---------------------------------------------------------- construções --- */
@@ -2079,10 +2131,22 @@ function procurarTrabalho(p) {
      pedreiro, e a pedra parada em três enquanto a madeira batia no teto do
      galpão. Como agora se pode andar no mato (item 4), procurar longe o
      próprio material é barato — e a pedra costuma estar mesmo no morro, longe.
+
+     PEDIDO EXPLÍCITO — material básico não pode zerar por falta de alcance:
+     "os aldeões devem ir buscar o material necessário o quanto longe for
+     necessário... não importa a distância". Os 45/16 tiles antigos vinham
+     de quando ainda não existia isso (item 4, comentário acima) — curtos
+     demais pra uma vila que já cresceu ou pousou numa região pobre de um
+     recurso. RAIO_RECURSO_LARGO/RAIO_RECURSO_QUALQUER sobem bem além disso
+     (vilas rivais nascem a 800 tiles de distância uma da outra — ainda
+     sobra folga enorme dentro do território de uma só vila) sem custar
+     nada no caso comum: 'acharNo' para na primeira RING que achar alguma
+     coisa, então um recurso perto continua sendo achado na hora — o raio
+     maior só é varrido de verdade quando falta mesmo.
   */
   const rec = OFICIO[p.oficio] && OFICIO[p.oficio].rec ? OFICIO[p.oficio].rec : recursoMaisNecessario();
-  const longe = Math.round(45 * jeito(p, 'alcance'));
-  let no = acharNo(p.x, p.y, rec, longe) || acharNo(p.x, p.y, null, 16);
+  const longe = Math.round(RAIO_RECURSO_LARGO * jeito(p, 'alcance'));
+  let no = acharNoLonge(p.x, p.y, rec, longe) || acharNoLonge(p.x, p.y, null, RAIO_RECURSO_QUALQUER);
   if (no) {
     p.oficio = no.tipo === 'madeira' ? 'lenhador' : no.tipo === 'comida' ? 'colhedor' : 'pedreiro';
     p.estado = 'indoColetar';
@@ -2133,7 +2197,7 @@ function pedirObraParaTrabalhar(p) {
   if (centro) {
     for (const tipo of ['madeira', 'pedra', 'comida']) {
       if (acharNo(p.x, p.y, tipo, 22)) continue;
-      const longe = acharNo(centro.cx, centro.cy, tipo, 45, true);
+      const longe = acharNoLonge(centro.cx, centro.cy, tipo, RAIO_RECURSO_LARGO, true);
       if (longe && crescerRuaRumo(longe.tx, longe.ty, 12)) {
         jogo.proximoPedidoDeTrabalho = jogo.tempo + 450;
         crônica(nomeCompleto(p) + ' ficou sem ' + RECURSO[tipo].nome + ' por perto: abriram rua até a mata.');
@@ -5381,7 +5445,7 @@ function conselho() {
   if (centro) {
     for (const tipo of ['madeira', 'pedra', 'comida']) {
       if (acharNo(centro.cx, centro.cy, tipo, 24)) continue;       // ainda há na beira
-      const longe = acharNo(centro.cx, centro.cy, tipo, 45, true); // existe, mas sem rua
+      const longe = acharNoLonge(centro.cx, centro.cy, tipo, RAIO_RECURSO_LARGO, true); // existe, mas sem rua
       if (longe && crescerRuaRumo(longe.tx, longe.ty, 12)) {
         crônica('Acabou ' + RECURSO[tipo].nome + ' à beira da rua — abriram quarteirão novo.');
         return;
