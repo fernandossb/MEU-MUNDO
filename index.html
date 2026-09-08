@@ -2998,9 +2998,22 @@ function criarRivais(quantas) {
          construir aqui"). 'estradas' é o mesmo tipo de Set que
          'jogo.estradas' — a peça que falta pra 'acharCaminho'/'bloqueado'/
          etc. funcionarem pra esta vila quando o contexto for trocado pra
-         ela (index.html — ver 'trocarContexto', etapa 2 do plano).
+         ela (ver 'trocarContexto', etapa 2 do plano).
       */
       estradas: new Set(), obrasEstrada: [],
+      /*
+         ETAPA 2 do motor único — os campos que faltavam pra esta vila
+         poder ENTRAR no lugar de 'jogo' de verdade, do jeito que
+         'trocarContexto' precisa. 'recursos' é o mesmo formato que o do
+         jogador (madeira/comida/pedra/tabua/ferramenta) — separado dos
+         campos soltos 'v.comida/v.madeira/v.pedra' acima, que continuam
+         de pé por ora porque o modelo simplificado antigo (ver
+         'diaDaVilaRival') ainda lê e escreve neles; a aposentadoria desse
+         modelo é a etapa 4. 'pessoas' é o formato 'criarPessoa' (etapa 3);
+         'v.gente' acima continua sendo a turma do modelo antigo.
+      */
+      recursos: { madeira: 220, comida: 380, pedra: 80, tabua: 0, ferramenta: 0 },
+      pessoas: [], ano: 1, anoFrac: 0, clima: 'limpo',
     };
     // Nome repetido entre vizinhas confunde mais do que enfeita.
     while (jogo.vilas.some(o => o.nome === v.nome))
@@ -3033,6 +3046,60 @@ function fundarVilaRival(v) {
   anelDoQuarteirao(v, ...quarteiraoDe(v.tx, v.ty));
   sincronizarGenteRival(v);
   distribuirTrabalhoRival(v);
+}
+
+/*
+   ETAPA 2 do motor único — troca de contexto.
+
+   Nenhuma função do motor de verdade (acharCaminho, atualizarPessoa,
+   conselho(), distribuirOficios(), criarPessoa, tickDia...) recebe "qual
+   vila" como argumento — todas leem e escrevem direto em
+   'jogo.recursos/predios/pessoas/estradas/obrasEstrada/ano/anoFrac/clima/
+   fome' (ver plano, seção "Achados da investigação"). Fazer essas funções
+   rodarem de verdade pra uma vila rival não é reescrevê-las — é apontar
+   esses nove campos pros da vila por um instante, deixar o motor rodar SEM
+   MUDAR UMA LINHA DELE, e devolver os do jogador depois.
+
+   'ocupado' (Map de tile ocupado) e a grade de quarteirão (donoDoBloco
+   etc.) ficam de fora DE PROPÓSITO — são globais reais, compartilhadas por
+   todas as vilas: um caminho de qualquer uma precisa desviar de prédio de
+   QUALQUER outra, não só da própria.
+
+   'jogo.autoAprovar' vira true emprestado enquanto uma vila rival está no
+   contexto — elas não têm jogador esperando responder pedido de obra — e
+   volta pro valor real do jogador ao restaurar.
+
+   Os campos de OBJETO/ARRAY (recursos, predios, pessoas, estradas,
+   obrasEstrada) trocam por REFERÊNCIA: o motor escreve neles em cada tick
+   (push, splice, Set.add, jogo.recursos.madeira += ...) e essa escrita cai
+   direto no objeto da própria vila, sem precisar copiar de volta. Os de
+   VALOR (ano, anoFrac, clima, fome) são número/texto/booleano — trocam por
+   CÓPIA, então 'restaurarContexto' precisa devolver pra vila o que mudou
+   antes de repor os do jogador, senão qualquer avanço de ano ou troca de
+   clima que aconteça com a vila em contexto se perderia ao sair.
+*/
+const CAMPOS_CONTEXTO_REF = ['recursos', 'predios', 'pessoas', 'estradas', 'obrasEstrada'];
+const CAMPOS_CONTEXTO_VALOR = ['ano', 'anoFrac', 'clima', 'fome'];
+let contextoGuardado = null;
+let vilaEmContexto = null;
+
+function trocarContexto(v) {
+  if (contextoGuardado) throw new Error('trocarContexto chamado com um contexto já trocado — faltou restaurarContexto()');
+  contextoGuardado = { autoAprovar: jogo.autoAprovar };
+  for (const c of CAMPOS_CONTEXTO_REF) { contextoGuardado[c] = jogo[c]; jogo[c] = v[c]; }
+  for (const c of CAMPOS_CONTEXTO_VALOR) { contextoGuardado[c] = jogo[c]; jogo[c] = v[c]; }
+  jogo.autoAprovar = true;
+  vilaEmContexto = v;
+}
+
+function restaurarContexto() {
+  if (!contextoGuardado) return;
+  for (const c of CAMPOS_CONTEXTO_VALOR) vilaEmContexto[c] = jogo[c];   // devolve o que mudou
+  for (const c of CAMPOS_CONTEXTO_REF) jogo[c] = contextoGuardado[c];
+  for (const c of CAMPOS_CONTEXTO_VALOR) jogo[c] = contextoGuardado[c];
+  jogo.autoAprovar = contextoGuardado.autoAprovar;
+  contextoGuardado = null;
+  vilaEmContexto = null;
 }
 
 /* ------------------------------------------------------------ território - */

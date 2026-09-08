@@ -2195,6 +2195,57 @@ mesmo molde que a sua, motor único de verdade, "ao vivo" vs "adormecida"
 como freio de desempenho, teto de população medido, migração de save,
 conferência visual) — trabalho grande, contínuo nas próximas sessões.
 
+## Troca de contexto entre vilas (etapa 2 de 8)
+
+Continuação do plano acima. Nenhuma função do motor de verdade
+(`acharCaminho`, `atualizarPessoa`, `conselho()`, `distribuirOficios()`,
+`criarPessoa`, `tickDia`) recebe "qual vila" como argumento — todas leem e
+escrevem direto em `jogo.recursos`/`predios`/`pessoas`/`estradas`/
+`obrasEstrada`/`ano`/`anoFrac`/`clima`/`fome`. Fazer essas funções rodarem
+de verdade pra uma vila rival não é reescrevê-las — é apontar esses nove
+campos pros da vila por um instante e devolver depois.
+
+`trocarContexto(v)`/`restaurarContexto()` fazem exatamente isso. Os campos
+de objeto/array (`recursos`, `predios`, `pessoas`, `estradas`,
+`obrasEstrada`) trocam por REFERÊNCIA — o motor escreve neles em cada tick
+e a escrita cai direto no objeto da própria vila, sem copiar de volta. Os
+de valor (`ano`, `anoFrac`, `clima`, `fome`) são número/texto/booleano —
+trocam por CÓPIA, então `restaurarContexto` devolve pra vila o que mudou
+antes de repor os do jogador. `jogo.autoAprovar` vira `true` emprestado
+enquanto uma vila rival está no contexto (ela não tem jogador esperando
+responder pedido de obra) e volta pro valor real do jogador ao sair.
+`ocupado` (tile ocupado) e a grade de quarteirão ficam de fora de
+propósito — continuam globais, compartilhadas por todas as vilas, porque
+um caminho de qualquer uma precisa desviar de prédio de qualquer outra.
+
+Uma trava evita o erro mais fácil de cometer nas próximas etapas: chamar
+`trocarContexto` duas vezes sem restaurar entre elas agora lança erro em
+vez de perder silenciosamente o contexto do jogador.
+
+Cada vila rival ganhou os campos que faltavam pra poder entrar no lugar de
+`jogo` (`recursos`, `pessoas`, `ano`, `anoFrac`, `clima`) — os campos
+soltos antigos (`v.comida`, `v.madeira`, `v.pop`...) continuam de pé por
+ora, ainda lidos pelo modelo simplificado atual (`diaDaVilaRival` e
+companhia), aposentado só na etapa 4.
+
+**Save salvo antes desta mudança**: vila rival carregada de save antigo
+não tem esses campos novos ainda (o `carregar()` desserializa só o que
+existia na hora do save) — confirmado ao vivo, é exatamente o que a etapa
+7 (migração de save) vai preencher. Não afeta o jogo hoje porque nada
+ainda chama `trocarContexto` fora de teste — só passa a importar a partir
+da etapa 3.
+
+Testado ao vivo, isolado, com try/finally: guardei os nove campos do
+jogador, troquei pra uma vila rival, confirmei que os arrays/objetos são a
+MESMA referência (`jogo.predios === v.predios`, etc.), mudei `jogo.ano` e
+`jogo.clima` dentro do contexto trocado, restaurei — e a vila recebeu de
+volta exatamente o que mudou (`v.ano` virou 999, `v.clima` virou 'chuva'),
+enquanto o jogador voltou com os nove campos intactos, byte a byte
+(comida com casas decimais idênticas, mesmo tamanho de malha). Chamar
+`trocarContexto` duas vezes seguidas sem restaurar lançou o erro esperado
+e não corrompeu nada — `restaurarContexto()` ainda devolveu os dados do
+jogador certos.
+
 ---
 
 ## Estrutura
