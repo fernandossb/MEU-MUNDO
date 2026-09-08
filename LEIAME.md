@@ -1814,6 +1814,89 @@ mobile e desktop.
 
 ---
 
+## Três ajustes de simulação: vila rival, melhoria de prédio, excesso de fazendeiro
+
+Pedido de três melhorias separadas, investigadas lendo o código antes de
+mexer em qualquer coisa (plano em `.claude/plans/robust-conjuring-reef.md`).
+
+**1 — vila rival só tinha prédio perto da fundação.** Causa raiz: território
+cresce por pressão de prosperidade (`avancarFronteira`), sem custar recurso
+— e prédio só saía UM por dia, `casa` OU `fazenda`, os dois únicos tipos que
+uma vizinha já construía. As duas coisas descolam: medido ao vivo, uma vila
+sozinha chegou a 388 quarteirões com só 12 prédios em 2000 dias, e o prédio
+NUNCA mais crescia depois disso — travado pra sempre, era esse o "só rua"
+relatado.
+
+Duas mudanças, a primeira não bastou sozinha: **(a)** vila rival agora
+constrói variedade nova — oficina, serraria, depósito e mina (mina só perto
+de rocha de verdade, mesma exigência do jogador) — em até 4 tentativas por
+dia quando sobra quarteirão vazio, e constrói casa até um pouco à frente da
+necessidade (mesma filosofia do conselho do jogador), o que também ajuda a
+população a crescer (mais teto → mais nascimento → mais gente pra outros
+postos). Sozinho isso já tira a vila do travamento (12 → 20-30 prédios
+variados), mas medindo mais longe (3000 dias) a lacuna prédio-vs-quarteirão
+ainda voltava a crescer sem limite — população não acompanha o ritmo do
+território de jeito nenhum. **(b)** freio na fronteira: a vila só toma
+quarteirão NOVO se o que já tem não estiver muito vazio (pelo menos 1 prédio
+a cada 3 quarteirões reclamados) — a pressão continua se acumulando
+("no banco") enquanto isso, sem mexer na fórmula dela nem no prazo da
+disputa com você. Medido ao vivo por 4000 dias: a proporção prédio/quarteirão
+fica travada em 0,33 o tempo todo, população sai de 10 para 28 (bem mais
+saudável que antes), e a vizinha vira uma cidade de verdade — densa perto do
+centro, com borda de terreno ainda crua, não um mar de rua vazia.
+
+**2 — melhorar prédio já existia, só nunca era o conselho que decidia.**
+Achado direto no código: `MELHORIA` (casa→sobrado, sobrado→predio,
+fazenda→fazendaGrande, deposito→mercado) e `melhorarPredio` já existiam —
+só o botão "⬆️ Virar X" no menu do prédio chamava isso, nunca o conselho
+sozinho. E a busca de espaço pro prédio maior era reativa (só na hora de
+melhorar), então se o vizinho já tivesse construído em cima nesse meio
+tempo, a melhoria falhava com "Não há espaço em volta".
+
+Agora **todo prédio novo com melhoria à frente já reserva a coluna extra que
+vai precisar** (`calcularReservaDeMelhoria`, chamada de `criarPredio`) —
+tenta o lado direito do lote primeiro, depois o esquerdo, usando a mesma
+`cabeAqui` que já rejeita rua e terreno sólido. A reserva ocupa `ocupado`
+apontando pro MESMO prédio, então quando a melhoria chega (`melhorarPredio`,
+sem nenhuma mudança na lógica de busca dela) o espaço já está lá — zero
+"não há espaço" pra quem foi construído depois desta mudança. E **o
+conselho tenta melhorar antes de construir novo**, nas três frentes que já
+tinham essa escolha (moradia, produção, depósito) — "antes de criar mais
+casas, melhorar as que já existem", ao pé da letra do pedido. Melhoria
+decidida pelo conselho acontece na hora, sem pedido de aprovação — mesmo
+comportamento do botão manual de sempre.
+
+Reserva sobrevive a mover prédio (recalculada do zero — a antiga ficaria
+apontando pro endereço errado) e a salvar/carregar (guardada no save,
+`rtx`/`rw`, restaurada tal e qual — recalcular durante o carregamento veria
+`ocupado` incompleta, com prédios salvos mais adiante na lista ainda por vir).
+
+**3 — gente demais virando fazendeiro, fazenda grande demais no mapa.** Dois
+fatores medidos: **(a)** a meta de produção contava PRÉDIO, não RENDIMENTO —
+mas `fazendaGrande` rende 1,9× uma fazenda comum, e a partir de pop 14 toda
+fazenda nova já nascia Grande. Contar prédio por prédio quando um vale quase
+dois pedia fazenda demais, sistematicamente. Agora a meta soma rendimento
+(fazenda=1, fazendaGrande=1.9, cais=proporção real de `PESCA_SEG/LAVOURA_SEG`),
+mesmo alvo de sempre (`ceil(pop/5)+1`), só medido certo. **(b)** vaga de
+fazenda parava de ser preenchida só quando NOMEADA pela primeira vez — quem
+já estava lá ficava pra sempre, e como fazenda é disparado o prédio de posto
+mais numeroso (a meta é ~5× a de mina, ~7× a de oficina), a maioria das vagas
+de posto disponíveis sempre foi fazenda. Agora `distribuirOficios` pula vaga
+de fazenda (só fazenda — pescador fica de fora) quando a comida já está a
+85% do teto do galpão, mesmo limiar que o conselho já usa — dinâmico, comida
+caindo a vaga volta a preencher.
+
+Testado ao vivo: vila rival simulada 4000 dias com proporção prédio/
+quarteirão estável e cidade visualmente densa (desktop e mobile); melhoria
+automática confirmada ponta a ponta — casa→sobrado e fazenda→fazendaGrande
+pousando exatamente na coluna reservada, sem busca reativa; reserva
+sobrevivendo a um ciclo salvar/carregar de verdade; botão manual "⬆️ Virar"
+testado depois da mudança, continua idêntico; fórmula de produção ponderada
+conferida contra cálculo manual; vaga de fazenda pausando com galpão cheio e
+voltando a preencher com comida escassa, nos dois sentidos.
+
+---
+
 ## Estrutura
 
 ```

@@ -1247,10 +1247,16 @@ const jogo = {
 
 const ocupado = new Map();
 
+// 'reservaTx'/'reservaW' (opcionais) ocupam uma faixa MAIOR que 'def.w' —
+// espaço guardado pra uma melhoria futura (ver MELHORIA/'calcularReservaDeMelhoria'
+// mais abaixo) sem mudar o desenho nem a colisão do prédio como ele é HOJE:
+// só o que fica bloqueado pra QUALQUER OUTRO prédio ao redor.
 function marcarOcupacao(p, on) {
+  const tx = p.reservaTx !== undefined ? p.reservaTx : p.tx;
+  const w = p.reservaW || p.def.w;
   for (let y = 0; y < p.def.h; y++)
-    for (let x = 0; x < p.def.w; x++) {
-      const k = nk(p.tx + x, p.ty + y);
+    for (let x = 0; x < w; x++) {
+      const k = nk(tx + x, p.ty + y);
       if (on) ocupado.set(k, p); else ocupado.delete(k);
     }
 }
@@ -2501,7 +2507,15 @@ function atualizarPessoa(p, dt) {
 
 let proxPredioId = 1;
 
-function criarPredio(chave, tx, ty, progresso) {
+/*
+   'reserva' é opcional: {tx, w} pronto (o carregamento de save passa o que já
+   tinha sido calculado da primeira vez, pra não recalcular em cima de uma
+   'ocupado' ainda incompleta enquanto os prédios salvos vão sendo recriados
+   um por um) — 'undefined' (o caso normal, obra nova de verdade) calcula na
+   hora via 'calcularReservaDeMelhoria'; passar 'null' explícito desiste da
+   reserva de propósito.
+*/
+function criarPredio(chave, tx, ty, progresso, reserva) {
   const def = PREDIO[chave];
   const pr = {
     id: proxPredioId++, chave, def, tx, ty,
@@ -2509,10 +2523,39 @@ function criarPredio(chave, tx, ty, progresso) {
     progresso: progresso || 0, concluido: (progresso || 0) >= 1,
     trabalhador: null, produzindo: 0, moradores: [],
   };
+  if (reserva === undefined) reserva = calcularReservaDeMelhoria(chave, tx, ty, def);
+  if (reserva) { pr.reservaTx = reserva.tx; pr.reservaW = reserva.w; }
   jogo.predios.push(pr);
   marcarOcupacao(pr, true);
   invalidarArea(tx, ty, def.w, def.h);
   return pr;
+}
+
+/*
+   ITEM 2 — reservar, já na construção, a coluna que uma melhoria futura vai
+   precisar. Antes, 'melhorarPredio' só procurava espaço NA HORA de melhorar
+   — e se o vizinho já tivesse construído em cima nesse meio tempo, a
+   melhoria falhava com "Não há espaço em volta". Reservando cedo, o espaço
+   já está garantido quando a vez chegar.
+
+   As quatro entradas de MELHORIA de hoje crescem do MESMO jeito — +1 na
+   largura, mesma altura — e é só essa forma que sabe reservar (bate com o
+   leque de posições que 'melhorarPredio' já tenta, [0,0] depois [-1,0]):
+   se uma melhoria futura crescer de outro jeito, esta função devolve null
+   e a melhoria volta a fazer a busca reativa de sempre, sem quebrar nada.
+
+   Tenta a coluna à DIREITA do lote primeiro, depois à ESQUERDA — a checagem
+   é a mesma 'cabeAqui' que já rejeita rua e terreno sólido, então nunca
+   reserva em cima da própria testada (a rua) do prédio.
+*/
+function calcularReservaDeMelhoria(chave, tx, ty, def) {
+  const chaveNova = MELHORIA[chave];
+  if (!chaveNova) return null;
+  const nova = PREDIO[chaveNova];
+  if (nova.w !== def.w + 1 || nova.h !== def.h) return null;
+  if (cabeAqui(tx + def.w, ty, 1, def.h)) return { tx, w: nova.w };
+  if (cabeAqui(tx - 1, ty, 1, def.h)) return { tx: tx - 1, w: nova.w };
+  return null;
 }
 
 function concluirPredio(pr) {
@@ -3008,6 +3051,86 @@ function prosperidadeDe(v) {
    a estação vale para os dois lados. Se fosse uma fórmula própria, a disputa
    seria injusta num sentido ou no outro e não haveria como afinar.
 */
+
+// Pagamento da vizinha: madeira e pedra (ela não usa comida em obra, e os
+// prédios novos da lista abaixo — oficina, serraria, mina — custam pedra
+// também, ao contrário de casa/fazenda que só gastam madeira).
+function podeVilaRivalPagar(v, custo) {
+  if (custo.madeira && v.madeira < custo.madeira) return false;
+  if (custo.pedra && v.pedra < custo.pedra) return false;
+  return true;
+}
+function pagarVilaRival(v, custo) {
+  if (custo.madeira) v.madeira -= custo.madeira;
+  if (custo.pedra) v.pedra -= custo.pedra;
+}
+const contarRival = (v, chave) => v.predios.filter(p => p.chave === chave).length;
+
+/*
+   O QUE CONSTRUIR HOJE — mesma prioridade do conselho do jogador (comida
+   primeiro, depois teto, depois o resto por proporção de população), só mais
+   simples porque a vizinha não tem fila de pedido nem aprovação: decide e já
+   ergue. Devolve true quando construiu alguma coisa, pra quem chama tentar de
+   novo no mesmo dia se ainda houver pressa (ver 'diaDaVilaRival').
+
+   Antes só existiam 'casa' e 'fazenda' pra vizinha — nenhuma vila rival tinha
+   oficina, serraria, depósito ou mina, por mais território que tomasse. Isso
+   também deixava toda vizinha virando fazenda: era o único emprego que
+   existia lá.
+*/
+function tentarConstruirNaVilaRival(v) {
+  const querLavoura = v.lavouras < Math.ceil(v.pop / 5) + 1;
+  if (querLavoura && podeVilaRivalPagar(v, PREDIO.fazenda.custo)) {
+    if (erguerNaVilaRival(v, 'fazenda')) { pagarVilaRival(v, PREDIO.fazenda.custo); v.lavouras++; return true; }
+  }
+  if (v.casas * 5 - v.pop < 3 && podeVilaRivalPagar(v, PREDIO.casa.custo)) {
+    if (erguerNaVilaRival(v, 'casa')) { pagarVilaRival(v, PREDIO.casa.custo); v.casas++; return true; }
+  }
+  // Mina só entra na lista perto de rocha de verdade — 'erguerNaVilaRival'
+  // agora exige isso no lote (mesma regra do jogador); sem essa checagem
+  // aqui, a vizinha tentaria toda vez e nunca ia conseguir, gastando a
+  // tentativa do dia à toa.
+  if (v.pedra < 200 && contarRival(v, 'mina') < 1 && podeVilaRivalPagar(v, PREDIO.mina.custo)) {
+    if (erguerNaVilaRival(v, 'mina')) { pagarVilaRival(v, PREDIO.mina.custo); return true; }
+  }
+  if (v.pop >= 8 && contarRival(v, 'oficina') < Math.ceil(v.pop / 25) && podeVilaRivalPagar(v, PREDIO.oficina.custo)) {
+    if (erguerNaVilaRival(v, 'oficina')) { pagarVilaRival(v, PREDIO.oficina.custo); return true; }
+  }
+  if (v.pop >= 12 && contarRival(v, 'serraria') < Math.ceil(v.pop / 30) && podeVilaRivalPagar(v, PREDIO.serraria.custo)) {
+    if (erguerNaVilaRival(v, 'serraria')) { pagarVilaRival(v, PREDIO.serraria.custo); return true; }
+  }
+  if (contarRival(v, 'deposito') < Math.ceil(v.pop / 12) && podeVilaRivalPagar(v, PREDIO.deposito.custo)) {
+    if (erguerNaVilaRival(v, 'deposito')) { pagarVilaRival(v, PREDIO.deposito.custo); return true; }
+  }
+  /*
+     Território crescendo bem mais rápido que a população: sem nada mais
+     faltando HOJE (todo gatilho acima é por população, e a fronteira anda
+     por prosperidade — as duas coisas podem se descolar por completo,
+     medido ao vivo: 17 de população e 388 quarteirões, um caso real de
+     "só rua depois do primeiro quarteirão"). Constrói casa mesmo sem
+     precisar ainda — mesma filosofia do conselho do jogador ("a vila não
+     espera lotar para construir") — e o efeito é duplo: preenche o
+     quarteirão vazio E levanta o teto de população (v.casas*5), que por sua
+     vez destrava fazenda/oficina/mina — todos os gatilhos acima — mais
+     cedo, puxando a vizinha pra fora do próprio estagnamento.
+
+     MAS com teto: primeira versão disto (sem a segunda condição) chegou a
+     395 casas para 6 fazendas e 19 de população, medido ao vivo — nascimento
+     é lento demais pra acompanhar teto de moradia sem limite nenhum. Só
+     constrói proativamente enquanto a vaga ociosa (casas*5 - pop) for MENOR
+     que a própria população — ou seja, no máximo o dobro de teto sobre gente
+     de verdade. Depois disso, se ainda sobrar quarteirão vazio, é a
+     população mesmo que está devagar, não falta de tentativa — aceita a
+     lacuna, do jeito que uma vila de verdade tem borda de terra ainda crua.
+  */
+  const semPredio = v.blocos.length - v.predios.length;
+  const casasOciosas = v.casas * 5 - v.pop;
+  if (semPredio > 8 && casasOciosas < v.pop * 3 && podeVilaRivalPagar(v, PREDIO.casa.custo)) {
+    if (erguerNaVilaRival(v, 'casa')) { pagarVilaRival(v, PREDIO.casa.custo); v.casas++; return true; }
+  }
+  return false;
+}
+
 function diaDaVilaRival(v) {
   const seg = ANO_DIA;
 
@@ -3034,14 +3157,18 @@ function diaDaVilaRival(v) {
     if (rnd() < 0.10) v.pop = Math.max(0, v.pop - 1);
   } else if (v.fome && v.comida > v.pop * 2) v.fome = false;
 
-  // Obras: a mesma regra do seu conselho — uma lavoura para cada cinco, mais
-  // uma; e casa quando o teto aperta.
-  const querLavoura = v.lavouras < Math.ceil(v.pop / 5) + 1;
-  if (querLavoura && v.madeira >= PREDIO.fazenda.custo.madeira) {
-    if (erguerNaVilaRival(v, 'fazenda')) { v.madeira -= PREDIO.fazenda.custo.madeira; v.lavouras++; }
-  } else if (v.casas * 5 - v.pop < 3 && v.madeira >= PREDIO.casa.custo.madeira) {
-    if (erguerNaVilaRival(v, 'casa')) { v.madeira -= PREDIO.casa.custo.madeira; v.casas++; }
-  }
+  /*
+     Obras: mais de uma tentativa por dia quando sobra quarteirão sem prédio
+     nenhum. Território cresce por pressão de prosperidade (ver
+     'avancarFronteira' abaixo), sem custar recurso — sozinho, UM prédio por
+     dia nunca alcança isso, e a vizinha acaba com rua avançando e prédio só
+     perto da fundação (era exatamente o sintoma: só o primeiro quarteirão
+     tinha prédio de verdade). O número de tentativas cresce com o tamanho
+     da lacuna e volta a 1 assim que ela é preenchida.
+  */
+  const semPredio = Math.max(0, v.blocos.length - v.predios.length);
+  const tentativas = Math.min(4, 1 + Math.floor(semPredio / 3));
+  for (let t = 0; t < tentativas; t++) if (!tentarConstruirNaVilaRival(v)) break;
 
   // Nascimento: devagar, como na sua vila, e só com despensa e teto.
   const dias = v.comida / Math.max(0.01, v.pop * COMIDA_POR_ANO / DIAS_NO_ANO);
@@ -3225,7 +3352,21 @@ function tickVilas() {
     diaDaVilaRival(v);
     const p = prosperidadeDe(v);
     v.pressao += p * 0.22;
-    if (v.pressao >= 1) {
+    /*
+       ITEM 1 — freio na fronteira. Sem isso, território cresce por pressão
+       de prosperidade sem gastar recurso nenhum — bem mais rápido do que
+       QUALQUER ritmo de obra por população consegue acompanhar (medido ao
+       vivo: mesmo com prédio proativo tentando toda vez que sobra
+       quarteirão vazio, em 3000 dias a lacuna prédio-vs-quarteirão ainda
+       passava de 600). Não mexe na pressão em si — mesma fórmula, mesmo
+       prazo pra disputa de fronteira com você — só ADIA gastá-la enquanto o
+       que a vila já tomou segue muito vazio. A pressão continua se
+       acumulando nesse meio tempo (nunca é descartada), então assim que a
+       obra alcança de novo a fronteira volta a avançar, inclusive em
+       rajada se sobrou pressão acumulada.
+    */
+    const construidoOBastante = v.predios.length >= v.blocos.length / 3;
+    if (v.pressao >= 1 && construidoOBastante) {
       v.pressao -= 1;
       const r = avancarFronteira(quarteiraoDe(v.tx, v.ty), p, v.blocos, v.id);
       if (r && !r.tomado) anelDoQuarteirao(v, r.bx, r.by);
@@ -3263,6 +3404,12 @@ function erguerNaVilaRival(v, chave) {
     const [bx, by] = k.split(',').map(Number);
     for (const [tx, ty] of posicoesNoQuarteirao(bx, by, def)) {
       if (!areaValida(tx, ty, def.w, def.h)) continue;
+      // Mesma exigência do jogador (ver 'loteNoQuarteirao'): mina só encosta
+      // em rocha de verdade. Sem isso a vizinha ergueria mina em qualquer
+      // lote livre, no meio do campo — nem sempre há rocha na primeira
+      // tentativa de bloco, e é melhor pular pro próximo do que desistir.
+      if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
+      if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
       const pr = {
         // 'id' numérico, não string: a arte sorteia a variante fazendo conta
         // com o id ('pr.id * 37'), e uma string viraria NaN e quebraria o
@@ -4506,6 +4653,16 @@ function distribuirOficios() {
   for (const pr of vagasAoAlcance) {
     if (!temVaga(pr) && !(predioAbandonado(pr) && (pr.def.fazenda || pr.def.mina || pr.def.posto) && pr.progresso >= 1)) continue;
     if (emPosto >= tetoDePostos) break;
+    /*
+       ITEM 3 — comida já sobrando não manda mais gente pra lavoura. Fazenda
+       é, disparado, o prédio de posto mais numeroso (meta de ceil(pop/5)+1,
+       contra ceil(pop/15) de mina ou ceil(pop/25) de oficina) — preencher
+       toda vaga sem olhar pra despensa era o motivo de praticamente todo
+       mundo em posto virar fazendeiro, galpão cheio ou não. Mesmo limiar que
+       'despensaCheia' já usa no conselho (index.html~4970). Pescador (cais)
+       fica de fora — ofício diferente, e cais é raro (beiraDagua).
+    */
+    if (pr.def.fazenda && !pr.def.pesca && jogo.recursos.comida >= tetoEstoque() * 0.85) continue;
     // Só nomeia quem consegue chegar lá andando pela rua.
     const i = disponiveis.findIndex(p => faseDaIdade(p.idade) === FASE.ADULTO
       && daParaChegar(p.x, p.y, pr.tx, pr.ty));
@@ -4828,6 +4985,24 @@ function saldoTeorico() {
   return producao - popAtual() * COMIDA_POR_ANO;
 }
 
+/*
+   ITEM 2 — o conselho também sabe apertar "⬆️ Virar X" (mesmo botão do menu
+   do prédio, 'melhorarPredio' mais abaixo) — só que sozinho, sem esperar
+   você. Confere prédio concluído mais barato primeiro (o próprio
+   'melhorarPredio' cobra e procura espaço; aqui só evita gastar a rodada do
+   conselho tentando uma melhoria óbvia que não vai caber no bolso).
+   Devolve true no mesmo padrão de 'decidirObra', pra escrever
+   'if (tentarMelhorarAntes('casa')) return;'.
+*/
+function tentarMelhorarAntes(chaveBase) {
+  const chaveNova = MELHORIA[chaveBase];
+  if (!chaveNova) return false;
+  const alvo = jogo.predios.find(p => p.chave === chaveBase && p.progresso >= 1);
+  if (!alvo) return false;
+  if (!podePagar(custoDaMelhoria(chaveBase, chaveNova))) return false;
+  return melhorarPredio(alvo);
+}
+
 function conselho() {
   distribuirOficios();
   // Fila cheia: o conselho para de pedir até você responder alguma coisa.
@@ -4842,7 +5017,16 @@ function conselho() {
   // Lavoura já em obra conta como resposta dada: pedir outra por causa da mesma
   // fome só drena madeira e não põe comida na mesa mais cedo.
   const fazendaEmObra = jogo.predios.some(p => p.def.fazenda && p.progresso < 1);
-  const producao = jogo.predios.filter(p => p.def.fazenda).length;   // conta as em obra também
+  /*
+     ITEM 3 — produção por RENDIMENTO, não por prédio. 'fazendaGrande' rende
+     1,9× uma fazenda comum (ver LAVOURA_SEG mais abaixo), e a partir de
+     pop>=14 toda fazenda nova já nasce Grande — contar prédio por prédio
+     quando um vale quase dois sistematicamente pedia fazenda demais (o
+     "muitas fazendas grandes no mapa" relatado). Mesma meta de sempre
+     (ceil(pop/5)+1), só medida do jeito certo.
+  */
+  const producao = jogo.predios.filter(p => p.def.fazenda).reduce((soma, p) =>
+    soma + (p.def.lavouraGrande ? 1.9 : p.def.pesca ? PESCA_SEG / LAVOURA_SEG : 1), 0);
 
   /*
      --- 1. Fome primeiro. Sem despensa não se cresce. ---
@@ -4902,6 +5086,10 @@ function conselho() {
   const folga = cap - pop;
   const querMaisTeto = folga <= Math.max(8, pop * 0.4) && obrasDe(d => d.moradia) < 2;
   if (querMaisTeto && comidaDias >= 90 && saldoComidaPorAno() > 864) {
+    // ITEM 2 — melhorar rende teto no MESMO lote, sem abrir quarteirão nem
+    // gastar terreno novo: tenta antes de erguer prédio do zero.
+    if (tentarMelhorarAntes('sobrado')) return;
+    if (tentarMelhorarAntes('casa')) return;
     // Casarão vale mais que casa quando a vila já tem madeira e pedra.
     if (pop >= 20 && podePagar(PREDIO.sobrado.custo) && decidirObra('sobrado')) return;
     if (decidirObra('casa')) return;
@@ -4932,6 +5120,9 @@ function conselho() {
   const despensaCheia = jogo.recursos.comida >= tetoEstoque() * 0.85;
   if (producao < Math.ceil(pop / 5) + 1 && !despensaCheia && !fazendaVazia && !fazendaEmObra) {
     if (jaTem('cais') && rnd() < 0.4 && decidirObra('cais')) return;
+    // ITEM 2 — fazenda que já existe vira fazendaGrande no mesmo lote (1,9×
+    // de rendimento) antes de abrir lavoura nova do zero.
+    if (tentarMelhorarAntes('fazenda')) return;
     if (pop >= 14 && decidirObra('fazendaGrande')) return;
     if (decidirObra('fazenda')) return;
   }
@@ -4975,7 +5166,17 @@ function conselho() {
   if (pop >= 8  && contar('oficina')  < Math.ceil(pop / 25) && decidirObra('oficina')) return;
   if (pop >= 12 && contar('serraria') < Math.ceil(pop / 30) && decidirObra('serraria')) return;
 
-  if (!jaTem('mercado') && pop >= 14 && decidirObra('mercado')) return;
+  /*
+     ITEM 2 — mercado é a melhoria de depósito (MELHORIA.deposito), não uma
+     obra à parte: tenta melhorar um depósito já de pé antes de erguer um
+     mercado do zero. (Não colado nos dois gatilhos de depósito logo acima —
+     aqueles pedem MAIS cobertura de entrega; melhorar reduziria a contagem
+     de 'deposito' bem na hora em que ela está pedindo para crescer.)
+  */
+  if (!jaTem('mercado') && pop >= 14) {
+    if (tentarMelhorarAntes('deposito')) return;
+    if (decidirObra('mercado')) return;
+  }
   if (!jaTem('estabulo') && pop >= 16 && decidirObra('estabulo')) return;
   if (!jaTem('prefeitura') && pop >= 24 && decidirObra('prefeitura')) return;
   if (contar('praca') < Math.floor(pop / 25) && pop >= 18 && decidirObra('praca')) return;
@@ -5864,6 +6065,12 @@ function moverPredioPara(pr, tx, ty) {
   invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
   pr.tx = tx; pr.ty = ty;
   pr.cx = (tx + pr.def.w / 2) * TILE; pr.cy = (ty + pr.def.h / 2) * TILE;
+  // A reserva antiga apontava pra coluna do endereço velho — mudou de lugar,
+  // recalcula do zero (pode não achar de novo, e tudo bem: 'melhorarPredio'
+  // sempre sabe procurar na hora, como fazia antes de reserva existir).
+  pr.reservaTx = undefined; pr.reservaW = undefined;
+  const reserva = calcularReservaDeMelhoria(pr.chave, tx, ty, pr.def);
+  if (reserva) { pr.reservaTx = reserva.tx; pr.reservaW = reserva.w; }
   marcarOcupacao(pr, true);
   invalidarArea(tx, ty, pr.def.w, pr.def.h);
   crônica(pr.def.nome + ' mudou de lugar.', false, 'obra');
@@ -5873,12 +6080,17 @@ function moverPredioPara(pr, tx, ty) {
 }
 
 /* --- melhorar --- */
+// Devolve true quando a melhoria realmente aconteceu, false em qualquer
+// desistência (falta material, sem espaço) — item 2: o conselho
+// ('tentarMelhorarAntes') precisa saber se pode contar isso como obra feita
+// nesta rodada, e o botão do menu ('abrirMenuPredio') ignora o retorno, então
+// não muda nada pra quem já chamava esta função antes.
 function melhorarPredio(pr) {
   const chaveNova = MELHORIA[pr.chave];
-  if (!chaveNova) return;
+  if (!chaveNova) return false;
   const nova = PREDIO[chaveNova];
   const custo = custoDaMelhoria(pr.chave, chaveNova);
-  if (!podePagar(custo)) { aviso('Falta material: ' + custoTexto(custo)); return; }
+  if (!podePagar(custo)) { aviso('Falta material: ' + custoTexto(custo)); return false; }
 
   // O prédio maior pode precisar de mais um bloco: tenta encaixar em volta do
   // canto atual antes de desistir.
@@ -5889,7 +6101,7 @@ function melhorarPredio(pr) {
       destino = { tx, ty }; break;
     }
   }
-  if (!destino) { aviso('Não há espaço em volta para o ' + nova.nome); return; }
+  if (!destino) { aviso('Não há espaço em volta para o ' + nova.nome); return false; }
 
   pagar(custo);
   marcarOcupacao(pr, false);
@@ -5898,6 +6110,11 @@ function melhorarPredio(pr) {
   pr.chave = chaveNova; pr.def = nova;
   pr.tx = destino.tx; pr.ty = destino.ty;
   pr.cx = (pr.tx + nova.w / 2) * TILE; pr.cy = (pr.ty + nova.h / 2) * TILE;
+  // A reserva era pra ESTA melhoria, que acabou de acontecer — some. Se o
+  // prédio novo (ex.: sobrado) tiver a própria melhoria adiante (predio), a
+  // próxima obra que passar por aqui não reserva de novo sozinha; fica pra
+  // busca reativa de sempre, como já era antes de reserva existir.
+  pr.reservaTx = undefined; pr.reservaW = undefined;
   marcarOcupacao(pr, true);
   invalidarArea(pr.tx, pr.ty, nova.w, nova.h);
   // Posto que deixou de existir volta a ficar vago.
@@ -5907,6 +6124,7 @@ function melhorarPredio(pr) {
   aviso('⬆️ ' + nomeVelho + ' virou ' + nova.nome);
   flutuar(pr.cx, pr.cy - 22, '⬆️ ' + nova.nome);
   atualizarHUD(); salvar();
+  return true;
 }
 
 /* --- demolir --- */
@@ -9942,8 +10160,11 @@ function gravar() {
       diaTotal: jogo.diaTotal,
       missoes: jogo.missoes,
       pedidos: jogo.pedidos, proxPedidoId, autoAprovar: jogo.autoAprovar,
+      // 'rtx'/'rw' (espaço reservado pra melhoria — ver 'calcularReservaDeMelhoria')
+      // vêm como 'undefined' na maioria dos prédios, e JSON.stringify já
+      // remove sozinho a chave nesse caso — sem precisar de condicional aqui.
       predios: jogo.predios.map(p => ({ id:p.id, c:p.chave, tx:p.tx, ty:p.ty, pr:p.progresso,
-        mor:p.moradores, prod:p.produzindo, trab:p.trabalhador })),
+        mor:p.moradores, prod:p.produzindo, trab:p.trabalhador, rtx:p.reservaTx, rw:p.reservaW })),
       proxPredioId, proxId: jogo.proxId,
       pessoas: jogo.pessoas.map(p => ({ id:p.id, n:p.nome, s:p.sobrenome, sx:p.sexo,
         i:+p.idade.toFixed(2), vm:+p.vidaMax.toFixed(1), tr:p.traco,
@@ -10046,7 +10267,12 @@ function carregar() {
     for (const d of (s.predios || [])) {
       const def = PREDIO[d.c];
       if (!def) continue;
-      const pr = criarPredio(d.c, d.tx, d.ty, d.pr);
+      // A reserva vem PRONTA do save (quando existia) em vez de recalculada
+      // aqui: no meio deste laço 'ocupado' ainda está incompleta (só os
+      // prédios já recriados até agora), e recalcular veria espaço livre
+      // onde um prédio salvo mais adiante na lista vai nascer.
+      const reservaSalva = d.rtx !== undefined ? { tx: d.rtx, w: d.rw } : null;
+      const pr = criarPredio(d.c, d.tx, d.ty, d.pr, reservaSalva);
       pr.id = d.id; pr.moradores = d.mor || []; pr.produzindo = d.prod || 0; pr.trabalhador = d.trab || null;
     }
 
