@@ -2663,8 +2663,25 @@ function pagar(custo, categoria) {
 }
 function custoTexto(custo) { return Object.keys(custo).map(k => custo[k] + RECURSO[k].icone).join(' '); }
 
-function areaValida(tx, ty, w, h) {
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (!tileLivre(tx + x, ty + y)) return false;
+/*
+   'def' é opcional. Sem ele (a maioria dos chamadores — todos que não
+   constroem cais), a faixa de areia já é proibida por padrão via
+   'pertoDaPraia': nada de novo nasce perto da beira, sem precisar avisar
+   isso em cada lugar que já chamava esta função. SÓ quando def.beiraDagua é
+   verdadeiro (é dizer: SÓ o cais) a checagem de praia é pulada, E o próprio
+   chão do prédio pode cair em água RASA — a doca de verdade avançando sobre
+   a água, não só encostada nela.
+*/
+function areaValida(tx, ty, w, h, def) {
+  if (!(def && def.beiraDagua) && pertoDaPraia(tx, ty, w, h)) return false;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const px = tx + x, py = ty + y;
+      if (tileLivre(px, py)) continue;
+      const k = nk(px, py);
+      if (def && def.beiraDagua && biomaEm(px, py) === B.RASO && !ocupado.has(k) && !jogo.estradas.has(k)) continue;
+      return false;
+    }
   return true;
 }
 
@@ -2722,6 +2739,26 @@ function temAguaPerto(tx, ty, w, h) {
 }
 
 /*
+   A FAIXA DE AREIA. Não existe areia de deserto neste jogo — o bioma AREIA
+   só nasce como praia, na faixa de elevação entre RASO e CAMPO (ver "O
+   mundo" no LEIAME). Então "perto de areia" já É "perto da beira d'água",
+   sem precisar checar os dois biomas por perto.
+
+   Nem rua nem prédio comum pode nascer nessa faixa (nem no halo de um tile
+   ao redor, mesmo padrão de 'temAguaPerto'/'temRochaPerto') — só o cais,
+   que É a exceção de propósito (ver 'def.beiraDagua' em 'areaValida' e
+   'podeVirarRua'). Sem essa cerca, rua e casa iam direto até a beira, e
+   RASO em particular nem tinha limite de vão contra isso — só água FUNDA
+   tinha o teto de 'vaoCurto'.
+*/
+function pertoDaPraia(tx, ty, w, h) {
+  for (let y = -1; y <= h; y++)
+    for (let x = -1; x <= w; x++)
+      if (biomaEm(tx + x, ty + y) === B.AREIA) return true;
+  return false;
+}
+
+/*
    ONDE O PRÉDIO VAI.
 
    Primeiro pela grade: enche um quarteirão antes de abrir o próximo, sempre do
@@ -2748,8 +2785,12 @@ function loteNoQuarteirao(def) {
   for (const nota of passadas)
     for (const [bx, by] of blocos)
       for (const [tx, ty] of posicoesNoQuarteirao(bx, by, def)) {
-        if (!areaValida(tx, ty, def.w, def.h)) continue;
-        if (!encostaNaRua(tx, ty, def.w, def.h)) continue;
+        if (!areaValida(tx, ty, def.w, def.h, def)) continue;
+        // O cais é o único prédio que não precisa de rua — ele é a própria
+        // razão de existir da beira d'água, e a faixa de areia logo ali do
+        // lado (nova regra) já deixa a rua sem como chegar perto de qualquer
+        // jeito.
+        if (!def.beiraDagua && !encostaNaRua(tx, ty, def.w, def.h)) continue;
         if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
         if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
         if (notaDaZona(def, tx, ty) !== nota) continue;
@@ -2801,7 +2842,7 @@ function loteNaTestada(def) {
         for (let off = 0; off < Math.max(def.w, def.h); off++) {
           const tx = dx !== 0 ? (dx > 0 ? rx + 1 : rx - def.w) : rx - off;
           const ty = dy !== 0 ? (dy > 0 ? ry + 1 : ry - def.h) : ry - off;
-          if (!areaValida(tx, ty, def.w, def.h)) continue;
+          if (!areaValida(tx, ty, def.w, def.h, def)) continue;
           if (pisaNaGrade(tx, ty, def.w, def.h)) continue;
           if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
           if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
@@ -4467,8 +4508,19 @@ function podeVirarRua(tx, ty, dirX, dirY) {
   if (ocupado.has(k) || jogo.estradas.has(k)) return false;
   // Quarteirão de vizinha não se calça: primeiro se ganha o território.
   if (territorioAlheio(tx, ty)) return false;
-  if (b === B.AGUA) return vaoCurto(tx, ty, dirX || 0, dirY || 0);
-  return b === B.RASO || !SOLIDO[b];
+  // NOVA REGRA — nunca em cima da praia: só o cais fica ali, e cais não é
+  // rua. Sem essa linha a cidade calçava até a beira sem nenhum limite.
+  if (b === B.AREIA) return false;
+  /*
+     Água RASA agora pede o MESMO vão curto que água FUNDA já pedia — antes
+     só AGUA passava por 'vaoCurto', RASO tinha passe livre e sem limite de
+     comprimento (dava pra calçar uma lagoa rasa inteira, tile por tile, sem
+     nunca esbarrar em nada). A praia continua barrada acima; isto aqui só
+     limita o vão sobre a água em si — a ponte de verdade (custo maior,
+     'custoDoTrecho') continua funcionando igual, lançada da margem firme.
+  */
+  if (b === B.AGUA || b === B.RASO) return vaoCurto(tx, ty, dirX || 0, dirY || 0);
+  return !SOLIDO[b];
 }
 
 // Quanto custa calçar este trecho: chão é 1, ponte rasa 4, ponte funda 9.
@@ -4574,7 +4626,7 @@ function responderPedido(sim, id) {
   jogo.pedidos.splice(jogo.pedidos.indexOf(ped), 1);
   const def = PREDIO[ped.chave];
   if (!sim) { crônica('Você recusou a obra de ' + def.nome + '.', false, 'obra'); aviso('Pedido recusado'); }
-  else if (!areaValida(ped.tx, ped.ty, def.w, def.h) || !encostaNaRua(ped.tx, ped.ty, def.w, def.h)) {
+  else if (!areaValida(ped.tx, ped.ty, def.w, def.h, def) || (!def.beiraDagua && !encostaNaRua(ped.tx, ped.ty, def.w, def.h))) {
     aviso('O terreno já não serve — eles vão procurar outro');
   } else if (!erguerPredio(ped.chave, ped.tx, ped.ty)) {
     aviso('Faltou recurso para começar');
@@ -5216,16 +5268,15 @@ function decidirObra(chave) {
   if (!def || !podePagar(def.custo)) return false;
   if (construirAuto(chave)) return true;
 
-  // Não achou terreno: a beira d'água puxa rua para o mar, o resto puxa rua
-  // para onde houver espaço.
-  if (def.beiraDagua) {
-    const agua = aguaMaisProxima();
-    if (agua && crescerRuaRumo(agua.tx, agua.ty, 9)) {
-      crônica('Sem cais possível, os aldeões pediram uma rua até a água.', false, 'obra');
-      return true;
-    }
-    return false;
-  }
+  /*
+     Não achou terreno. Cais NÃO entra mais aqui — ele não precisa de rua
+     (nova regra: é o único prédio que não precisa), então "puxar rua até a
+     água" deixou de fazer sentido, e a rua nem chegaria mais perto da beira
+     mesmo (faixa de areia proibida pra ela, ver 'podeVirarRua'). Se não
+     achou lote de cais, é porque o quarteirão aberto ainda não alcançou a
+     costa — cai no mesmo 'crescerRua()' genérico do fim da função, que abre
+     quarteirão novo e eventualmente chega lá.
+  */
   if (def.beiraRocha) {
     // Sem lote encostado na rocha: o que falta é rua até o morro.
     const morro = rochaMaisProxima();
@@ -5423,7 +5474,7 @@ function tickDia() {
   for (let i = jogo.pedidos.length - 1; i >= 0; i--) {
     const ped = jogo.pedidos[i];
     const def = PREDIO[ped.chave];
-    if (!areaValida(ped.tx, ped.ty, def.w, def.h)) {
+    if (!areaValida(ped.tx, ped.ty, def.w, def.h, def)) {
       crônica('O terreno pedido para ' + def.nome + ' já foi ocupado — o pedido caiu.', false, 'obra');
       jogo.pedidos.splice(i, 1);
     }
@@ -5998,12 +6049,22 @@ function reembolsoDe(pr) {
 
 // Cabe o prédio (novo ou movido) neste lote? O terreno que o PRÓPRIO prédio
 // ocupa hoje conta como livre — senão nada nunca caberia no lugar onde está.
-function cabeAqui(tx, ty, w, h, menos) {
+/*
+   'def' opcional, só pra reconhecer cais (mesmo espírito de 'areaValida'):
+   deixa o chão cair em água RASA quando quem pergunta é 'beiraDagua'. SEM a
+   checagem de praia aqui de propósito — 'cabeAqui' serve mover e melhorar
+   prédio que JÁ EXISTE, e a regra nova de praia é sobre onde nasce coisa
+   NOVA, não sobre desfazer o que já foi construído antes dela existir.
+*/
+function cabeAqui(tx, ty, w, h, menos, def) {
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const k = nk(tx + x, ty + y);
       if (menos && ocupado.get(k) === menos) continue;
-      if (SOLIDO[biomaEm(tx + x, ty + y)] || ocupado.has(k) || jogo.estradas.has(k)) return false;
+      if (ocupado.has(k) || jogo.estradas.has(k)) return false;
+      const b = biomaEm(tx + x, ty + y);
+      if (def && def.beiraDagua && b === B.RASO) continue;
+      if (SOLIDO[b]) return false;
     }
   return true;
 }
@@ -6068,8 +6129,8 @@ function iniciarMudanca(pr) {
 }
 
 function moverPredioPara(pr, tx, ty) {
-  if (!cabeAqui(tx, ty, pr.def.w, pr.def.h, pr)) { aviso('Não cabe aí'); return false; }
-  if (!encostaNaRua(tx, ty, pr.def.w, pr.def.h)) { aviso('Precisa encostar numa rua'); return false; }
+  if (!cabeAqui(tx, ty, pr.def.w, pr.def.h, pr, pr.def)) { aviso('Não cabe aí'); return false; }
+  if (!pr.def.beiraDagua && !encostaNaRua(tx, ty, pr.def.w, pr.def.h)) { aviso('Precisa encostar numa rua'); return false; }
   marcarOcupacao(pr, false);
   invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
   pr.tx = tx; pr.ty = ty;
@@ -6224,9 +6285,11 @@ function confirmarColocacao() {
     if (moverPredioPara(movendo, tx, ty)) cancelarColocacao();
     return;
   }
-  if (!areaValida(tx, ty, def.w, def.h)) { aviso('Não dá para construir aqui'); return; }
-  // A mesma regra vale para você: prédio precisa de testada para a rua.
-  if (!encostaNaRua(tx, ty, def.w, def.h)) {
+  if (!areaValida(tx, ty, def.w, def.h, def)) { aviso('Não dá para construir aqui'); return; }
+  // A mesma regra vale para você: prédio precisa de testada para a rua —
+  // menos o cais, que não precisa (é o único prédio que fica onde rua
+  // nenhuma chega, por causa da faixa de areia logo ao lado).
+  if (!def.beiraDagua && !encostaNaRua(tx, ty, def.w, def.h)) {
     aviso('Precisa encostar numa rua — espere a vila abrir uma, ou construa junto ao Centro');
     return;
   }
@@ -10036,8 +10099,8 @@ function desenharVilaNormal() {
   if (colocando) {
     const def = PREDIO[colocando];
     const { tx, ty } = tileAlvoDaCamera(def);
-    const ok = (movendo ? cabeAqui(tx, ty, def.w, def.h, movendo) : areaValida(tx, ty, def.w, def.h))
-      && encostaNaRua(tx, ty, def.w, def.h);
+    const ok = (movendo ? cabeAqui(tx, ty, def.w, def.h, movendo, def) : areaValida(tx, ty, def.w, def.h, def))
+      && (def.beiraDagua || encostaNaRua(tx, ty, def.w, def.h));
     ctx.fillStyle = ok ? 'rgba(130,220,120,.32)' : 'rgba(230,90,80,.32)';
     ctx.fillRect(tx * TILE, ty * TILE, def.w * TILE, def.h * TILE);
     ctx.strokeStyle = ok ? 'rgba(170,255,160,.95)' : 'rgba(255,130,120,.95)';

@@ -1941,6 +1941,66 @@ pra terreno difícil.
 
 ---
 
+## Cais: por que não construía, e a faixa de areia
+
+Três pedidos ligados, investigados antes de mexer em qualquer coisa.
+
+**Por que o cais não ia — achado direto no código, duas causas somadas.**
+(1) `SOLIDO[AGUA]` e `SOLIDO[RASO]` são `true` — todo prédio, cais incluído,
+tinha o próprio chão barrado em qualquer tile de água, sem exceção nenhuma
+pro único prédio que devia ficar bem ali. (2) `confirmarColocacao` exigia
+`encostaNaRua` pra QUALQUER prédio, cais incluído — e terreno de beira
+d'água que já tenha rua por perto é raro, ainda mais longe da vila. As duas
+travas juntas praticamente impediam o cais de sair do papel, com ou sem
+água por perto.
+
+**Cais agora é o único prédio que não precisa de rua** (pedido explícito).
+`areaValida`/`cabeAqui` ganharam um parâmetro `def` opcional: quando
+`def.beiraDagua` (só o cais tem essa marca), o próprio chão do prédio pode
+cair em água RASA — a doca de verdade avançando sobre a água, não só
+encostada nela — e a exigência de `encostaNaRua` é pulada em todo lugar que
+a checava (colocação manual, pedido do conselho, fantasma de arrasto,
+mover prédio existente). `decidirObra` não tenta mais "abrir rua até a
+água" pro cais — não faz mais sentido pedir rua pra quem não precisa dela.
+
+**Nova regra: nem rua nem prédio nasce perto da faixa de areia.** Não existe
+areia de deserto neste jogo — o bioma AREIA só nasce como praia (ver "O
+mundo"), então "perto de areia" já é "perto da beira d'água". Antes dava
+pra calçar rua em cima de qualquer RASO sem limite nenhum de comprimento —
+media (achado ao vivo): um lago de ~17 tiles de água rasa deixava calçar o
+trajeto inteiro, tile a tile, sem nunca esbarrar em nada. Agora:
+
+- Rua nunca nasce EM cima de areia (`podeVirarRua`).
+- Água RASA passa a exigir o MESMO vão curto que água FUNDA já exigia
+  (`vaoCurto`/`VAO_MAXIMO`) — sem isso RASO tinha passe livre.
+- Prédio comum (todos, menos o cais) não nasce no halo de 1 tile ao redor
+  de qualquer areia (`pertoDaPraia`, mesmo padrão de `temAguaPerto`/
+  `temRochaPerto` que já existiam).
+
+**A ponte continua funcionando.** Cogitei bloquear rua perto de areia em
+QUALQUER situação, mas isso aposentaria a ponte (rua atravessando água
+funda, já existente, com custo maior) em qualquer costa arenosa — pra
+lançar uma ponte a rua precisa chegar até a margem, que quase sempre tem
+areia do lado. Confirmado com você: a checagem de praia trava só o tile que
+É areia — o tile de terra firme colado nela (de onde uma ponte de verdade
+lança) continua liberado. Testado ao vivo, num lago real do mundo: tile de
+campo a 1 tile da areia (bem na margem) segue calçável; tile de raso a 17
+tiles da margem oposta (fora do vão máximo) não.
+
+Nada disso mexe retroativamente em rua ou prédio já existente de antes da
+regra — `cabeAqui` (usado por mover e melhorar prédio JÁ CONSTRUÍDO) não
+ganhou a checagem de praia, só `areaValida` (usado só pra construção NOVA).
+
+Testado ao vivo num trecho de costa real do mundo (não hipotético): cais
+construído com sucesso direto na areia/raso, sem rua num raio de dezenas de
+tiles, confirmado visualmente (desktop e mobile) parado sozinho na beira
+d'água; prédio comum barrado no mesmo lugar exato onde o cais passou;
+`podeVirarRua` testado tile a tile na transição real água→raso→areia→
+campo; construção normal longe de qualquer água (perto do Centro)
+re-testada sem nenhuma mudança de comportamento.
+
+---
+
 ## Estrutura
 
 ```
