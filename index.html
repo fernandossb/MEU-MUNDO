@@ -3782,6 +3782,19 @@ function transferirPredio(pr, novaFaccao) {
   pr.vila = novaFaccao || undefined;
   const destino = listaDaFaccao(novaFaccao);
   if (!destino.includes(pr)) destino.push(pr);
+  /*
+     BUG ACHADO AO VIVO — cor de prédio misturada dentro da mesma vila
+     ("vila laranja com prédio verde"). 'cachePredioTingido' (linha ~8683,
+     onde o sprite é tingido na cor da vila dona) guarda o recorte já
+     tingido por 'pr.id' — sozinho, sem 'pr.vila' — porque antes um prédio
+     pronto nunca trocava de dono de um jeito que se via na tela. Agora que
+     'transferirPredio' funciona direito (ver correção acima), um prédio
+     PODE trocar de dono no meio da partida — e sem apagar o cache, ele
+     continuava desenhado na cor de quem era ANTES pra sempre. Apaga aqui,
+     na hora exata em que 'pr.vila' muda: o próximo quadro tinge de novo,
+     agora com a cor certa.
+  */
+  cachePredioTingido.delete(pr.id);
   recontarDonoDoQuarteirao(...quarteiraoDe(pr.tx, pr.ty));
 }
 

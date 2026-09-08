@@ -2048,6 +2048,36 @@ trabalhando em fazenda/oficina/mina ao mesmo tempo, não só uma pessoa.
 
 ---
 
+## Cor de prédio misturada dentro da mesma vila
+
+Efeito colateral direto da correção anterior (prédio fantasma): "vila
+laranja com prédio verde e outros laranjas" — achado sem precisar
+investigar de novo, a causa já estava à vista no código que acabou de mexer
+em `transferirPredio`.
+
+`cachePredioTingido` (onde o sprite tingido na cor da vila fica guardado,
+pra não recortar e tingir de novo a cada quadro) guarda o recorte pronto
+por `pr.id` — SOZINHO, sem `pr.vila`. Fazia sentido antes: um prédio pronto
+nunca trocava de dono de um jeito que se via na tela — a troca ficava presa
+no bug do prédio fantasma. Agora que `transferirPredio` funciona direito
+(commit anterior), um prédio PODE trocar de dono de verdade no meio da
+partida — e sem apagar o cache antigo, ele continuava desenhado pra sempre
+na cor de quem era ANTES da troca, mesmo já pertencendo a outra vila.
+
+Corrigido: `transferirPredio` apaga a entrada do cache na hora exata em que
+`pr.vila` muda — o próximo quadro tinge de novo, com a cor certa.
+
+Testado ao vivo, não só visual: pegou um prédio de verdade da vila A
+(laranja `#d2704a`), tingiu (populando o cache), transferiu pra vila B
+(roxa `#7a6fd0`) com a função de produção, e comparou a média de RGB do
+recorte tingido ANTES e DEPOIS — o canal azul mais que dobrou (57→125,
+puxando pra família roxa de B) e o vermelho caiu (184→133, afastando da
+família laranja de A), contra uma casa de A nunca transferida (184,102,57,
+claramente laranja) tingida ao lado pra comparar lado a lado. Confirmado
+visual (desktop e mobile): castelo e casa da mesma vila, cores batendo.
+
+---
+
 ## Estrutura
 
 ```
