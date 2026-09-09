@@ -2710,20 +2710,72 @@ verdade a cada prédio novo (o sorteio por hash do id já existia — `id ×
 37+11` e `id × 7+3` como sementes — e é estável pro mesmo prédio pra
 sempre: recarregar o save não muda a cara de ninguém).
 
-**Resolução e quantização de cor, remedidas pra este estilo.** Esta arte é
-rica em sombra e gradiente suave (quase foto) — comprime bem pior que arte
-chapada no mesmo tamanho de pixel. `ESCALA` (a folga de resolução pro zoom
-máximo) desceu de 2,2 pra 2,0 — o piso documentado antes de começar a
-borrar — e `DEGRAU` (quantização de cor) subiu de 8 pra 16, sem banding
-visível a olho nu (conferido zoom a zoom). Com toda a variedade da pasta
-incluída, a folha final fecha em 1421 KB em base64 (index.html com ~2,1 MB
-no total) — mais que a leva anterior (637 KB, com só 3 prédios cobertos e
-poucas variantes), mas ainda bem abaixo do que a mesma variedade daria sem
-o ajuste de `ESCALA`/`DEGRAU` (~2,6 MB, medido antes de remedir os dois).
+**Resolução e quantização de cor, remedidas pra este estilo — e depois
+remedidas de novo (ver seção abaixo, o número de `ESCALA` mudou outra vez
+por um bug real de nitidez).** Esta arte é rica em sombra e gradiente
+suave (quase foto) — comprime bem pior que arte chapada no mesmo tamanho
+de pixel. `DEGRAU` (quantização de cor) subiu de 8 pra 32 no fim, sem
+banding visível a olho nu (conferido zoom a zoom) — é o que evita que
+guardar mais resolução (ver abaixo) infle o arquivo na mesma proporção.
 
 Testado ao vivo: vila do jogador e vila rival (com o tingimento de cor da
 facção por cima), várias combinações de prédio lado a lado, zoom variado —
 sem halo, sem serrilhado, sem sobreposição de lote, sem erro no console.
+
+---
+
+## Prédios desfocados no zoom
+
+Reportado direto: "quando aproximo o zoom, os prédios ficam desfocados,
+estamos perdendo qualidade". Consequência direta de ter cortado `ESCALA`
+de 2,2 pra 2,0 na troca de arte anterior, pra economizar arquivo — número
+escolhido sem fazer a conta de verdade.
+
+**A conta de verdade.** O jogo desenha cada prédio em unidade de MUNDO, e
+o canvas escala mundo→pixel de tela por `DPR × cam.z` (ver
+`ctx.setTransform` em `desenhar`). Multiplicado ainda por `ESCALA_PREDIO`
+(1,5 — o crescimento visual de todo prédio sobre o próprio lote), o pior
+caso de zoom é `ESCALA_PREDIO(1,5) × DPR máximo(2) × ZOOM_MAX(1,8) = 5,4`.
+Guardar menos que 5,4× o tamanho de tela é pedir pro navegador AMPLIAR a
+arte além do que ela tem — e ampliação é exatamente o que borra. 2,0
+cobria só 37% disso: sobrava upscale de até 2,7× no canto mais extremo do
+zoom, visível a olho nu (confirmado comparando o recorte da tela antes e
+depois deste ajuste, com o DPR simulado em 2 no próprio navegador).
+
+**O conserto: `ESCALA` sobe pra 5,4 — mas só até onde a FONTE alcança.**
+Simplesmente subir `ESCALA` incharia a folha à toa: boa parte dos prédios
+de lote pequeno (Casa, Depósito, Oficina, Sobrado, Casarão, Serraria,
+Praça) não TEM 5,4× de detalhe na foto original pra entregar — pedir isso
+vira upscale já na hora de MONTAR a folha, guardando pixel borrado maior
+em vez de nítido menor. `ferramentas/montar-predios.js` ganhou a mesma
+proteção que a leva de arte anterior a esta já tinha usado uma vez
+(`cabeSemAmpliar`): guarda reduzido só até onde a fonte permite; pra além
+disso, guarda no tamanho NATIVO do recorte, sem tocar, e deixa o próprio
+`ctx.drawImage` do jogo (que já usa `imageSmoothingEnabled`) fazer esse
+último passo — um redimensionamento melhor do que reempacotar um upscale
+dentro do PNG.
+
+**Centro e Prefeitura continuam um pouco atrás — limite da fonte, não do
+código.** As cinco fotos do Centro e as quatro da Prefeitura são todas de
+resolução baixa desde a origem (250 a 380px de recorte, bem abaixo dos
+5,4× que o zoom máximo pede) — nenhuma variante alcança, então os dois
+usam a de MAIOR recorte disponível (`centro2.PNG`, `prefeitura4.PNG`) só
+pra minimizar, não eliminar, o borrão no zoom mais extremo. Corrigir de
+verdade exigiria uma foto de origem melhor pra esses dois — fora do
+alcance deste ajuste.
+
+**O preço: arquivo maior.** Com `ESCALA` em 5,4 (protegido contra
+upscale) e `DEGRAU` em 32, a folha fecha em 5789 KB em base64 —
+`index.html` foi de ~2,1 MB pra ~6,4 MB no total. Testado que o custo é
+mesmo resolução, não desperdício: sem a proteção contra upscale, a mesma
+`ESCALA` chegava a 7396 KB só por guardar upscale inútil nos prédios
+pequenos, sem ganho nenhum de nitidez sobre a versão protegida.
+
+Testado ao vivo com o DPR simulado em 2 (o pior caso real, um celular de
+tela densa) no zoom máximo: prédio de lote maior (Fazenda Grande, testado
+de perto) sai nítido, telhado e cerca legíveis onde antes borravam;
+Centro melhora visivelmente mas não chega a nítido perfeito, pela
+limitação de origem explicada acima.
 
 ---
 

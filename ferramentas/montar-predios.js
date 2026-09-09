@@ -22,17 +22,33 @@ const { decodificar, codificar } = require('./png.js');
 const ORIG = 'C:/Users/PPCP/Downloads/jogo/';
 const TILE = 28;
 /*
-   PEDIDO EXPLÍCITO — "aproveitar a qualidade pra otimizar tamanho": esta
-   leva de arte é rica em gradiente e sombra suave (quase foto), então
-   comprime bem pior que arte chapada no mesmo tamanho de pixel — testado ao
-   vivo, 2,2 (a folga de sempre) dava uma folha de 1075 KB em base64, quase
-   o dobro da anterior. 2,0 é o piso que 'ferramentas/LEIAME.md' documenta
-   sem borrar no zoom máximo, e cortar até lá (mais DEGRAU=16 — ver o uso
-   mais abaixo) trouxe a folha para perto do tamanho de antes, com a mesma
-   nitidez a olho nu (conferido: flâmulas e frestas finas do Centro
-   continuam limpas, sem halo nem serrilhado).
+   BUG ACHADO AO VIVO — "quando aproximo o zoom, os prédios ficam
+   desfocados". A conta de verdade: o jogo desenha cada prédio em unidade
+   de MUNDO (TILE=28), e o canvas escala mundo→pixel de tela por
+   'DPR × cam.z' (ver 'ctx.setTransform' em 'desenhar'/'desenharPredios').
+   Multiplicado ainda por ESCALA_PREDIO (1,5, o crescimento visual de todo
+   prédio sobre o próprio lote — ver 'index.html'), o pior caso de verdade
+   é ESCALA_PREDIO(1,5) × DPR máximo(2) × ZOOM_MAX(1,8) = 5,4 — ou seja,
+   guardar menos que 5,4× o tamanho de tela é pedir pro navegador AMPLIAR
+   a arte além do que ela tem, e ampliação é exatamente o que borra.
+   2,0 (o valor usado até aqui, por peso de arquivo) cobria só 2,0/5,4 ≈
+   37% disso — sobrava upscale de até 2,7× no pior canto do zoom, visível
+   a olho nu, medido comparando o recorte da tela ANTES e DEPOIS deste
+   ajuste.
+
+   Subir ESCALA sozinho pra 5,4 incharia a folha por nada em boa parte dos
+   prédios: a FONTE de vários (Casa, Depósito, Oficina, Sobrado, Casarão,
+   Serraria, Praça — os de lote 2x2 ou 3x2) não TEM 5,4× de detalhe pra
+   entregar — pedir isso vira upscale já na hora de MONTAR a folha,
+   guardando pixel borrado maior em vez de nítido menor. A escolha certa
+   (ver 'cabeSemAmpliar' mais abaixo, mesma ideia already usada na leva
+   anterior de arte): guarda reduzido só até onde a fonte alcança de
+   verdade; para longe daí, guarda no tamanho NATIVO do recorte, sem
+   subir — e deixa o próprio canvas do jogo (que já teria de ampliar de
+   qualquer jeito) fazer esse último passo, que é exatamente igual ao que
+   'reduzir' faria de pior se tentasse "ampliar reduzindo".
 */
-const ESCALA = 2.0;         // resolução extra guardada, para aguentar o zoom
+const ESCALA = +(process.env.ESCALA || 5.4);         // resolução extra guardada, para aguentar o zoom
 const ALTURA_MAX = 2.4;      // um prédio pode ser 2,4x a profundidade do lote
 
 /*
@@ -55,10 +71,15 @@ const ALTURA_MAX = 2.4;      // um prédio pode ser 2,4x a profundidade do lote
    pro mesmo prédio pra sempre — recarregar o save não muda a cara de
    ninguém). Só Centro e Prefeitura ficam com UMA arte só, sem sorteio —
    são o único prédio do tipo que existe por vila, então variedade não teria
-   o que mostrar mesmo, e cada um mantém o peso de uma foto só na folha.
+   o que mostrar mesmo, e cada um mantém o peso de uma foto só na folha —
+   a de MAIOR recorte das que a pasta trouxe pra cada um (medido: as cinco
+   fotos do Centro e as quatro da Prefeitura são todas de resolução baixa
+   pra começo, 250 a 380px de recorte — bem abaixo do que o zoom máximo
+   pede, ver 'ESCALA' acima — então nenhuma fica de verdade nítida no zoom
+   extremo; a maior disponível é só o menos ruim possível).
 */
 const LOTE = {
-  centro:        { w: 3, h: 3, mult: 1.75, arq: 'centro1.PNG' },
+  centro:        { w: 3, h: 3, mult: 1.75, arq: 'centro2.PNG' },
   casa:          { w: 2, h: 2,
                     arq: ['casa1.PNG','casa2.PNG','casa3.PNG','casa4.PNG','casa5.PNG'] },
   deposito:      { w: 2, h: 2,
@@ -85,7 +106,7 @@ const LOTE = {
   escola:        { w: 3, h: 2, arq: ['escola1.png','escola2.png','escola3.png','escola4.png'] },
   praca:         { w: 3, h: 2,
                     arq: ['praça1.PNG','praça2.PNG','praça3.PNG','praça4.PNG','praça5.PNG'] },
-  prefeitura:    { w: 4, h: 3, arq: 'prefeitura1.PNG' },
+  prefeitura:    { w: 4, h: 3, arq: 'prefeitura4.PNG' },
   mina:          { w: 2, h: 2, arq: ['mina1.png','mina2.png','mina3.png','mina4.png'] },
 };
 
@@ -235,10 +256,22 @@ for (const chave in LOTE) {
     const im = recortar(manterMaiorIlha(removerFundoClaro(bruto)));
     const { dw, dh } = tamanhoNaTela(def, im);
     const fL = Math.max(1, Math.round(dw * ESCALA)), fA = Math.max(1, Math.round(dh * ESCALA));
-    const red = reduzir(im, fL, fA);
-    quadros.push({ chave, vari: i, arq, dw, dh, im: red });
+    /*
+       NUNCA guarda mais pixel do que o recorte TEM. 'reduzir' é um filtro de
+       caixa: ótimo reduzindo, péssimo ampliando (sem pixel de sobra pra
+       fazer média, degenera em vizinho-mais-próximo — arte em blocos). Se a
+       folga que ESCALA pede já cabe dentro da fonte, reduz como sempre; se
+       não cabe, guarda no tamanho NATIVO do recorte, sem tocar, e deixa o
+       próprio 'ctx.drawImage' do jogo (que já tem 'imageSmoothingEnabled')
+       fazer essa ampliação na hora de desenhar — um redimensionamento bem
+       melhor do que reempacotar um upscale dentro do PNG.
+    */
+    const cabeSemAmpliar = fL <= im.larg && fA <= im.alt;
+    const red = cabeSemAmpliar ? reduzir(im, fL, fA) : im;
+    quadros.push({ chave, vari: i, arq, dw, dh, im: red, ampliadoNoJogo: !cabeSemAmpliar });
     console.log((chave + (arqs.length > 1 ? '#' + i : '')).padEnd(18) +
-      arq.padEnd(20) + im.larg + 'x' + im.alt + ' → tela ' + dw + 'x' + dh + ' → folha ' + fL + 'x' + fA);
+      arq.padEnd(20) + im.larg + 'x' + im.alt + ' → tela ' + dw + 'x' + dh + ' → folha ' +
+      red.larg + 'x' + red.alt + (cabeSemAmpliar ? '' : '  (nativo — fonte curta pra ' + fL + 'x' + fA + ')'));
   });
 }
 
@@ -262,10 +295,13 @@ for (const q of quadros)
   for (let y = 0; y < q.im.alt; y++)
     q.im.px.copy(folha, ((q.y + y) * LARG_FOLHA + q.x) * 4, y * q.im.larg * 4, (y + 1) * q.im.larg * 4);
 
-/* Arte chapada como esta usa pouquíssimos tons de verdade. Arredondar cada
-   canal para um degrau fixo não muda nada aos olhos e deixa os resíduos do
-   filtro muito mais repetitivos — é onde o zlib ganha. */
-const DEGRAU = +(process.env.DEGRAU || 1);
+/* Mesmo em arte rica de gradiente, dois pixels vizinhos quase sempre
+   diferem por menos que isto — arredondar cada canal pro degrau mais
+   próximo não muda nada a olho nu (conferido zoom a zoom, sem banding
+   visível) e deixa os resíduos do filtro muito mais repetitivos, que é de
+   onde vem a compressão do zlib. 32 é o ponto medido: sobe mais do que
+   isso e o ganho de arquivo já não compensa o risco de faixa visível. */
+const DEGRAU = +(process.env.DEGRAU || 32);
 if (DEGRAU > 1) {
   for (let i = 0; i < folha.length; i += 4) {
     if (folha[i + 3] === 0) continue;
