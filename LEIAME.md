@@ -2519,6 +2519,76 @@ a sua ou uma rival — corre a mesma simulação, com o mesmo freio de
 desempenho (ao vivo perto da câmera, adormecida longe) e o mesmo teto
 medido de verdade, não estimado.
 
+## Sem teto de verdade — consertando a causa em vez de limitar (etapa 6, revista)
+
+Pedido explícito, direto: teto de população/prédio pra vila rival (a
+etapa 6 acima) resolvia o travamento, mas também condenava a vila rival a
+nunca crescer o bastante pra disputar fronteira de verdade — o motivo
+inteiro do plano de motor único. Errado limitar o CRESCIMENTO pra
+consertar um problema de DESEMPENHO — o certo era achar por que
+`conselho()` ficava caro, e consertar isso.
+
+Achei dois laços O(prédios × pessoas) escondidos dentro do que já rodava
+todo dia:
+
+- `pessoaPorId` era `jogo.pessoas.find(...)` — O(pessoas) TODA chamada.
+  `distribuirOficios()` chama ela uma vez por PRÉDIO com trabalhador (duas
+  passadas: soltar quem trocou de ofício, dispensar excedente). Virou um
+  índice id→pessoa (`indicePessoas`), refeito sob demanda (uma vez por
+  "geração" do array — invalidado por identidade do array E por um
+  contador bumped em `criarPessoa`/`removerPessoa`, os dois únicos lugares
+  que mexem em `jogo.pessoas`) — O(1) por busca daí em diante.
+- `entregaMaisProxima` (usada também na entrega de carga de verdade, ao
+  vivo) varre TODO `jogo.predios` por dentro. `conselho()` chamava ela uma
+  vez por PESSOA só pra contar quem está "longe" de um depósito. Prédio de
+  entrega é sempre pouco (depósito, centro, mercado — não cresce com
+  casa/fazenda): filtra essa lista pequena uma vez, fora do laço por
+  pessoa, e repete a mesma lógica só sobre ela.
+
+Medido: a mesma vila de 140 prédios/534 pessoas que dava **485ms** em
+`conselho()` caiu pra **3-5ms**. Em 300 prédios/1000 pessoas, ainda só
+2-11ms. **Os dois tetos artificiais foram removidos** — `popMax()` não
+capa mais população de vila rival, e `construirAuto()` não capa mais
+prédio. A vila cresce exatamente como a sua: limitada só pela própria
+moradia que ela constrói.
+
+**Segundo problema, esse escondido atrás do primeiro** — mesmo sem teto
+nenhum, uma vila rival travava sozinha em pop 18: fome permanente.
+`EFIC_AUSENTE` (0,55×, "sem ninguém ao vivo por perto") foi pensado pra
+UMA AUSÊNCIA CURTA da sua vila — o app fechado por algumas horas. Mas é
+também a ÚNICA produção de qualquer vila rival adormecida, que passa a
+vida INTEIRA adormecida (só a vila mais perto da câmera fica ao vivo por
+vez). O desconto que devia ser ocasional virava permanente: quatro
+fazendeiros pra dezoito pessoas — a MESMA proporção "uma lavoura pra cada
+cinco" que o conselho já mira — rendiam só 55% do esperado, sempre abaixo
+do consumo. A vila morria de fome pra sempre, bem antes de qualquer teto
+importar. `eficienciaProducao()` agora devolve 100% pra qualquer vila
+rival em contexto — ela não tem "jogador ausente", é sempre assim, e
+essa é a simulação dela.
+
+**Terceiro achado, ao testar do zero com sementes diferentes** — uma vila
+em cada duas ou três nascia perto de uma praia, e a checagem de terreno
+de `lugarDeVilaRival` só barra ÁGUA FUNDA num raio grosseiro, não a FAIXA
+DE AREIA (a regra do Cais, `pertoDaPraia`, dentro de `areaValida`). Um
+lugar sem água nenhuma no raio passava, mas a faixa de areia bloqueava o
+quarteirão INTEIRO por dentro — a vila nascia sem conseguir erguer nem
+Centro, prédio nenhum, pra sempre. `cabeNoQuarteirao` (a mesma busca que
+`erguerNaVilaRival` já fazia, sem construir nada) agora confirma de
+verdade que Centro E Casa cabem ali antes de aceitar o lugar — testado
+com a semente exata que reproduzia o bug: a vila passou a nascer num
+lugar diferente, mais longe da praia, com os dois prédios de pé.
+
+Testado ao vivo, do zero, várias sementes: fundação sempre com Centro e
+Casa (ou a vila é pulada de vez, se genuinamente não achar lugar — nunca
+mais nasce quebrada). Uma vila cresceu, sem nenhum teto, de 8 pra 255
+pessoas e 158 prédios em pouco mais de 800 dias simulados, sem fome,
+território (`v.blocos`) crescendo de verdade via `tickVilas()` (mais
+devagar que população/prédio — mesma pressão de prosperidade que já rege
+a sua vila, não um bug novo). Save/load com esse estado voltou byte a
+byte. `pessoaPorId`/`entregaMaisProxima` continuam corretos pro jogador
+(testado: acham a pessoa certa, o depósito certo) — a otimização é
+transparente, não muda resultado, só o custo.
+
 ---
 
 ## Estrutura

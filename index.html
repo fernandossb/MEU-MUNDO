@@ -1262,6 +1262,7 @@ function criarPessoa(op) {
   // O jeito só pode mexer na vida depois que ele foi sorteado.
   if (TRACOS[p.traco] && TRACOS[p.traco].vida) p.vidaMax += TRACOS[p.traco].vida;
   jogo.pessoas.push(p);
+  pessoasVersao++;   // invalida o índice de 'pessoaPorId' — ver 'indicePessoas'
   return p;
 }
 
@@ -1305,7 +1306,38 @@ const alguemPorId = id => jogo.pessoas.find(p => p.id === id)
   || jogo.ancestrais.find(a => a.id === id) || null;
 const nomeDeAlguem = a => a ? (a.nome || a.n) + ' ' + (a.sobrenome || a.s) : null;
 
-const pessoaPorId = id => jogo.pessoas.find(p => p.id === id) || null;
+/*
+   ETAPA 6 do motor único, revisitada — 'pessoaPorId' era um
+   'jogo.pessoas.find(...)', O(pessoas) TODA chamada. Em pontos que chamam
+   ela uma vez por PRÉDIO (distribuirOficios(), duas vezes: soltar posto de
+   quem trocou de ofício, e dispensar excedente), isso vira O(prédios ×
+   pessoas) — medido como boa parte do custo de conselho() numa vila
+   grande (485ms com 140 prédios e centenas de pessoas).
+
+   Índice id→pessoa, reconstruído sob demanda (O(pessoas), uma vez por
+   "geração" do array) e reusado em O(1) por busca daí em diante.
+   'pessoasVersao' é bumped em toda criação/remoção real (criarPessoa/
+   removerPessoa, os dois únicos lugares que mexem em 'jogo.pessoas') —
+   sem isso o índice serviria gente que já morreu ou não veria quem
+   acabou de nascer. A checagem de IDENTIDADE do array (não só o
+   contador) cobre a troca de contexto: 'jogo.pessoas' pode virar
+   'v.pessoas' de uma vila rival a qualquer momento (ver trocarContexto),
+   e cada array tem sua própria contagem de versão nesta mesma variável
+   global — trocar de array já invalida o índice sozinho, mesmo que o
+   número da versão coincida por acaso.
+*/
+let pessoasVersao = 0;
+let _indicePessoasArr = null, _indicePessoasVersao = -1, _indicePessoasMapa = null;
+function indicePessoas() {
+  if (_indicePessoasArr !== jogo.pessoas || _indicePessoasVersao !== pessoasVersao) {
+    _indicePessoasMapa = new Map();
+    for (const p of jogo.pessoas) _indicePessoasMapa.set(p.id, p);
+    _indicePessoasArr = jogo.pessoas;
+    _indicePessoasVersao = pessoasVersao;
+  }
+  return _indicePessoasMapa;
+}
+const pessoaPorId = id => indicePessoas().get(id) || null;
 
 /* ----------------------------------------------------------- estado ------ */
 
@@ -1343,24 +1375,22 @@ function popMax() {
   let n = 0;
   for (const p of jogo.predios) if (p.progresso >= 1) n += p.def.pop;
   /*
-     ETAPA 6 do motor único — teto de população pra vila RIVAL. Sem isto,
-     uma vila rival cresce sem limite (mesma regra do jogador: nasce e
-     imigra enquanto houver moradia — ver 'demografiaDoDia' — e o próprio
-     conselho() dela constrói moradia sem parar, então nada segurava o
-     número). Medido ao vivo: conselho() (mais especificamente
-     distribuirOficios(), que varre a população inteira várias vezes)
-     custa de 5 a 12ms numa vila de 50-300 pessoas, mas sobe pra 38-94ms
-     perto de 500+ — com até QUATRO vilas rivais tocando o dia no mesmo
-     tickDia() (todas mudam de dia junto, não é caso raro), isso vira uns
-     50-90ms de trava num quadro só, a cada dia de jogo. TETO_ADULTOS_
-     RIVAL/TETO_CRIANCAS_RIVAL (também usados na fundação, ver
-     'sincronizarPessoasRival') agora valem como teto de verdade, não só
-     tamanho inicial — cortando aqui, o próprio conselho() da vila para
-     de pedir mais moradia sozinho assim que bate no teto (mesma conta de
-     'querMaisTeto'), então a população se estabiliza sem precisar de
-     nenhum freio a mais em nascimento/imigração.
+     ETAPA 6 do motor único, PEDIDO EXPLÍCITO revisto — cheguei a capar
+     este número pra vila rival (ver histórico/git), porque conselho()
+     media 485ms numa vila de 140 prédios e isso travava o quadro toda
+     vez que o dia mudava. Mas capar população/prédio significa que a
+     vila rival NUNCA cresce o bastante pra disputar fronteira de
+     verdade — o oposto do que este motor único inteiro foi construído
+     pra fazer. O CUSTO CERTO de consertar era achar por que conselho()
+     ficava tão caro, não impedir a vila de crescer: eram dois laços
+     O(prédios × pessoas) — 'pessoaPorId' sem índice (ver
+     'indicePessoas') e 'entregaMaisProxima' varrendo tudo por pessoa
+     dentro de conselho() (ver comentário lá). Consertados os dois,
+     medido de novo: a MESMA vila de 140 prédios/534 pessoas que dava
+     485ms caiu pra 3-5ms; em 300 prédios/1000 pessoas, ainda só 2-11ms.
+     Sem teto aqui — a vila rival cresce exatamente como a sua, limitada
+     só pela própria moradia que ela mesma constrói.
   */
-  if (vilaEmContexto) n = Math.min(n, TETO_ADULTOS_RIVAL + TETO_CRIANCAS_RIVAL);
   return n;
 }
 const popAtual = () => jogo.pessoas.length;
@@ -3151,6 +3181,29 @@ function criarRivais(quantas) {
   reclamarMeuTerritorio();
 }
 
+/*
+   BUG ACHADO AO VIVO (etapa 6, revisitado) — a checagem de terreno aqui só
+   barra ÁGUA FUNDA num raio grosseiro (9x9). Isso deixava passar um lugar
+   colado numa praia: nenhum tile de água no raio, mas a FAIXA DE AREIA
+   (a regra do Cais — 'pertoDaPraia', dentro de 'areaValida') bloqueava o
+   quarteirão inteiro por dentro. Medido ao vivo com uma semente real: os
+   28 lotes possíveis do quarteirão vieram TODOS marcados "praia" — a vila
+   nascia sem conseguir erguer nem Centro nem Casa, prédio nenhum, pra
+   sempre. 'cabeNoQuarteirao' confirma que dá pra erguer de VERDADE (a
+   mesma busca que 'erguerNaVilaRival' faz, sem construir nada) antes de
+   aceitar o lugar — se não couber, a busca continua pro próximo candidato,
+   exatamente como já fazia quando havia água no meio do caminho.
+*/
+function cabeNoQuarteirao(bx, by, def) {
+  for (const [tx, ty] of posicoesNoQuarteirao(bx, by, def)) {
+    if (!areaValida(tx, ty, def.w, def.h)) continue;
+    if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
+    if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
+    return true;
+  }
+  return false;
+}
+
 // Terra firme a uma distância boa, tentando afastar até achar.
 function lugarDeVilaRival(ex, ey, ang) {
   for (let d = DIST_ENTRE_VILAS; d < DIST_ENTRE_VILAS + 60; d += 3)
@@ -3161,7 +3214,9 @@ function lugarDeVilaRival(ex, ey, ang) {
       for (let y = -4; y <= 4 && ok; y++)
         for (let x = -4; x <= 4 && ok; x++)
           if (SOLIDO[biomaEm(tx + x, ty + y)]) ok = false;
-      if (ok && donoDoBloco(...quarteiraoDe(tx, ty)) === undefined) return { tx, ty };
+      if (!ok || donoDoBloco(...quarteiraoDe(tx, ty)) !== undefined) continue;
+      const [bx, by] = quarteiraoDe(tx, ty);
+      if (cabeNoQuarteirao(bx, by, PREDIO.centro) && cabeNoQuarteirao(bx, by, PREDIO.casa)) return { tx, ty };
     }
   return null;
 }
@@ -3658,14 +3713,14 @@ function erguerNaVilaRival(v, chave) {
 /*
    GENTE NA VILA RIVAL, DE VERDADE — desde a etapa 4, a MESMA simulação da
    sua vila (A*, emprego, moradia, tudo, via 'trocarContexto'), não um
-   modelo à parte. Este teto (adultos + crianças) hoje faz DOIS papéis:
-   tamanho da leva inicial na fundação ('sincronizarPessoasRival') E teto
-   de verdade pra população em jogo ('popMax()', etapa 6) — sem o segundo,
-   uma vila rival cresceria sem limite, e o conselho()/distribuirOficios()
-   dela (que varre a população inteira a cada dia) foi MEDIDO custando de
-   dezenas a quase cem milissegundos com população de centenas, num quadro
-   só, toda vez que o dia muda — com até quatro vilas rivais mudando de
-   dia junto (ver 'popMax').
+   modelo à parte, e sem teto de crescimento (ver 'popMax' — chegou a
+   existir um, tirado depois de consertar o custo de verdade que ele
+   escondia). Este número hoje serve só de teto pra LEVA INICIAL — quantas
+   pessoas 'sincronizarPessoasRival' cria de uma vez na fundação (onde
+   'v.pop' começa em 8, bem abaixo disto) e na migração de save antigo
+   (onde 'v.pop' pode vir grande, de uma vila que já tinha crescido antes
+   desta etapa existir) — não um limite pra quanto a vila pode crescer
+   jogando.
 */
 const TETO_ADULTOS_RIVAL = 200;
 const TETO_CRIANCAS_RIVAL = 25;
@@ -4691,25 +4746,20 @@ function erguerPredio(chave, tx, ty) {
   return true;
 }
 
-/*
-   ETAPA 6 do motor único — teto de PRÉDIOS pra vila rival. O teto de
-   população (ver 'popMax') sozinho não bastava: mesmo com gente capada,
-   uma vila rica e cheia (pop perto do teto, madeira/pedra sobrando) ainda
-   engatilha "bairro novo" (conselho(), item 5) pra sempre — quarteirão
-   novo, prédio novo, sem fim, porque esse gatilho olha só recurso e "está
-   cheio", não "já tem prédio de menos". MEDIDO AO VIVO: uma vila que
-   cresceu até 140 prédios (mesmo com população já capada) levou 485ms só
-   no conselho() — quase meio segundo de trava num quadro só. As buscas
-   de lote/vaga que 'conselho()'/'distribuirOficios()' fazem varrem
-   'jogo.predios' várias vezes cada; é a CONTAGEM DE PRÉDIO, não só de
-   gente, que dita o custo.
-*/
-const TETO_PREDIOS_RIVAL = 45;
-
 // Item 4: os aldeões não constroem mais por conta própria — eles pedem. O
 // conselho escolhe o lote e manda o pedido; quem decide é você.
+/*
+   ETAPA 6 do motor único, revista — chegou a existir um teto de prédios
+   aqui, pra vila rival (ver histórico/git). Tirado: o custo que ele
+   escondia (conselho()/distribuirOficios() varrendo prédio×pessoa sem
+   índice) foi consertado na raiz (ver 'popMax' e 'indicePessoas') — uma
+   vila com 300 prédios agora custa a mesma coisa que uma com 30. Sem
+   teto, uma vila rica de verdade continua abrindo bairro novo enquanto
+   sobrar recurso e vaga de gente (conselho(), item 5) — do jeito que
+   uma vila de verdade cresce, e do jeito que ela precisa crescer pra
+   disputar fronteira a sério.
+*/
 function construirAuto(chave) {
-  if (vilaEmContexto && jogo.predios.length >= TETO_PREDIOS_RIVAL) return false;
   const def = PREDIO[chave];
   if (!podePagar(def.custo)) return false;
   const lote = escolherLote(def);
@@ -5348,9 +5398,28 @@ function conselho() {
   }
 
   // --- 4. Serviços, na ordem em que a vila sente falta ---
+  /*
+     ETAPA 6 do motor único, revisitada — 'entregaMaisProxima' varre TODO
+     'jogo.predios' por dentro; chamada uma vez por PESSOA aqui virava
+     O(pessoas × prédios), o maior custo medido em conselho() numa vila
+     grande. Prédio de entrega é sempre pouca coisa (depósito, centro,
+     mercado — não cresce junto com casa/fazenda), e não muda durante
+     este laço: filtra uma vez só, fora do laço por pessoa, e repete
+     exatamente a mesma lógica de 'entregaMaisProxima' (mais perto que dá
+     pra chegar andando, senão só o mais perto) sobre essa lista pequena
+     — mesmo resultado, sem repetir a varredura de tudo a cada pessoa.
+  */
   let longe = 0;
+  const prediosDeEntrega = jogo.predios.filter(p => p.def.entrega && p.progresso >= 1);
   for (const p of jogo.pessoas) {
-    const dep = entregaMaisProxima(p.x, p.y);
+    let melhor = null, d0 = Infinity, fallback = null, d1 = Infinity;
+    for (const pr of prediosDeEntrega) {
+      const d = (pr.cx - p.x) ** 2 + (pr.cy - p.y) ** 2;
+      if (d < d1) { d1 = d; fallback = pr; }
+      if (!daParaChegar(p.x, p.y, pr.tx, pr.ty)) continue;
+      if (d < d0) { d0 = d; melhor = pr; }
+    }
+    const dep = melhor || fallback;
     if (dep && Math.hypot(dep.cx - p.x, dep.cy - p.y) > 280) longe++;
   }
   // Um depósito a cada doze moradores, no máximo. Sem esse teto, na recuperação
@@ -5790,6 +5859,7 @@ function removerPessoa(p) {
   guardarAncestral(p);
   const i = jogo.pessoas.indexOf(p);
   if (i >= 0) jogo.pessoas.splice(i, 1);
+  pessoasVersao++;   // invalida o índice de 'pessoaPorId' — ver 'indicePessoas'
   soltarPostos(p);
   const c = pessoaPorId(p.conjugeId);
   if (c) c.conjugeId = null;
@@ -5825,20 +5895,43 @@ function tetoEstoque() {
 */
 const EFIC_AUSENTE = 0.55;   // sem ninguém "ao vivo" por perto, rende pouco mais da metade
 
+/*
+   PEDIDO EXPLÍCITO — "quero que as vilas cresçam sem teto... senão nunca
+   vão chegar a disputar fronteiras". Medindo por que uma vila rival
+   travava em pop 18 mesmo sem teto nenhum (etapas 6 removidas): fome
+   PERMANENTE. 'EFIC_AUSENTE' foi pensado pra sua vila numa ausência
+   CURTA (o app fechado por algumas horas) — mas 'renderDia' também é a
+   ÚNICA produção de qualquer vila rival adormecida, que passa a vida
+   inteira adormecida (só a vila mais perto da câmera fica "ao vivo" por
+   vez, ver 'vilaRivalPertoDaCamera'). O desconto que devia ser
+   ocasional virava permanente: 4 fazendeiros pra 18 pessoas — a MESMA
+   proporção "uma lavoura pra cada 5" que o conselho já mira — rendiam
+   só 55% do esperado, e nunca alcançavam nem o consumo. A vila morria
+   de fome pra sempre, bem antes de qualquer teto artificial importar.
+
+   Vila rival não tem "jogador ausente": ela é sempre assim, e essa é a
+   simulação dela — não faz sentido aplicar o desconto de ausência a
+   quem nunca esteve presente no sentido que o desconto pressupõe.
+   'vilaEmContexto' (ver trocarContexto) já diz sozinho quando é uma
+   rival rodando: rende cheio.
+*/
+function eficienciaProducao() { return vilaEmContexto ? 1 : EFIC_AUSENTE; }
+
 // Produz e consome no mesmo passo. Se o consumo fosse descontado de uma vez
 // no fim, qualquer ausência longa viraria fome e a vila parava de nascer.
 function renderDia(seg) {
   if (seg <= 0) return;
+  const eficBase = eficienciaProducao();
   const por = { madeira:0, comida:0, pedra:0 };
   for (const p of jogo.pessoas) {
     const fase = faseDaIdade(p.idade);
     if (fase === FASE.CRIANCA) continue;
-    const ef = (fase === FASE.IDOSO ? 0.6 : 1) * EFIC_AUSENTE;
+    const ef = (fase === FASE.IDOSO ? 0.6 : 1) * eficBase;
     const of = OFICIO[p.oficio];
     // Desconto de ida e volta; e a fruta do mato segue a estação, como no jogo aberto.
     if (of && of.rec) por[of.rec] += TAXA * ef * 0.45 *
       (of.rec === 'comida' ? MATO_COMIDA * estacaoNoMato() : 1);
-    else if (p.oficio === 'fazendeiro') por.comida += LAVOURA_SEG * (fase === FASE.IDOSO ? 0.67 : 1) * EFIC_AUSENTE;
+    else if (p.oficio === 'fazendeiro') por.comida += LAVOURA_SEG * (fase === FASE.IDOSO ? 0.67 : 1) * eficBase;
   }
   const teto = tetoEstoque();
   for (const k in por) jogo.recursos[k] = Math.min(Math.max(teto, jogo.recursos[k]), jogo.recursos[k] + por[k] * seg);
