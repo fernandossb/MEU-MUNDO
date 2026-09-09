@@ -5265,7 +5265,48 @@ function tentarMelhorarAntes(chaveBase) {
   return melhorarPredio(alvo);
 }
 
+/*
+   BUG ACHADO AO VIVO — "o jogo parou de contabilizar o tempo fechado".
+   Consequência direta de tirar o teto de população/prédio (pedido
+   anterior, "quero que as vilas cresçam sem teto"): 'recuperarOffline'
+   roda um dia de jogo por vez pra cada dia de ausência, e cada dia chama
+   'conselho()' — do jogador E de toda vila rival (via 'tickVilas' dentro
+   de 'tickDia', chamado nesse mesmo laço). Sem teto, uma vila grande
+   deixa 'conselho()' na casa das dezenas de milissegundos (a busca de
+   lote/vaga escala com o tamanho da vila, mesmo otimizada) — medido ao
+   vivo: 8 horas de ausência (121 dias de vila) levaram 11,3 SEGUNDOS só
+   nisso, com só duas vilas rivais de porte médio. Numa ausência mais
+   longa, ou com quatro vilas grandes, isso passa fácil de meio minuto —
+   tempo suficiente pro Android matar o app por não responder (ANR) antes
+   do 'gravar()' final rodar, e a próxima abertura tenta a MESMA conta
+   longa de novo. Dava a impressão de "não conta mais o tempo".
+
+   'conselho()' virou um embrulho fino em cima de 'conselhoInterno()' (o
+   corpo de sempre, sem mudar uma linha de decisão): SÓ durante recuperação
+   (`emRecuperacao`), mede quanto tempo cada chamada consome e PARA de
+   chamar o corpo de verdade assim que a soma bate um orçamento —
+   'renderDia'/'avancarObrasDia'/'demografiaDoDia' continuam rodando pra
+   TODO dia de ausência, de TODA vila (produção, consumo, envelhecer,
+   nascer, morrer não param) — só a parte cara (decidir e construir) some
+   depois do orçamento, o que é imperceptível numa ausência que ninguém
+   estava vendo mesmo. Ao vivo (fora de recuperação) nada muda.
+*/
+let orcamentoConselhoMs = 0;
+// Medido num desktop; celular real costuma ser mais lento — a margem é
+// de propósito, pra sobrar fôlego pro resto do laço (renderDia/
+// avancarObrasDia/demografiaDoDia, chamados pra cada vila em CADA dia de
+// ausência — baratos um a um, mas multiplicados por até 1095 dias
+// (OFFLINE_MAX) × toda vila, ainda somam segundos por conta própria).
+const ORCAMENTO_CONSELHO_MS = 400;   // total, pra toda a recuperação — ver acima
 function conselho() {
+  if (!emRecuperacao) { conselhoInterno(); return; }
+  if (orcamentoConselhoMs >= ORCAMENTO_CONSELHO_MS) return;
+  const t0 = performance.now();
+  conselhoInterno();
+  orcamentoConselhoMs += performance.now() - t0;
+}
+
+function conselhoInterno() {
   distribuirOficios();
   // Fila cheia: o conselho para de pedir até você responder alguma coisa.
   if (jogo.pedidos.length >= MAX_PEDIDOS) return;
@@ -6042,6 +6083,7 @@ function recuperarOffline(segundos) {
   if (s < 20) return null;
   const rel = { segundos: s, madeira:0, comida:0, pedra:0, nascidos:0, mortos:0, obras:0, anos:0 };
   emRecuperacao = true;
+  orcamentoConselhoMs = 0;   // orçamento fresco pra esta recuperação — ver 'conselho'
   const inicio = { madeira: jogo.recursos.madeira, comida: jogo.recursos.comida, pedra: jogo.recursos.pedra };
 
   // A vida da vila anda por ANO. Contar em anos aqui faria uma noite inteira

@@ -2614,6 +2614,45 @@ Testado ao vivo, de perto: Centro sai como um castelo grande e nítido,
 claramente dominando o quarteirão; Fazenda Grande ficou proporcional às
 outras construções ao redor. Sem erro no console.
 
+## O jogo parou de contar o tempo fechado
+
+Reportado direto: "o jogo parou de contabilizar o tempo enquanto está
+fechado, em segundo plano ou com a tela desligada". Consequência direta
+de tirar o teto de população/prédio da vila rival (pedido anterior,
+"quero que as vilas cresçam sem teto") — a recuperação offline
+(`recuperarOffline`) roda um dia de vila por vez pra cada dia de
+ausência, e cada dia chama `conselho()` — do jogador **e de toda vila
+rival** (via `tickVilas()`, chamado dentro do mesmo `tickDia()`). Sem
+teto, uma vila cresce o bastante pra deixar `conselho()` na casa das
+dezenas de milissegundos por chamada — MEDIDO AO VIVO: 8 horas de
+ausência (121 dias de vila) levavam **11,3 segundos** só nisso, com
+apenas duas vilas rivais de porte médio. Tempo de sobra pro Android matar
+o app por não responder (ANR) antes do `gravar()` final rodar — e a
+próxima abertura tentava a MESMA conta longa de novo. Dava a impressão
+de "não conta mais o tempo", quando na verdade estava tentando contar e
+travando no meio do caminho.
+
+`conselho()` virou um embrulho fino em cima de `conselhoInterno()` (o
+corpo de sempre, nenhuma linha de decisão mudou): só durante recuperação
+(`emRecuperacao`), mede quanto tempo cada chamada consome e PARA de
+chamar o corpo de verdade assim que a soma bate um orçamento (400ms, com
+folga de propósito — medido num desktop, celular real costuma ser mais
+lento). `renderDia`/`avancarObrasDia`/`demografiaDoDia` continuam rodando
+pra todo dia de ausência, de toda vila — produção, consumo, envelhecer,
+nascer, morrer não param — só a parte cara (decidir e construir) some
+depois do orçamento, imperceptível numa ausência que ninguém estava
+vendo mesmo. Ao vivo (fora de recuperação) nada muda — testado: mesmo
+com o orçamento "gasto" de uma recuperação anterior, `conselho()` ao
+vivo sempre roda o corpo de verdade, sem exceção.
+
+Testado ao vivo: as mesmas 8 horas de ausência que levavam 11,3s caíram
+pra **0,9s** (12,6× mais rápido). O teto absoluto do jogo pra recuperação
+(`OFFLINE_MAX`, 3 dias reais) — o pior caso que existe — ficou em ~3,1s,
+contra o que seria bem mais de um minuto sem o freio. Testado o fluxo
+inteiro (não só a função isolada): save envelhecido em 8h de verdade,
+página recarregada — carrega, recupera, mostra o relatório, sem travar e
+sem erro no console.
+
 ---
 
 ## Estrutura
