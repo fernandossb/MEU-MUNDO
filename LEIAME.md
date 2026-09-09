@@ -2700,23 +2700,26 @@ caixa inteira além do que o próprio lote 3x3 sugeriria; testado ao vivo, o
 Centro fecha em ~220px de largura na tela contra os 224px de um quarteirão
 de oito tiles — perto do total, sem estourar em cima da rua.
 
-**Otimização de tamanho: nem toda variante vale a pena.** A pasta trouxe 4 a
-5 fotos por prédio, mas guardar todas as do Centro, da Prefeitura ou da
-Fazenda Grande não dá variedade nenhuma — cada vila tem no máximo UM de
-cada. Só Casa (a imensa maioria dos lotes construídos) ficou com as 5; o
-resto ganhou 2 ou 3. Isso sozinho cortou a folha de ~2,6 MB (base64) pra
-menos de 1 MB antes de qualquer outro ajuste.
+**Todas as variantes da pasta, sorteadas de verdade — pedido explícito,
+revisto.** A primeira versão desta troca guardava só 2 ou 3 fotos por
+prédio pra cortar peso de arquivo; pedido revisto: "todas as opções que
+tem na pasta, menos para o centro e prefeitura" — esses dois ficam com UMA
+arte só (cada vila tem no máximo um de cada, variedade não teria o que
+mostrar), e todo o resto usa as 4 ou 5 fotos completas, sorteadas de
+verdade a cada prédio novo (o sorteio por hash do id já existia — `id ×
+37+11` e `id × 7+3` como sementes — e é estável pro mesmo prédio pra
+sempre: recarregar o save não muda a cara de ninguém).
 
 **Resolução e quantização de cor, remedidas pra este estilo.** Esta arte é
 rica em sombra e gradiente suave (quase foto) — comprime bem pior que arte
 chapada no mesmo tamanho de pixel. `ESCALA` (a folga de resolução pro zoom
 máximo) desceu de 2,2 pra 2,0 — o piso documentado antes de começar a
 borrar — e `DEGRAU` (quantização de cor) subiu de 8 pra 16, sem banding
-visível a olho nu (conferido zoom a zoom). Resultado final: 718 KB em
-base64 — pouco acima dos 637 KB da leva anterior, apesar de um estilo de
-arte bem mais pesado de comprimir e do jogo agora cobrindo os dezesseis
-prédios (antes três — Praça, Prefeitura e Mina — ainda eram desenho
-vetorial, sem arte própria).
+visível a olho nu (conferido zoom a zoom). Com toda a variedade da pasta
+incluída, a folha final fecha em 1421 KB em base64 (index.html com ~2,1 MB
+no total) — mais que a leva anterior (637 KB, com só 3 prédios cobertos e
+poucas variantes), mas ainda bem abaixo do que a mesma variedade daria sem
+o ajuste de `ESCALA`/`DEGRAU` (~2,6 MB, medido antes de remedir os dois).
 
 Testado ao vivo: vila do jogador e vila rival (com o tingimento de cor da
 facção por cima), várias combinações de prédio lado a lado, zoom variado —

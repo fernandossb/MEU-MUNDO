@@ -48,34 +48,45 @@ const ALTURA_MAX = 2.4;      // um prédio pode ser 2,4x a profundidade do lote
    Centro deve parecer que toma o quarteirão inteiro, não só o seu lote 3x3
    — ver a conta em 'tamanhoNaTela'.
 
-   QUANTAS VARIANTES POR PRÉDIO — "aproveitar a qualidade pra otimizar
-   tamanho" (pedido explícito): a pasta trouxe 4 ou 5 fotos por prédio, mas
-   guardar todas não ajuda em nada um prédio que só existe UMA vez por vila
-   (Centro, Prefeitura, Fazenda Grande — cada vila tem no máximo um) — é
-   peso de folha sem variedade nenhuma pra mostrar. Só vale variar o que
-   REPETE muito na vila: casa é a imensa maioria dos lotes construídos, por
-   isso fica com as 5; o resto ganha 2 a 3, o suficiente pra romper a
-   repetição sem inchar a folha à toa.
+   QUANTAS VARIANTES POR PRÉDIO — PEDIDO EXPLÍCITO, revisto: "todas as
+   opções que tem na pasta, menos para o centro e prefeitura" — todo o resto
+   usa TODA foto que a pasta trouxe (4 ou 5), sorteada de verdade a cada
+   prédio novo (ver 'arteDePredio' no jogo: sorteio por hash do id, estável
+   pro mesmo prédio pra sempre — recarregar o save não muda a cara de
+   ninguém). Só Centro e Prefeitura ficam com UMA arte só, sem sorteio —
+   são o único prédio do tipo que existe por vila, então variedade não teria
+   o que mostrar mesmo, e cada um mantém o peso de uma foto só na folha.
 */
 const LOTE = {
   centro:        { w: 3, h: 3, mult: 1.75, arq: 'centro1.PNG' },
   casa:          { w: 2, h: 2,
                     arq: ['casa1.PNG','casa2.PNG','casa3.PNG','casa4.PNG','casa5.PNG'] },
-  deposito:      { w: 2, h: 2, arq: ['deposito1.PNG', 'deposito2.PNG'] },
-  fazenda:       { w: 3, h: 3, arq: ['fazendapequena1.png', 'fazendapequena2.png'] },
-  oficina:       { w: 2, h: 2, arq: ['oficina1.PNG', 'oficina2.PNG', 'oficina3.PNG'] },
-  estabulo:      { w: 3, h: 2, arq: ['estabulo1.png', 'estabulo2.png'] },
-  cais:          { w: 2, h: 2, arq: 'cais1.PNG' },
-  mercado:       { w: 3, h: 2, arq: ['mercado1.png', 'mercado2.png', 'mercado3.png'] },
+  deposito:      { w: 2, h: 2,
+                    arq: ['deposito1.PNG','deposito2.PNG','deposito3.PNG','deposito4.PNG','deposito5.PNG'] },
+  fazenda:       { w: 3, h: 3,
+                    arq: ['fazendapequena1.png','fazendapequena2.png','fazendapequena3.png',
+                          'fazendapequena4.png','fazendapequena5.png'] },
+  oficina:       { w: 2, h: 2,
+                    arq: ['oficina1.PNG','oficina2.PNG','oficina3.PNG','oficina4.PNG','oficina5.PNG'] },
+  estabulo:      { w: 3, h: 2,
+                    arq: ['estabulo1.png','estabulo2.png','estabulo3.png','estabulo4.png','estabulo5.png'] },
+  cais:          { w: 2, h: 2, arq: ['cais1.PNG','cais2.PNG','cais3.PNG','cais4.PNG','cais5.PNG'] },
+  mercado:       { w: 3, h: 2,
+                    arq: ['mercado1.png','mercado2.png','mercado3.png','mercado4.png','mercado5.png'] },
   sobrado:       { w: 2, h: 2,
-                    arq: ['sobrado1.PNG','sobrado2.PNG','sobrado3.PNG','sobrado4.PNG'] },
-  predio:        { w: 3, h: 2, arq: ['casarao1.PNG', 'casarao2.PNG', 'casarao3.PNG'] },
-  fazendaGrande: { w: 4, h: 3, arq: 'fazendagrande1.png' },
-  serraria:      { w: 3, h: 2, arq: ['serraria1.PNG', 'serraria2.PNG'] },
-  escola:        { w: 3, h: 2, arq: 'escola1.png' },
-  praca:         { w: 3, h: 2, arq: ['praça1.PNG', 'praça2.PNG'] },
+                    arq: ['sobrado1.PNG','sobrado2.PNG','sobrado3.PNG','sobrado4.PNG','sobrado5.PNG'] },
+  predio:        { w: 3, h: 2,
+                    arq: ['casarao1.PNG','casarao2.PNG','casarao3.PNG','casarao4.PNG','casarao5.PNG'] },
+  fazendaGrande: { w: 4, h: 3,
+                    arq: ['fazendagrande1.png','fazendagrande2.png','fazendagrande3.png',
+                          'fazendagrande4.png','fazendagrande5.png'] },
+  serraria:      { w: 3, h: 2,
+                    arq: ['serraria1.PNG','serraria2.PNG','serraria3.PNG','serraria4.PNG'] },
+  escola:        { w: 3, h: 2, arq: ['escola1.png','escola2.png','escola3.png','escola4.png'] },
+  praca:         { w: 3, h: 2,
+                    arq: ['praça1.PNG','praça2.PNG','praça3.PNG','praça4.PNG','praça5.PNG'] },
   prefeitura:    { w: 4, h: 3, arq: 'prefeitura1.PNG' },
-  mina:          { w: 2, h: 2, arq: ['mina1.png', 'mina2.png'] },
+  mina:          { w: 2, h: 2, arq: ['mina1.png','mina2.png','mina3.png','mina4.png'] },
 };
 
 /*
