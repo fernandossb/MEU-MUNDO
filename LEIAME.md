@@ -2675,6 +2675,55 @@ decisão de ninguém.
 
 ---
 
+## Os dezesseis prédios, arte nova
+
+Pedido explícito: trocar a arte de TODOS os prédios de uma vez por um pacote
+novo, "em excelente qualidade", e aproveitar essa qualidade pra otimizar
+tamanho — não só trocar por trocar.
+
+**A fonte é diferente da leva anterior.** Os PNGs novos vêm com fundo CLARO
+(branco puro na maioria, cinza-claro em alguns, às vezes com leve gradiente
+dentro do mesmo arquivo) e SEM auréola de recorte ao redor da silhueta — a
+leva anterior (JPEG convertido, fundo preto) tinha as duas coisas. A remoção
+de fundo em `ferramentas/montar-predios.js` foi reescrita: em vez de comparar
+com uma cor de referência fixa, classifica "é fundo" por ser CLARO e POUCO
+SATURADO (perto de cinza) — cobre o branco e o cinza sem precisar saber de
+antemão qual dos dois um arquivo usa, e não come parede clara de pedra do
+próprio prédio (que quase sempre tem um traço de cor, o fundo não).
+
+**Prédios altos e largos ocupam mais tiles — o Centro toma o quarteirão.**
+A regra de sempre (largura cravada no lote, altura pela proporção da arte)
+já faz prédio de lote maior desenhar maior. Pra um pedido específico — "o
+centro da cidade deve ocupar um quarteirão inteiro" — a tabela ganhou um
+multiplicador POR PRÉDIO (`mult`, só o Centro usa, em 1,75×) que amplia a
+caixa inteira além do que o próprio lote 3x3 sugeriria; testado ao vivo, o
+Centro fecha em ~220px de largura na tela contra os 224px de um quarteirão
+de oito tiles — perto do total, sem estourar em cima da rua.
+
+**Otimização de tamanho: nem toda variante vale a pena.** A pasta trouxe 4 a
+5 fotos por prédio, mas guardar todas as do Centro, da Prefeitura ou da
+Fazenda Grande não dá variedade nenhuma — cada vila tem no máximo UM de
+cada. Só Casa (a imensa maioria dos lotes construídos) ficou com as 5; o
+resto ganhou 2 ou 3. Isso sozinho cortou a folha de ~2,6 MB (base64) pra
+menos de 1 MB antes de qualquer outro ajuste.
+
+**Resolução e quantização de cor, remedidas pra este estilo.** Esta arte é
+rica em sombra e gradiente suave (quase foto) — comprime bem pior que arte
+chapada no mesmo tamanho de pixel. `ESCALA` (a folga de resolução pro zoom
+máximo) desceu de 2,2 pra 2,0 — o piso documentado antes de começar a
+borrar — e `DEGRAU` (quantização de cor) subiu de 8 pra 16, sem banding
+visível a olho nu (conferido zoom a zoom). Resultado final: 718 KB em
+base64 — pouco acima dos 637 KB da leva anterior, apesar de um estilo de
+arte bem mais pesado de comprimir e do jogo agora cobrindo os dezesseis
+prédios (antes três — Praça, Prefeitura e Mina — ainda eram desenho
+vetorial, sem arte própria).
+
+Testado ao vivo: vila do jogador e vila rival (com o tingimento de cor da
+facção por cima), várias combinações de prédio lado a lado, zoom variado —
+sem halo, sem serrilhado, sem sobreposição de lote, sem erro no console.
+
+---
+
 ## Estrutura
 
 ```
@@ -2695,8 +2744,6 @@ para uma vila de 10 pessoas. **Atualizar o app não apaga o save.**
 
 ## O que ainda não existe
 
-- **Arte própria da Praça, da Prefeitura e da Mina**: as três continuam no
-  desenho vetorial de sempre, sem sprite — nenhuma arte pronta para elas ainda.
 - **Rios**: o gerador de terreno não produz travessias curtas de água profunda
   neste mundo (amostrado: 766 tiles de água funda em 600×600, nenhuma
   travessia curta). A ponte existe e funciona — só não há rio para ela vencer.

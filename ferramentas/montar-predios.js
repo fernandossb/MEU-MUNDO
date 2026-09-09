@@ -1,13 +1,17 @@
 /*
    Monta a folha dos prédios.
 
-   Desta vez a fonte não é PNG com alfa — é um lote de .jpeg convertido para
-   PNG (só para poder ser lido por 'png.js', que não fala JPEG), com o fundo
-   pintado de PRETO CHAPADO em vez de canal alfa. 'removerFundoPreto' faz esse
-   papel: espalha a partir da BORDA da imagem, por pixels escuros conectados, e
-   marca cada um como transparente. É flood-fill, não "qualquer pixel escuro
-   vira transparente" — a mina tem trilho preto e entrada de caverna escura no
-   MEIO do desenho, e aqueles não tocam a borda, então sobrevivem.
+   QUARTA LEVA DE ARTE — pasta inteira nova (pedido explícito: trocar todos os
+   dezesseis prédios de uma vez). Ao contrário da leva anterior (fundo PRETO
+   chapado, de JPEG convertido), esta vem com fundo CLARO — branco puro
+   (255,255,255) na maioria dos arquivos, cinza-claro (~230) em alguns
+   (fazendagrande, mina) — e SEM auréola escura de recorte ao redor da
+   silhueta (a leva de antes tinha; esta não, conferido pixel a pixel: a
+   transição de fundo pra desenho é direta, sem faixa escura sólida no meio).
+   Por isso 'removerFundoClaro' não usa cor de referência fixa nem precisa da
+   segunda passada de auréola — classifica "é fundo" por ser claro E pouco
+   saturado (perto de cinza), o que cobre tanto o branco quanto o cinza sem
+   precisar saber de antemão qual dos dois um arquivo usa.
 
    Depois daqui o pipeline é o de sempre: recorta no que sobrou, reduz de
    tamanho com alfa pré-multiplicado, empacota numa folha, quantiza a cor.
@@ -15,69 +19,94 @@
 const fs = require('fs');
 const { decodificar, codificar } = require('./png.js');
 
-/*
-   Os .jpeg originais (baixados pelo usuário) moram na mesma pasta, ao lado do
-   .png convertido que cada um gerou. A conversão em si é fora deste script —
-   'png.js' só fala PNG — e foi feita uma vez com System.Drawing do .NET (que
-   o Windows já tem, sem instalar nada):
-
-     Add-Type -AssemblyName System.Drawing
-     Get-ChildItem $pasta -Filter *.jpeg | % {
-       $img = [System.Drawing.Image]::FromFile($_.FullName)
-       $bmp = New-Object System.Drawing.Bitmap($img, $img.Width, $img.Height)
-       $bmp.Save((Join-Path $pasta ($_.BaseName + '.png')), [System.Drawing.Imaging.ImageFormat]::Png)
-       $bmp.Dispose(); $img.Dispose()
-     }
-*/
-const ORIG = 'C:/Users/PPCP/Downloads/PNG/';
+const ORIG = 'C:/Users/PPCP/Downloads/jogo/';
 const TILE = 28;
-const ESCALA = 2.2;         // resolução extra guardada, para aguentar o zoom
+/*
+   PEDIDO EXPLÍCITO — "aproveitar a qualidade pra otimizar tamanho": esta
+   leva de arte é rica em gradiente e sombra suave (quase foto), então
+   comprime bem pior que arte chapada no mesmo tamanho de pixel — testado ao
+   vivo, 2,2 (a folga de sempre) dava uma folha de 1075 KB em base64, quase
+   o dobro da anterior. 2,0 é o piso que 'ferramentas/LEIAME.md' documenta
+   sem borrar no zoom máximo, e cortar até lá (mais DEGRAU=16 — ver o uso
+   mais abaixo) trouxe a folha para perto do tamanho de antes, com a mesma
+   nitidez a olho nu (conferido: flâmulas e frestas finas do Centro
+   continuam limpas, sem halo nem serrilhado).
+*/
+const ESCALA = 2.0;         // resolução extra guardada, para aguentar o zoom
 const ALTURA_MAX = 2.4;      // um prédio pode ser 2,4x a profundidade do lote
 
 /*
-   Lote de cada prédio, igual ao PREDIO do jogo. Praça, Prefeitura e Mina
-   ganham arte pela primeira vez — antes eram só o desenho vetorial genérico.
+   Lote de cada prédio, igual ao PREDIO do jogo — os dezesseis, o pacote
+   novo cobre todos. 'w'/'h' são o LOTE de verdade (colisão, plantação de
+   rua etc.) e não mudam aqui: só a arte troca, o terreno que cada prédio
+   ocupa no jogo continua o mesmo de sempre.
+
+   'mult' é o único número novo: multiplica a caixa na tela DEPOIS da conta
+   de sempre (que trava a largura no lote), pra um prédio ocupar mais do que
+   o próprio lote sugere — how 'ESCALA_PREDIO' já faz pra todo mundo, só que
+   este é POR PRÉDIO, em cima daquele. Serve para um pedido específico: o
+   Centro deve parecer que toma o quarteirão inteiro, não só o seu lote 3x3
+   — ver a conta em 'tamanhoNaTela'.
+
+   QUANTAS VARIANTES POR PRÉDIO — "aproveitar a qualidade pra otimizar
+   tamanho" (pedido explícito): a pasta trouxe 4 ou 5 fotos por prédio, mas
+   guardar todas não ajuda em nada um prédio que só existe UMA vez por vila
+   (Centro, Prefeitura, Fazenda Grande — cada vila tem no máximo um) — é
+   peso de folha sem variedade nenhuma pra mostrar. Só vale variar o que
+   REPETE muito na vila: casa é a imensa maioria dos lotes construídos, por
+   isso fica com as 5; o resto ganha 2 a 3, o suficiente pra romper a
+   repetição sem inchar a folha à toa.
 */
 const LOTE = {
-  centro:        { w: 3, h: 3, arq: 'centro.png' },
-  casa:          { w: 2, h: 2, arq: ['casa1.png','casa2.png','casa3.png','casa4.png','casa5.png',
-                                      'casa6.png','casa7.png','casa8.png','casa9.png','casa10.png','casa11.png'] },
-  deposito:      { w: 2, h: 2, arq: ['deposito1.png', 'deposito2.png'] },
-  fazenda:       { w: 3, h: 3, arq: 'fazendapequena1.png' },
-  oficina:       { w: 2, h: 2, arq: ['oficina1.png', 'oficina2.png'] },
+  centro:        { w: 3, h: 3, mult: 1.75, arq: 'centro1.PNG' },
+  casa:          { w: 2, h: 2,
+                    arq: ['casa1.PNG','casa2.PNG','casa3.PNG','casa4.PNG','casa5.PNG'] },
+  deposito:      { w: 2, h: 2, arq: ['deposito1.PNG', 'deposito2.PNG'] },
+  fazenda:       { w: 3, h: 3, arq: ['fazendapequena1.png', 'fazendapequena2.png'] },
+  oficina:       { w: 2, h: 2, arq: ['oficina1.PNG', 'oficina2.PNG', 'oficina3.PNG'] },
   estabulo:      { w: 3, h: 2, arq: ['estabulo1.png', 'estabulo2.png'] },
-  cais:          { w: 2, h: 2, arq: 'cais1.png' },
-  mercado:       { w: 3, h: 2, arq: ['mercado1.png', 'mercado2.png'] },
-  sobrado:       { w: 2, h: 2, arq: ['sobrado1.png','sobrado2.png','sobrado3.png','sobrado4.png','sobrado5.png'] },
-  predio:        { w: 3, h: 2, arq: ['casarao1.png', 'casarao2.png'] },
+  cais:          { w: 2, h: 2, arq: 'cais1.PNG' },
+  mercado:       { w: 3, h: 2, arq: ['mercado1.png', 'mercado2.png', 'mercado3.png'] },
+  sobrado:       { w: 2, h: 2,
+                    arq: ['sobrado1.PNG','sobrado2.PNG','sobrado3.PNG','sobrado4.PNG'] },
+  predio:        { w: 3, h: 2, arq: ['casarao1.PNG', 'casarao2.PNG', 'casarao3.PNG'] },
   fazendaGrande: { w: 4, h: 3, arq: 'fazendagrande1.png' },
-  serraria:      { w: 3, h: 2, arq: ['serraria1.png', 'serraria2.png'] },
+  serraria:      { w: 3, h: 2, arq: ['serraria1.PNG', 'serraria2.PNG'] },
   escola:        { w: 3, h: 2, arq: 'escola1.png' },
-  praca:         { w: 3, h: 2, arq: ['praça1.png', 'praça2.png', 'praça3.png'] },
-  prefeitura:    { w: 4, h: 3, arq: 'prefeitura1.png' },
+  praca:         { w: 3, h: 2, arq: ['praça1.PNG', 'praça2.PNG'] },
+  prefeitura:    { w: 4, h: 3, arq: 'prefeitura1.PNG' },
   mina:          { w: 2, h: 2, arq: ['mina1.png', 'mina2.png'] },
 };
 
 /*
-   Espalha a partir da borda por pixels escuros CONECTADOS, marcando alfa=0.
-   Testado à mão: a transição de fundo (0-4 em cada canal) para o desenho de
-   verdade (41+ no primeiro pixel de conteúdo) é abrupta — o JPEG manteve o
-   preto de fundo limpo. Limiar de 18 fica no meio do vão, com folga dos dois
-   lados.
+   Espalha a partir da BORDA por pixels CLAROS e POUCO SATURADOS (perto de
+   cinza) conectados, marcando alfa=0. "Claro" em vez de "parecido com o
+   canto" porque o fundo varia de tom entre arquivos (branco puro num,
+   cinza ~230 noutro, às vezes com leve gradiente dentro do MESMO arquivo —
+   medido: até ~23 de variação de canto a canto em alguns) — travar num só
+   valor de referência deixaria halo cinza sobrando nos cantos mais escuros.
+   "Pouco saturado" (min e max dos três canais perto um do outro) é o que
+   evita comer parede clara de pedra ou neve do próprio prédio: essas têm
+   quase sempre um traço de cor, o fundo não.
 */
-const LIMIAR_FUNDO = 18;
+const LIMIAR_CLARO = 195;   // canal mínimo, pra contar como "claro"
+const LIMIAR_SATURACAO = 22; // maior-menor canal, pra contar como "cinza"
 
-function removerFundoPreto(im) {
+function removerFundoClaro(im) {
   const { larg, alt, px } = im;
   const visitado = new Uint8Array(larg * alt);
-  const escuro = i => px[i * 4] <= LIMIAR_FUNDO && px[i * 4 + 1] <= LIMIAR_FUNDO && px[i * 4 + 2] <= LIMIAR_FUNDO;
+  const ehFundo = i => {
+    const r = px[i * 4], g = px[i * 4 + 1], b = px[i * 4 + 2];
+    const mn = Math.min(r, g, b), mx = Math.max(r, g, b);
+    return mn >= LIMIAR_CLARO && (mx - mn) <= LIMIAR_SATURACAO;
+  };
   const fila = [];
   const semear = (x, y) => {
     if (x < 0 || y < 0 || x >= larg || y >= alt) return;
     const i = y * larg + x;
     if (visitado[i]) return;
     visitado[i] = 1;
-    if (escuro(i)) fila.push(i);
+    if (ehFundo(i)) fila.push(i);
   };
   for (let x = 0; x < larg; x++) { semear(x, 0); semear(x, alt - 1); }
   for (let y = 0; y < alt; y++) { semear(0, y); semear(larg - 1, y); }
@@ -90,18 +119,10 @@ function removerFundoPreto(im) {
   return im;
 }
 
-/*
-   Vários destes JPEGs são print de asset pack, com uma LEGENDA DE TEXTO em
-   inglês numa faixa separada por fundo preto puro embaixo do desenho (ex.:
-   "Stone Hall Tower" sob a torre da prefeitura). 'removerFundoPreto' não pega
-   isso: o texto em si não é escuro, só o que está ao redor dele é — sobra
-   como uma ilha de pixels opacos, sozinha, flutuando sobre fundo transparente.
-
-   Em vez de caçar rótulo por rótulo, mantém-se só a MAIOR região conectada de
-   pixels opacos. É genérico (não depende de saber de antemão qual imagem tem
-   legenda) e barato — se algum prédio real ficasse partido em duas ilhas por
-   engano isso apareceria óbvio na inspeção visual, e nenhum ficou.
-*/
+/* Mantém só a maior região conectada de pixels opacos — rede de segurança
+   contra qualquer ilha solta (marca d'água, legenda) que sobreviva ao passo
+   acima. Barato e genérico; nenhum arquivo desta leva precisou dele até
+   agora, mas não custa manter. */
 function manterMaiorIlha(im) {
   const { larg, alt, px } = im;
   const visitado = new Uint8Array(larg * alt);
@@ -177,13 +198,18 @@ function reduzir(im, L, A) {
 }
 
 /* Quanto o prédio ocupa na tela: a largura é a do lote, cravada, para nunca
-   invadir a rua. A altura vem da proporção da arte, com um teto para uma torre
-   não virar um poste de trinta metros. */
+   invadir a rua — MULTIPLICADA por 'mult' quando o prédio pede pra ocupar
+   mais do que o próprio lote (só o Centro, por ora). A altura vem da
+   proporção da arte, com um teto para uma torre não virar um poste de trinta
+   metros — o mesmo 'mult' se aplica ao teto, senão o Centro alto bateria no
+   limite pensado pra caber num lote 3x3 comum e a ampliação viraria só
+   largura, distorcendo a silhueta. */
 function tamanhoNaTela(def, im) {
   const razao = im.larg / im.alt;
-  let dw = def.w * TILE;
+  const mult = def.mult || 1;
+  let dw = def.w * TILE * mult;
   let dh = dw / razao;
-  const teto = def.h * TILE * ALTURA_MAX;
+  const teto = def.h * TILE * ALTURA_MAX * mult;
   if (dh > teto) { dh = teto; dw = dh * razao; }
   return { dw: Math.round(dw), dh: Math.round(dh) };
 }
@@ -195,7 +221,7 @@ for (const chave in LOTE) {
   const arqs = Array.isArray(def.arq) ? def.arq : [def.arq];
   arqs.forEach((arq, i) => {
     const bruto = decodificar(ORIG + arq);
-    const im = recortar(manterMaiorIlha(removerFundoPreto(bruto)));
+    const im = recortar(manterMaiorIlha(removerFundoClaro(bruto)));
     const { dw, dh } = tamanhoNaTela(def, im);
     const fL = Math.max(1, Math.round(dw * ESCALA)), fA = Math.max(1, Math.round(dh * ESCALA));
     const red = reduzir(im, fL, fA);

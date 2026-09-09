@@ -11,8 +11,10 @@ precisam do Node — nenhuma biblioteca, nenhuma instalação.
 3. Rode:
 
 ```bash
-cd ferramentas && DEGRAU=8 node montar-predios.js
+cd ferramentas && DEGRAU=16 node montar-predios.js
 ```
+
+(o valor certo de `DEGRAU` varia com o estilo da arte — quanto mais gradiente/sombra suave, pior comprime; o script tem, no topo, o valor medido pra última leva usada.)
 
 Saem três arquivos: `predios.png` (para conferir a olho), `predios.b64.txt` e
 `predios.json`. Os dois últimos entram no `index.html`, no lugar de
