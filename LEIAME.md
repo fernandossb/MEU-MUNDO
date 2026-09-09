@@ -2330,6 +2330,116 @@ da vila) continuou achando normalmente e não fica presa em cache de "não
 tem" — só a busca que falhou é que memoriza. Jogo recarregado, sem erro no
 console, aldeões andando e trabalhando normalmente.
 
+## Motor único, de verdade (etapas 4 e 5 de 8)
+
+Continuação do plano em `.claude/plans/robust-conjuring-reef.md`. Esta é a
+etapa grande: aposenta de vez o modelo simplificado da vila rival
+(economia por fórmula agregada, gente sem A*, emprego só posto/moradia) e
+faz QUALQUER vila — a sua ou uma rival — rodar o mesmo motor, através da
+troca de contexto da etapa 2.
+
+**O que mudou por baixo**: `demografiaDoDia()` — envelhecer, casar,
+nascer, imigrar, morrer — foi fatorado pra fora de `tickDia()`, porque
+agora roda tanto pra você (todo dia, como sempre) quanto pra qualquer vila
+rival em contexto. `render`/`avancarObras` (antes presos dentro de
+`recuperarOffline`, sua própria recuperação ao reabrir o app) viraram
+`renderDia`/`avancarObrasDia`, module-level — a MESMA conta de produção
+sem ninguém "ao vivo" agora serve às duas coisas: você fechando o app, ou
+uma vila rival adormecida. `diaDaVilaRival(v)` — que calculava sua própria
+economia por fórmula — agora troca de contexto e deixa `renderDia` +
+`avancarObrasDia` + `conselho()` (que decide E constrói, com
+`autoAprovar` forçado) + `demografiaDoDia()` tocarem um dia da vida dela,
+igualzinho ao seu. `v.pop`/`v.comida`/`v.madeira`/`v.pedra` (os campos
+soltos antigos) viram só um ESPELHO sincronizado no fim de cada dia, pra
+quem ainda lê deles fora da simulação (fronteira, migração, absorção, o
+painel "Vilas rivais" — reescrito pra mostrar estoque de verdade em vez
+da fórmula `saldoDiarioRival`, aposentada).
+
+**"Ao vivo" vs. adormecida (etapa 5)**: só a vila rival perto o bastante
+da câmera pra aparecer na tela roda `atualizarPovo` (a MESMA função do
+jogador, sem mudar uma linha) através do contexto trocado — pathfinding
+de verdade, pessoa por pessoa. As demais ficam adormecidas: ninguém se
+move entre um quadro e outro (custo zero), e como também não são
+desenhadas, ninguém percebe — o crescimento delas continua vindo do dia a
+dia comprimido, ao vivo ou não.
+
+**Aposentado de vez** (não fica como sobra morta): `v.gente`,
+`criarGenteRival`, `removerGenteRival`, `sincronizarGenteRival`,
+`distribuirTrabalhoRival`, `rotinaRival`, `atualizarGenteRival`,
+`tentarConstruirNaVilaRival`, `saldoDiarioRival`, `chaveDeMoradiaRival`,
+`podeVilaRivalPagar`, `pagarVilaRival`, `dentroOuPertoDoTerritorio`,
+`proxGenteRivalId`. `criarPessoa`/`criarPredio` ganharam uma linha cada
+(`vila: vilaEmContexto ? vilaEmContexto.id : undefined`) — sozinho isso já
+resolve o dono/tingimento certo de gente E prédio novo de qualquer vila,
+sem precisar passar "de quem é" em cada chamada.
+
+**Vazamentos de contexto achados e fechados** (o tipo de bug que só
+aparece quando duas simulações passam a dividir o mesmo código): `jogo.
+cronica`/`jogo.ancestrais`/toast (`aviso`)/`flutuar`/`fluxoDia`
+(`anotarFluxo`) são todos estado só do JOGADOR, não fazem parte da troca
+de contexto — sem guarda, cada nascimento/morte/aviso de uma vila rival em
+contexto vazaria pro diário, cemitério, toast ou média de fluxo do
+jogador. Todos ganharam `if (vilaEmContexto) return;` (ou equivalente).
+`saldoComidaPorAno()` (mede o fluxo do JOGADOR quadro a quadro) virou
+`saldoComidaAtual()`, que cai no cálculo teórico — já usado como
+fallback, e por isso já corretamente genérico — quando uma rival está no
+contexto. `avaliarCombate`/`transferirPredio`/a lista de "prédio
+abandonado pra ocupar" (dentro de `distribuirOficios`) tinham a facção
+`0` (jogador) HARDCODED — corrigido pra `vilaEmContexto ? vilaEmContexto.
+id : 0` em cada um; sem isso, uma vila rival ocupando prédio abandonado
+ocuparia EM NOME DO JOGADOR.
+
+**Bug achado ao vivo, o mais sério dos três** — medindo 60 dias de vida de
+uma vila rival recém-fundada sem uma casa nova sair do papel: o anel de
+rua que `anelDoQuarteirao` desenha na fundação é só DECORATIVO (etapa 1:
+"nunca é lido por pathfinding nenhum"). O anel de VERDADE
+(`jogo.estradas`/`v.estradas`, o que `escolherLote`/`crescerRua`
+realmente enxergam) só nasce de graça pra VOCÊ, em `ruaFundadora` — nunca
+existiu pra vila rival. Sem uma rua real pra encostar, `escolherLote`
+nunca achava lote, e `crescerRua` nunca crescia nada (precisa ENCOSTAR
+numa rua existente pra começar) — a vila travava pra sempre com só
+centro+casa, população crescendo sem nenhum lugar pra morar ou trabalhar.
+`ruaFundadoraRival(v)` fecha o mesmo anel, mas sem tocar
+`jogo.malhaOx`/`malhaOy` (a origem da grade é do MUNDO inteiro,
+compartilhada — mexer nela pela fundação de uma vila rival deslocaria a
+grade de todo mundo). Chamada na fundação de toda vila nova, e também no
+carregamento de save — de QUALQUER idade, incluindo save feito nesta
+mesma sessão antes deste conserto — sempre que a vila carrega com
+`estradas` vazia.
+
+**Save/load**: `v.pessoas` agora salva no MESMO formato compacto que
+`jogo.pessoas` do jogador (era o objeto cru de `v.gente` antes). Achado
+no caminho, antes de virar problema: `v.estradas` é um `Set`, e
+`JSON.stringify` de um Set vira `{}` — sem converter pra array antes de
+salvar, a malha de CADA vila rival se perderia por completo a cada
+save/reload, silenciosamente. Save antigo (sem `v.pessoas`, só o `v.gente`
+de antes ou nada): decisão já tomada — a vila rival refunda a população do
+zero (`sincronizarPessoasRival`, a mesma rotina da fundação).
+
+**Testado ao vivo, de ponta a ponta**: fundei duas vilas rivais do zero
+(8 pessoas reais cada, no molde `criarPessoa`, prédios corretos); rodei
+`diaDaVilaRival` 60 vezes seguidas numa delas — população 8→13→53,
+prédios 2→23 (casa, sobrado, casarão, mercado, seis fazendaGrande, duas
+oficinas, serraria, escola, prefeitura, praça, estábulo, um SEGUNDO
+centro — bairro novo), malha de rua 19→63 tiles, uma obra em progresso
+real (progresso 0→1, não instantânea) — em 339ms pros 60 dias, sem
+travar. Todo prédio e toda pessoa nasceu com `vila` certo (tingimento
+correto). Contexto do jogador (prédios/pessoas/recursos) idêntico antes e
+depois em toda chamada. `passo()` chamado direto 40 vezes com a câmera
+perto da vila "ao vivo" — todas as pessoas amostradas se moveram de
+verdade (pathfinding real, não simulação abstrata). Índice de combate e
+`matarPorCombate` testados contra gente de vila rival: sem erro, remove
+de `v.pessoas` de verdade, sincroniza `v.pop` na hora, cemitério do
+jogador intacto (não ganhou entrada da rival). Save/load com as duas
+vilas (52 e 8 pessoas, 23 e 2 prédios, malha de 63 e 19 tiles) voltou
+byte a byte — população, prédios, recursos, malha, tingimento, tudo.
+Jogo recarregado várias vezes ao longo do teste, sem erro no console.
+
+Faltam as etapas 6-8 (teto de população ajustado com base no que foi
+medido aqui, migração de save mais ampla se precisar, conferência visual
+final) — mas o motor em si, o ponto central do pedido original, já roda
+igual dos dois lados.
+
 ---
 
 ## Estrutura

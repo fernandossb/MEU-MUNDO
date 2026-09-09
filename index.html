@@ -1246,6 +1246,18 @@ function criarPessoa(op) {
     maeId: op.maeId || null,
     geracao: op.geracao || 1,
     nasceu: jogo.ano - Math.floor(op.idade !== undefined ? op.idade : 25),
+
+    /*
+       ETAPA 4 do motor único — de quem é esta pessoa. 'vilaEmContexto' (ver
+       trocarContexto) diz sozinho se este 'criarPessoa' está rodando pra
+       você (null, sem tingimento — o de sempre) ou pra uma vila rival em
+       contexto (o id dela, tingida na cor certa em 'desenharPessoa'). Não
+       precisa passar 'vila' em 'op' em lugar nenhum — nasce certo tanto pra
+       quem a vila cria na fundação quanto pro bebê que nasce sozinho em
+       'demografiaDoDia', porque as duas coisas só rodam com o contexto já
+       trocado pra dentro da vila certa.
+    */
+    vila: vilaEmContexto ? vilaEmContexto.id : undefined,
   };
   // O jeito só pode mexer na vida depois que ele foi sorteado.
   if (TRACOS[p.traco] && TRACOS[p.traco].vida) p.vidaMax += TRACOS[p.traco].vida;
@@ -1264,6 +1276,12 @@ function criarPessoa(op) {
 const TETO_ANCESTRAIS = 4000;
 
 function guardarAncestral(p) {
+  // ETAPA 4 do motor único: 'jogo.ancestrais' é a árvore genealógica DO
+  // JOGADOR — não faz parte da troca de contexto (não tem por que uma vila
+  // rival ter uma pra si; ninguém vê a dela). Sem este freio, toda morte
+  // de aldeão rival (natural ou em combate) entraria no cemitério do
+  // jogador, misturando linhagem de gente sem parentesco nenhum com ele.
+  if (vilaEmContexto) return;
   jogo.ancestrais.push({
     id: p.id, n: p.nome, s: p.sobrenome, sx: p.sexo,
     pa: p.paiId, ma: p.maeId, g: p.geracao,
@@ -1372,6 +1390,12 @@ const fluxoDia = {};        // acumulando dentro do dia corrente
 const fluxoMedio = {};      // média móvel, por dia de jogo
 
 function anotarFluxo(rec, cat, qtd) {
+  // ETAPA 4 do motor único: 'fluxoDia'/'fluxoMedio' alimentam o painel
+  // "Produção" — SÓ do jogador. Sem este freio, todo gasto/ganho de uma
+  // vila rival em contexto (ver trocarContexto) entraria na média do
+  // jogador, distorcendo o saldo que o próprio conselho() do jogador usa
+  // pra decidir (ver 'saldoComidaAtual').
+  if (vilaEmContexto) return;
   if (!qtd || !BEM[rec]) return;
   const f = fluxoDia[rec] || (fluxoDia[rec] = {});
   f[cat] = (f[cat] || 0) + Math.abs(qtd);
@@ -1414,6 +1438,12 @@ function balancoDe(rec) {
    em 'vila', que é o cesto do resto.
 */
 function crônica(texto, destaque, tipo) {
+  // ETAPA 4 do motor único: 'jogo.cronica' é o diário DO JOGADOR — não faz
+  // parte da troca de contexto (de propósito, é narrativa, não estado de
+  // jogo). Sem este freio, o nascimento/casamento/morte de uma vila rival
+  // em contexto (ver trocarContexto) apareceria no diário do jogador como
+  // se fosse da própria vila dele.
+  if (vilaEmContexto) return;
   jogo.cronica.push({ ano: jogo.ano, texto, destaque: !!destaque, t: tipo || 'vila' });
   if (jogo.cronica.length > 240) jogo.cronica.splice(0, jogo.cronica.length - 240);
 }
@@ -2188,7 +2218,12 @@ const OBRA_DO_OFICIO = {
 
 function pedirObraParaTrabalhar(p) {
   if (emRecuperacao) return false;
-  if (jogo.pedidos.length >= MAX_PEDIDOS) return false;
+  // ETAPA 4 do motor único: 'jogo.pedidos' é a fila de aprovação DO JOGADOR
+  // — não faz parte da troca de contexto (não tem por que existir pra
+  // quem sempre auto-aprova). Uma vila rival em contexto nunca chega a
+  // empilhar pedido ali (autoAprovar forçado, ver trocarContexto), então a
+  // fila cheia do jogador não deveria travar ela também.
+  if (!vilaEmContexto && jogo.pedidos.length >= MAX_PEDIDOS) return false;
   if (jogo.tempo < (jogo.proximoPedidoDeTrabalho || 0)) return false;
 
   // Antes de pedir prédio: se o problema é que acabou o recurso à beira da rua,
@@ -2322,7 +2357,10 @@ function atualizarPessoa(p, dt) {
   // colhendo, construindo, o que for, congela naquele lugar (o estado fica
   // guardado em 'estadoAntesDoCombate') até o confronto acabar, e só então
   // retoma exatamente de onde parou.
-  if (avaliarCombate(p, 0, dt)) return;
+  // ETAPA 4 do motor único: a facção não é sempre 0 (jogador) — esta MESMA
+  // função agora roda pra vila rival em contexto também (ver
+  // 'trocarContexto'), e a facção certa pra ela é o próprio id da vila.
+  if (avaliarCombate(p, vilaEmContexto ? vilaEmContexto.id : 0, dt)) return;
 
   // Largou o posto: volta para a soleira antes de qualquer outra conta. O
   // estado muda em uma dúzia de lugares (prédio demolido, troca de ofício,
@@ -2610,6 +2648,12 @@ function criarPredio(chave, tx, ty, progresso, reserva) {
     cx: (tx + def.w / 2) * TILE, cy: (ty + def.h / 2) * TILE,
     progresso: progresso || 0, concluido: (progresso || 0) >= 1,
     trabalhador: null, produzindo: 0, moradores: [],
+    // ETAPA 4 do motor único: mesmo truque de 'criarPessoa' — 'vilaEmContexto'
+    // (ver trocarContexto) diz sozinho de quem é este prédio. 'desenharPredio'
+    // lê 'pr.vila' pra tingir na cor certa; sem isto, prédio erguido pelo
+    // conselho() de uma vila rival em contexto nasceria "sem dono" (tingido
+    // como se fosse seu) mesmo morando no array certo (v.predios).
+    vila: vilaEmContexto ? vilaEmContexto.id : undefined,
   };
   if (reserva === undefined) reserva = calcularReservaDeMelhoria(chave, tx, ty, def);
   if (reserva) { pr.reservaTx = reserva.tx; pr.reservaW = reserva.w; }
@@ -3052,9 +3096,8 @@ function criarRivais(quantas) {
       cor: CORES_DE_VILA[i % CORES_DE_VILA.length],
       tx: lugar.tx, ty: lugar.ty,
       pop: 8, comida: 380, madeira: 220, pedra: 80,
-      lavouras: 0, casas: 1,
       pressao: 0, migra: 0, viva: true, fome: false,
-      predios: [], ruas: [], blocos: [], gente: [],
+      predios: [], ruas: [], blocos: [],
       /*
          ETAPA 1 do motor único — malha e obra de rua DE VERDADE, no lugar
          do 'ruas' decorativo acima (que continua existindo só pra desenho;
@@ -3069,12 +3112,12 @@ function criarRivais(quantas) {
          ETAPA 2 do motor único — os campos que faltavam pra esta vila
          poder ENTRAR no lugar de 'jogo' de verdade, do jeito que
          'trocarContexto' precisa. 'recursos' é o mesmo formato que o do
-         jogador (madeira/comida/pedra/tabua/ferramenta) — separado dos
-         campos soltos 'v.comida/v.madeira/v.pedra' acima, que continuam
-         de pé por ora porque o modelo simplificado antigo (ver
-         'diaDaVilaRival') ainda lê e escreve neles; a aposentadoria desse
-         modelo é a etapa 4. 'pessoas' é o formato 'criarPessoa' (etapa 3);
-         'v.gente' acima continua sendo a turma do modelo antigo.
+         jogador (madeira/comida/pedra/tabua/ferramenta). 'pessoas' é o
+         formato 'criarPessoa' (etapa 3) — desde a etapa 4, é a população
+         DE VERDADE da vila (a mesma demografia do jogador cuida dela);
+         'v.gente'/'v.pop'/'v.comida'/'v.madeira'/'v.pedra' acima são só o
+         espelho que a fronteira/migração/absorção/painel ainda leem (ver
+         'diaDaVilaRival').
       */
       recursos: { madeira: 220, comida: 380, pedra: 80, tabua: 0, ferramenta: 0 },
       pessoas: [], ano: 1, anoFrac: 0, clima: 'limpo',
@@ -3108,9 +3151,15 @@ function fundarVilaRival(v) {
   erguerNaVilaRival(v, 'centro');
   erguerNaVilaRival(v, 'casa');
   anelDoQuarteirao(v, ...quarteiraoDe(v.tx, v.ty));
-  sincronizarGenteRival(v);
-  sincronizarPessoasRival(v);   // etapa 3 — gente de verdade em paralelo, ainda sem consumo
-  distribuirTrabalhoRival(v);
+  // ETAPA 4 do motor único: a rua de VERDADE (ver 'ruaFundadoraRival') —
+  // sem ela nem 'escolherLote' acha lote nem 'crescerRua' tem de onde
+  // partir, e a vila trava pra sempre com só centro+casa.
+  trocarContexto(v);
+  try { ruaFundadoraRival(v); } finally { restaurarContexto(); }
+  // Só a semente inicial de gente — quem cresce e dá emprego/casa a partir
+  // daqui é a demografia/conselho de verdade, na primeira vez que
+  // 'diaDaVilaRival' rodar pra esta vila.
+  sincronizarPessoasRival(v);
 }
 
 /*
@@ -3268,18 +3317,6 @@ function prosperidadeDe(v) {
    seria injusta num sentido ou no outro e não haveria como afinar.
 */
 
-// Pagamento da vizinha: madeira e pedra (ela não usa comida em obra, e os
-// prédios novos da lista abaixo — oficina, serraria, mina — custam pedra
-// também, ao contrário de casa/fazenda que só gastam madeira).
-function podeVilaRivalPagar(v, custo) {
-  if (custo.madeira && v.madeira < custo.madeira) return false;
-  if (custo.pedra && v.pedra < custo.pedra) return false;
-  return true;
-}
-function pagarVilaRival(v, custo) {
-  if (custo.madeira) v.madeira -= custo.madeira;
-  if (custo.pedra) v.pedra -= custo.pedra;
-}
 const contarRival = (v, chave) => v.predios.filter(p => p.chave === chave).length;
 
 /*
@@ -3296,154 +3333,44 @@ const contarRival = (v, chave) => v.predios.filter(p => p.chave === chave).lengt
 */
 const capacidadeMoradiaRival = v => v.predios.reduce((s, p) => s + (p.def.moradia ? p.def.pop : 0), 0);
 
-// Mesmo teto de pop 20 que o conselho do jogador já usa pra preferir
-// sobrado (ver conselho(), seção de teto) — casa e sobrado cabem no MESMO
-// lote, e sobrado dá quase o dobro de gente por construção.
-function chaveDeMoradiaRival(v) {
-  return v.pop >= 20 && podeVilaRivalPagar(v, PREDIO.sobrado.custo) ? 'sobrado' : 'casa';
-}
-
 /*
-   O QUE CONSTRUIR HOJE — mesma prioridade do conselho do jogador (comida
-   primeiro, depois teto, depois o resto por proporção de população), só mais
-   simples porque a vizinha não tem fila de pedido nem aprovação: decide e já
-   ergue. Devolve true quando construiu alguma coisa, pra quem chama tentar de
-   novo no mesmo dia se ainda houver pressa (ver 'diaDaVilaRival').
+   ETAPA 4 do motor único — O QUE MUDOU: até aqui, 'diaDaVilaRival' calculava
+   uma economia PRÓPRIA por fórmula agregada (v.comida/v.madeira/v.pedra/
+   v.pop subindo e descendo direto, sem gente de verdade por trás) e decidia
+   construção com 'tentarConstruirNaVilaRival', uma lista de prioridade
+   escrita à parte do conselho do jogador. As duas fórmulas foram embora.
 
-   Antes só existiam 'casa' e 'fazenda' pra vizinha — nenhuma vila rival tinha
-   oficina, serraria, depósito ou mina, por mais território que tomasse. Isso
-   também deixava toda vizinha virando fazenda: era o único emprego que
-   existia lá.
+   Agora 'diaDaVilaRival' troca de contexto pra dentro da vila (ver
+   'trocarContexto', etapa 2) e deixa rodar o MESMO motor que toca a sua:
+   'renderDia' (produção de quem não está "ao vivo" — a mesma conta que sua
+   vila usa quando o app está fechado, ver 'recuperarOffline'), 'avancarObrasDia'
+   (canteiro e rua avançando), 'conselho()' (decide o que construir e onde —
+   com 'jogo.autoAprovar' forçado, ela não tem jogador esperando aprovar) e
+   'demografiaDoDia()' (envelhece, casa, nasce, imigra, morre — etapa 4
+   também). ZERO fórmula própria da vila rival: são as MESMAS regras da sua
+   vila, o ponto central do pedido que abriu o plano de 8 etapas.
+
+   'v.pop'/'v.comida'/'v.madeira'/'v.pedra' — os campos soltos antigos —
+   continuam de pé só como ESPELHO pra quem ainda lê deles fora da
+   simulação em si: a nota de prosperidade, a migração, a absorção, o
+   painel "Vilas rivais". Sincronizados no FIM de cada dia; nunca mais
+   calculados aqui dentro.
 */
-function tentarConstruirNaVilaRival(v) {
-  const querLavoura = v.lavouras < Math.ceil(v.pop / 5) + 1;
-  if (querLavoura && podeVilaRivalPagar(v, PREDIO.fazenda.custo)) {
-    if (erguerNaVilaRival(v, 'fazenda')) { pagarVilaRival(v, PREDIO.fazenda.custo); v.lavouras++; return true; }
-  }
-  if (capacidadeMoradiaRival(v) - v.pop < 3) {
-    const chave = chaveDeMoradiaRival(v);
-    if (podeVilaRivalPagar(v, PREDIO[chave].custo) && erguerNaVilaRival(v, chave)) {
-      pagarVilaRival(v, PREDIO[chave].custo); return true;
-    }
-  }
-  // Mina só entra na lista perto de rocha de verdade — 'erguerNaVilaRival'
-  // agora exige isso no lote (mesma regra do jogador); sem essa checagem
-  // aqui, a vizinha tentaria toda vez e nunca ia conseguir, gastando a
-  // tentativa do dia à toa.
-  if (v.pedra < 200 && contarRival(v, 'mina') < 1 && podeVilaRivalPagar(v, PREDIO.mina.custo)) {
-    if (erguerNaVilaRival(v, 'mina')) { pagarVilaRival(v, PREDIO.mina.custo); return true; }
-  }
-  if (v.pop >= 8 && contarRival(v, 'oficina') < Math.ceil(v.pop / 25) && podeVilaRivalPagar(v, PREDIO.oficina.custo)) {
-    if (erguerNaVilaRival(v, 'oficina')) { pagarVilaRival(v, PREDIO.oficina.custo); return true; }
-  }
-  if (v.pop >= 12 && contarRival(v, 'serraria') < Math.ceil(v.pop / 30) && podeVilaRivalPagar(v, PREDIO.serraria.custo)) {
-    if (erguerNaVilaRival(v, 'serraria')) { pagarVilaRival(v, PREDIO.serraria.custo); return true; }
-  }
-  if (contarRival(v, 'deposito') < Math.ceil(v.pop / 12) && podeVilaRivalPagar(v, PREDIO.deposito.custo)) {
-    if (erguerNaVilaRival(v, 'deposito')) { pagarVilaRival(v, PREDIO.deposito.custo); return true; }
-  }
-  /*
-     Território crescendo bem mais rápido que a população: sem nada mais
-     faltando HOJE (todo gatilho acima é por população, e a fronteira anda
-     por prosperidade — as duas coisas podem se descolar por completo,
-     medido ao vivo: 17 de população e 388 quarteirões, um caso real de
-     "só rua depois do primeiro quarteirão"). Constrói casa mesmo sem
-     precisar ainda — mesma filosofia do conselho do jogador ("a vila não
-     espera lotar para construir") — e o efeito é duplo: preenche o
-     quarteirão vazio E levanta o teto de população, que por sua vez
-     destrava fazenda/oficina/mina — todos os gatilhos acima — mais cedo,
-     puxando a vizinha pra fora do próprio estagnamento.
-
-     MAS com teto: primeira versão disto (sem a segunda condição) chegou a
-     395 casas para 6 fazendas e 19 de população, medido ao vivo — nascimento
-     é lento demais pra acompanhar teto de moradia sem limite nenhum. Só
-     constrói proativamente enquanto a vaga ociosa (capacidade - pop) for
-     MENOR que a própria população — ou seja, no máximo o dobro de teto
-     sobre gente de verdade. Depois disso, se ainda sobrar quarteirão vazio,
-     é a população mesmo que está devagar, não falta de tentativa — aceita a
-     lacuna, do jeito que uma vila de verdade tem borda de terra ainda crua.
-  */
-  const semPredio = v.blocos.length - v.predios.length;
-  const capacidadeOciosa = capacidadeMoradiaRival(v) - v.pop;
-  if (semPredio > 8 && capacidadeOciosa < v.pop * 3) {
-    const chave = chaveDeMoradiaRival(v);
-    if (podeVilaRivalPagar(v, PREDIO[chave].custo) && erguerNaVilaRival(v, chave)) {
-      pagarVilaRival(v, PREDIO[chave].custo); return true;
-    }
-  }
-  return false;
-}
-
-/*
-   O MESMO CÁLCULO DE 'diaDaVilaRival' ABAIXO, SÓ QUE SEM MEXER EM NADA —
-   pro painel "Vilas rivais" (item 3 do pedido) mostrar quanto a vila ganha
-   e perde por dia sem ter que rodar um dia de verdade só pra descobrir.
-   Se a conta de comida/madeira/pedra mudar lá embaixo, muda aqui junto —
-   as duas leem os mesmos nomes (LAVOURA_SEG, TAXA, etc.), não duas fórmulas
-   que podem se descolar uma da outra.
-*/
-function saldoDiarioRival(v) {
-  const seg = ANO_DIA;
-  const daLavoura = v.lavouras * LAVOURA_SEG * fatorLavoura() * seg;
-  const doMato = Math.min(v.pop, v.blocos.length * 2) * TAXA * MATO_COMIDA *
-                 estacaoNoMato() * 0.30 * seg;
-  const comida = daLavoura + doMato - v.pop * COMIDA_POR_ANO * (seg / ANO);
-  const bracos = Math.min(v.pop, v.blocos.length * 3);
-  return { comida, madeira: bracos * TAXA * 0.30 * seg, pedra: bracos * TAXA * 0.12 * seg };
-}
-
 function diaDaVilaRival(v) {
-  const seg = ANO_DIA;
+  trocarContexto(v);
+  try {
+    renderDia(ANO_DIA);
+    avancarObrasDia(ANO_DIA);
+    conselho();
+    demografiaDoDia();
+    jogo.anoFrac += ANO_DIA / ANO;
+    while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
+  } finally { restaurarContexto(); }
 
-  // Colheita: lavoura mais o que se apanha no mato, proporcional ao território.
-  const daLavoura = v.lavouras * LAVOURA_SEG * fatorLavoura() * seg;
-  const doMato = Math.min(v.pop, v.blocos.length * 2) * TAXA * MATO_COMIDA *
-                 estacaoNoMato() * 0.30 * seg;
-  v.comida += daLavoura + doMato;
-  v.comida -= v.pop * COMIDA_POR_ANO * (seg / ANO);
-
-  // Madeira e pedra vêm do território: terra é o que dá matéria-prima.
-  const bracos = Math.min(v.pop, v.blocos.length * 3);
-  v.madeira += bracos * TAXA * 0.30 * seg;
-  v.pedra   += bracos * TAXA * 0.12 * seg;
-  const teto = 300 + v.blocos.length * 220;
-  v.comida = Math.min(v.comida, teto);
-  v.madeira = Math.min(v.madeira, teto);
-  v.pedra = Math.min(v.pedra, teto);
-
-  // Fome: a vizinha também morre de fome, e pelas mesmas regras.
-  if (v.comida <= 0) {
-    v.comida = 0;
-    v.fome = true;
-    if (rnd() < 0.10) v.pop = Math.max(0, v.pop - 1);
-  } else if (v.fome && v.comida > v.pop * 2) v.fome = false;
-
-  /*
-     Obras: quantas fizerem sentido no dia, sem teto arbitrário. Antes o
-     número de tentativas parava em 4 (calculado a partir de quanto
-     território sobrava sem prédio — bom pra resolver O SINTOMA original,
-     "só rua depois do primeiro quarteirão", mas um teto pensado pra ESSE
-     problema virou gargalo NOUTRO: numa vila grande e próspera, com gente e
-     recurso de sobra, 'tentarConstruirNaVilaRival' às vezes tem mais de
-     quatro coisas genuinamente precisando sair do papel no mesmo dia
-     (fazenda, casa, mina, oficina, tudo faltando ao mesmo tempo), e o teto
-     travava mesmo sobrando o que construir. 'tentarConstruirNaVilaRival'
-     já devolve false assim que não sobra necessidade real nem recurso pra
-     bancar — o próprio recurso finito (madeira/pedra por dia, vindos do
-     território, sempre limitados) já impede rodar pra sempre; não precisa
-     de outro teto por cima disso.
-  */
-  while (tentarConstruirNaVilaRival(v)) {}
-
-  // Nascimento: devagar, como na sua vila, e só com despensa e teto.
-  const dias = v.comida / Math.max(0.01, v.pop * COMIDA_POR_ANO / DIAS_NO_ANO);
-  if (!v.fome && dias > 60 && v.pop < capacidadeMoradiaRival(v) && rnd() < 0.26 * v.pop / 2 / DIAS_NO_ANO)
-    v.pop++;
-  if (rnd() < v.pop * 0.022 / DIAS_NO_ANO) v.pop = Math.max(0, v.pop - 1);   // velhice
-
-  sincronizarGenteRival(v);   // a turma visível acompanha a população nova
-  sincronizarPessoasRival(v); // etapa 3 — o mesmo, em paralelo, no molde de verdade
-  distribuirTrabalhoRival(v);
+  v.pop = v.pessoas.length;
+  v.comida = v.recursos.comida;
+  v.madeira = v.recursos.madeira;
+  v.pedra = v.recursos.pedra;
 }
 
 /* ------------------------------------------------------------- avançar --- */
@@ -3713,10 +3640,10 @@ function erguerNaVilaRival(v, chave) {
 */
 const TETO_ADULTOS_RIVAL = 500;
 const TETO_CRIANCAS_RIVAL = 50;
-let proxGenteRivalId = 1;
 
-// Um ponto qualquer dentro do território da vila — usado por quem ainda não
-// tem prédio (civil) e pelos que estão indo para lá antes de ter endereço.
+// Um ponto qualquer dentro do território da vila — usado só na fundação
+// (ver 'sincronizarPessoasRival' logo abaixo), pra espalhar a gente inicial
+// pelo território em vez de nascer todo mundo empilhado no mesmo pixel.
 function pontoNoTerritorioRival(v) {
   if (!v.blocos.length) return { x: v.tx * TILE, y: v.ty * TILE };
   const [bx, by] = v.blocos[Math.floor(rnd() * v.blocos.length)].split(',').map(Number);
@@ -3727,88 +3654,18 @@ function pontoNoTerritorioRival(v) {
   };
 }
 
-function criarGenteRival(v, crianca) {
-  const p0 = pontoNoTerritorioRival(v);
-  return {
-    id: proxGenteRivalId++, vila: v.id, x: p0.x, y: p0.y, alvoX: p0.x, alvoY: p0.y,
-    nome: (rnd() < 0.5 ? NOMES_M : NOMES_F)[Math.floor(rnd() * (rnd() < 0.5 ? NOMES_M.length : NOMES_F.length))],
-    sobrenome: SOBRENOMES[Math.floor(rnd() * SOBRENOMES.length)],
-    sexo: rnd() < 0.5 ? 'f' : 'm',
-    idade: crianca ? 1 + rnd() * 16 : 18 + rnd() * 50,
-    dir: 1, ang: 0, passo: rnd() * 10, estado: 'ocioso', pausa: rnd() * 3, ociosoT: rnd() * 2,
-    veiculo: null, carga: 0, cargaTipo: null,
-    predioId: null, papel: null, dentro: null, portaX: undefined, portaY: undefined,
-    sulcoX: 0, sulcoY: 0, sulcoT: 0,
-    emCombate: null, alvoCombate: null, alvoCombateFaccao: 0, estadoAntesDoCombate: null,
-    duelo: null, morto: false,
-    proximaChecagemCombate: rnd() * INTERVALO_CHECAGEM_COMBATE,
-  };
-}
-
-// Desliga da vida da vila: sai do prédio que usava (o que pode abandoná-lo) e
-// sai da lista. Usado tanto por combate quanto pelo ajuste diário de tamanho.
-function removerGenteRival(v, p) {
-  const i = v.gente.indexOf(p);
-  if (i >= 0) v.gente.splice(i, 1);
-  if (p.predioId) {
-    const pr = v.predios.find(x => x.id === p.predioId);
-    if (pr) {
-      if (pr.trabalhador === p.id) pr.trabalhador = null;
-      const j = pr.moradores.indexOf(p.id);
-      if (j >= 0) pr.moradores.splice(j, 1);
-      conferirAbandono(pr);
-    }
-  }
-}
-
 /*
-   Cresce ou encolhe a turma até acompanhar a população real, sem passar do
-   teto — agora com adulto e criança contados à parte, porque só adulto
-   trabalha e luta. Ao encolher, os civis (sem prédio) saem primeiro: perder
-   um lavrador desmancha o trabalho que ele fazia, perder um civil não muda
-   nada de concreto.
-*/
-function sincronizarGenteRival(v) {
-  const alvoAdultos = Math.min(TETO_ADULTOS_RIVAL, Math.round(v.pop * 0.88));
-  const alvoCriancas = Math.min(TETO_CRIANCAS_RIVAL, Math.round(v.pop * 0.12));
-  const adultosArr = v.gente.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA);
-  const criancasArr = v.gente.filter(p => faseDaIdade(p.idade) === FASE.CRIANCA);
+   ETAPA 4 do motor único — a população inicial da vila, no mesmo molde
+   'criarPessoa' que o jogador já usa. Só roda na FUNDAÇÃO (ver
+   'fundarVilaRival'): a partir daí, quem faz 'v.pessoas' crescer e encolher
+   é a demografia de verdade (ver 'demografiaDoDia', chamada dentro de
+   'diaDaVilaRival') — envelhecer, casar, nascer, imigrar, morrer, as MESMAS
+   regras da sua vila. Sem isto a vila nasceria com zero pessoas e NADA a
+   demografia orgânica pudesse fazer crescer a partir do nada.
 
-  while (adultosArr.length < alvoAdultos) { const novo = criarGenteRival(v, false); v.gente.push(novo); adultosArr.push(novo); }
-  while (criancasArr.length < alvoCriancas) { const novo = criarGenteRival(v, true); v.gente.push(novo); criancasArr.push(novo); }
-
-  if (adultosArr.length > alvoAdultos) {
-    adultosArr.sort((a, b) => (a.predioId ? 1 : 0) - (b.predioId ? 1 : 0));   // civis primeiro
-    for (let i = alvoAdultos; i < adultosArr.length; i++) removerGenteRival(v, adultosArr[i]);
-  }
-  if (criancasArr.length > alvoCriancas)
-    for (let i = alvoCriancas; i < criancasArr.length; i++) removerGenteRival(v, criancasArr[i]);
-}
-
-/*
-   ETAPA 3 do motor único — gente rival de VERDADE, no mesmo molde
-   'criarPessoa' que a sua gente já usa: idade, sexo, oficio, casaId,
-   conjugeId, campo de caminho pra A*, tudo — os mesmos nove campos por
-   trás de cada morador seu, criados AQUI mas ainda sem ninguém lendo
-   'v.pessoas' pra valer (é 'v.gente', do modelo antigo, quem continua
-   andando, trabalhando e aparecendo na tela por enquanto).
-
-   'criarPessoa'/'removerPessoa' de propósito rodam DENTRO do contexto
-   trocado (ver 'trocarContexto', etapa 2): escrevem direto em
-   'jogo.pessoas', que durante a troca É o mesmo array que 'v.pessoas'
-   (mesma referência) — a gente nova já nasce no lugar certo, sem copiar
-   nada de volta.
-
-   Mesmo teto de simulação que 'sincronizarGenteRival' já usa
-   (TETO_ADULTOS_RIVAL/TETO_CRIANCAS_RIVAL) — pensado pro custo de
-   simular gente, que a etapa 5 vai medir de verdade com pathfinding
-   ligado e a etapa 6 ajusta com base na medição; até lá, mesma régua pros
-   dois modelos rodando em paralelo.
-
-   A etapa 4 troca o CONSUMO de 'v.gente' pra 'v.pessoas' (conselho(),
-   distribuirOficios(), atualizarPessoa — o motor de verdade, sem mudar
-   uma linha dele) e aposenta 'v.gente'/'criarGenteRival'/
-   'sincronizarGenteRival' de vez.
+   Mesmo teto que a simulação sempre usou (TETO_ADULTOS_RIVAL/
+   TETO_CRIANCAS_RIVAL) — a etapa 5 mede o custo de verdade com pathfinding
+   ligado e a etapa 6 ajusta com base na medição.
 */
 function sincronizarPessoasRival(v) {
   const alvoAdultos = Math.min(TETO_ADULTOS_RIVAL, Math.round(v.pop * 0.88));
@@ -3823,171 +3680,37 @@ function sincronizarPessoasRival(v) {
       const p0 = pontoNoTerritorioRival(v);
       criarPessoa({ x: p0.x, y: p0.y, idade: criança ? entre(1, 16) : entre(18, 55) });
     }
-    // Civis primeiro, do mesmo jeito que 'sincronizarGenteRival' já prefere:
-    // perder quem já tem ofício ou casa desmancha trabalho de verdade.
-    while (jogo.pessoas.length > alvo) {
-      const civil = jogo.pessoas.find(p => p.oficio === 'nenhum' && !p.casaId) || jogo.pessoas[0];
-      removerPessoa(civil);
-    }
   } finally { restaurarContexto(); }
 }
 
 /*
-   O EMPREGO. Roda uma vez por dia de jogo, junto com o resto do conselho
-   rival — casa civis sem prédio em vaga de trabalho ou moradia, e TAMBÉM
-   ocupa prédio abandonado ao alcance (seu de origem ou de qualquer outra
-   vila), que é a metade rival do item 6/7: conquista territorial acontece
-   pelos dois lados, não só quando o jogador manda gente ocupar.
+   ETAPA 4/5 do motor único — "ao vivo" vs. "adormecida", o freio de
+   desempenho. Só a vila rival perto o bastante da câmera pra ser vista fica
+   "ao vivo": roda 'atualizarPovo' (a MESMA função do jogador, sem mudar uma
+   linha) através do contexto trocado, pessoa por pessoa, com pathfinding de
+   verdade — porque 'atualizarPovo' já lê 'jogo.pessoas', que durante a troca
+   É 'v.pessoas'. As demais ficam "adormecidas": ninguém se move entre um
+   quadro e outro, custo zero — e como também não são desenhadas (fora da
+   câmera), ninguém percebe. O crescimento delas continua vindo do dia a dia
+   comprimido ('diaDaVilaRival'), ao vivo ou adormecida, sempre.
 
-   EMPREGO ANTES DE MORADIA — achado visitando vila rival de verdade: quase
-   todo mundo virava morador, quase ninguém trabalhador (medido: 8 morando
-   contra só 3 trabalhando, com 7 prédios de emprego de pé). Casa nasce um
-   pouco à frente da necessidade de propósito (mesma filosofia do conselho —
-   'tentarConstruirNaVilaRival' —, "não espera lotar pra construir"), então
-   quase sempre tem vaga de moradia sobrando. A ordem antiga varria
-   'v.predios' em ordem de CONSTRUÇÃO, misturando casa e prédio de trabalho:
-   como casa é sempre a mais numerosa e tem vaga sobrando o tempo todo, a
-   gente nova (o pingo diário de crescimento) era sempre consumida ali
-   primeiro — fazenda, mina, oficina ficavam vazias mesmo de pé, porque a
-   vez delas nunca chegava. Agora emprego é uma passada própria, sempre
-   ANTES de moradia — só sobra pra morar quem já não tinha vaga de trabalho
-   pra ocupar.
+   'FOLGA_VILA_AO_VIVO' cobre o território em volta do centro (não só o
+   pixel do centro): sem essa folga, uma vila grande apareceria "congelada"
+   nas bordas mesmo com o centro dela fora da tela.
 */
-function distribuirTrabalhoRival(v) {
-  const livres = v.gente.filter(p => !p.predioId && faseDaIdade(p.idade) !== FASE.CRIANCA && !p.emCombate);
-  if (!livres.length) return;
-  let i = 0;
-  const vagasAlheiasAbandonadas = todosOsPredios().filter(pr =>
-    predioAbandonado(pr) && !v.predios.includes(pr) && dentroOuPertoDoTerritorio(v, pr));
-  const vagas = v.predios.filter(pr => pr.progresso >= 1).concat(vagasAlheiasAbandonadas);
-
-  const reivindicar = pr => { if (predioAbandonado(pr)) transferirPredio(pr, v.id); };
-
-  for (const pr of vagas) {
-    if (i >= livres.length) return;
-    if (!((pr.def.posto || pr.def.fazenda || pr.def.pesca) && !pr.trabalhador)) continue;
-    reivindicar(pr);
-    const p = livres[i++]; p.predioId = pr.id; p.papel = 'trabalhador'; pr.trabalhador = p.id;
-  }
-  for (const pr of vagas) {
-    if (i >= livres.length) return;
-    if (!pr.def.moradia) continue;
-    reivindicar(pr);
-    while (pr.moradores.length < pr.def.pop && i < livres.length) {
-      const p = livres[i++]; p.predioId = pr.id; p.papel = 'morador'; pr.moradores.push(p.id);
-    }
-  }
+const FOLGA_VILA_AO_VIVO = 150 * TILE;
+function vilaRivalPertoDaCamera(v) {
+  const meiaL = W / (2 * cam.z) + FOLGA_VILA_AO_VIVO, meiaA = H / (2 * cam.z) + FOLGA_VILA_AO_VIVO;
+  const cx = v.tx * TILE, cy = v.ty * TILE;
+  return Math.abs(cx - cam.x) < meiaL && Math.abs(cy - cam.y) < meiaA;
 }
 
-// Perto o bastante do próprio território para valer a pena mandar gente:
-// dentro de um bloco seu, ou vizinho de um. Sem isso a vila reivindicaria
-// prédio abandonado do outro lado do mapa, e o teto de gente nunca chegaria
-// perto de onde importa.
-function dentroOuPertoDoTerritorio(v, pr) {
-  const [bx, by] = quarteiraoDe(pr.tx, pr.ty);
-  if (v.blocos.includes(blocoK(bx, by))) return true;
-  return LADOS.some(([dx, dy]) => v.blocos.includes(blocoK(bx + dx, by + dy)));
-}
-
-/*
-   A ROTINA DIÁRIA de quem já tem prédio: vai até lá (linha reta — sem malha
-   viária própria) e entra no posto. Quem ainda não tem prédio, ou é criança,
-   continua vagando pelo território como sempre vagou. Tudo isso só roda
-   depois que o combate (próxima fase) decidiu que NÃO há ameaça — combate
-   sempre vem primeiro.
-*/
-function rotinaRival(v, p, dt) {
-  if (p.predioId) {
-    const pr = v.predios.find(x => x.id === p.predioId) ||
-               (todosOsPredios().find(x => x.id === p.predioId));
-    if (!pr || predioAbandonado(pr) || donoDoPredio(pr) !== v.id) { p.predioId = null; p.papel = null; }
-    else if (p.dentro || p.portaX !== undefined) {
-      // já no posto — 'entrarNoPosto' cuida de tudo (janela acesa, sulco).
-      if (postoAoArLivre(pr.def) && p.portaX !== undefined) {
-        p.sulcoT -= dt;
-        const dx = p.sulcoX - p.x, dy = p.sulcoY - p.y, d = Math.hypot(dx, dy);
-        if (d > 2) {
-          const passo = Math.min(d, VELOCIDADE_NO_SULCO * dt);
-          p.x += dx / d * passo; p.y += dy / d * passo; p.dir = dx >= 0 ? 1 : -1;
-        } else if (p.sulcoT <= 0) escolherSulco(p, pr);
-        p.estado = 'naFazenda';
-      } else if (!p.dentro) {
-        p.estado = 'naFazenda';   // morador dentro de casa: parado, some (a casa já tinha isso pronto)
-      }
-      p.passo += dt;
-      return;
-    } else {
-      const dx = pr.cx - p.x, dy = pr.cy - p.y, d = Math.hypot(dx, dy);
-      if (d < alcanceDe(pr)) { entrarNoPosto(p, pr); p.estado = 'naFazenda'; }
-      else {
-        p.estado = 'indoFazenda'; p.ang = Math.atan2(dy, dx); p.dir = Math.cos(p.ang) >= 0 ? 1 : -1;
-        const passo = Math.min(d, VELOCIDADE_GENTE_RIVAL * dt);
-        p.x += dx / d * passo; p.y += dy / d * passo; p.passo += dt;
-      }
-      return;
-    }
-  }
-
-  // Sem prédio (civil, ou criança): vaga pelo território, do jeito de sempre.
-  const dx = p.alvoX - p.x, dy = p.alvoY - p.y, d = Math.hypot(dx, dy);
-  if (d < 3) {
-    p.estado = 'parado';
-    p.pausa -= dt;
-    if (p.pausa <= 0) {
-      const alvo = pontoNoTerritorioRival(v);
-      p.alvoX = alvo.x; p.alvoY = alvo.y;
-      // Um civil adulto de vez em quando "coleta" no mato — só para a cena
-      // parecer viva; nenhum recurso de verdade entra ou sai por causa disso,
-      // o mesmo abstrato de sempre em 'diaDaVilaRival' continua no comando.
-      p.estado = (faseDaIdade(p.idade) !== FASE.CRIANCA && rnd() < 0.4) ? 'coletando' : 'parado';
-      p.pausa = 2 + rnd() * 5;
-    }
-  } else {
-    if (p.estado !== 'coletando') p.estado = 'andando';
-    p.ang = Math.atan2(dy, dx);
-    p.dir = Math.cos(p.ang) >= 0 ? 1 : -1;
-    const passo = Math.min(d, VELOCIDADE_GENTE_RIVAL * dt);
-    p.x += dx / d * passo; p.y += dy / d * passo;
-    p.passo += dt;
-  }
-}
-
-/*
-   BUG ACHADO — a vizinha andava bem mais devagar que a sua gente, visível a
-   olho nu. 'VEL' (índice 1496) é o passo do jogador, 47; este aqui era 16,
-   menos de um terço. Não tinha razão de ser diferente — os dois são
-   "andando de um ponto a outro", não trabalho (isso já tem sua própria
-   constante mais lenta, 'VELOCIDADE_NO_SULCO'). Aponta pro MESMO 'VEL' —
-   nunca mais descola de novo, porque lê o mesmo número em vez de copiar.
-*/
-const VELOCIDADE_GENTE_RIVAL = VEL;
-
-/*
-   Rodízio igual ao 'atualizarPovo' do jogador: até quatro vilas de até 550
-   almas cada seria simular milhares de pessoas por quadro. Quem está na tela
-   anda todo quadro; quem está fora entra num rodízio com o tempo acumulado.
-*/
-const FATIAS_GENTE_RIVAL = 5;
-function atualizarGenteRival(dt) {
+function atualizarPessoasRival(dt) {
   if (!jogo.vilas || !jogo.vilas.length) return;
-  const margem = 220 / cam.z;
-  const meiaL = W / (2 * cam.z) + margem, meiaA = H / (2 * cam.z) + margem;
-  const x0 = cam.x - meiaL, x1 = cam.x + meiaL, y0 = cam.y - meiaA, y1 = cam.y + meiaA;
   for (const v of rivaisVivas()) {
-    v.fatiaGente = ((v.fatiaGente || 0) + 1) % FATIAS_GENTE_RIVAL;
-    for (let i = 0; i < v.gente.length; i++) {
-      const p = v.gente[i];
-      const naTela = p.x > x0 && p.x < x1 && p.y > y0 && p.y < y1;
-      let dtEfetivo = dt;
-      if (!naTela) {
-        p.atraso = (p.atraso || 0) + dt;
-        if (i % FATIAS_GENTE_RIVAL !== v.fatiaGente) continue;
-        dtEfetivo = Math.min(p.atraso, 0.4);
-        p.atraso = 0;
-      }
-      if (avaliarCombate(p, v.id, dtEfetivo)) continue;   // combate assume o controle deste quadro
-      rotinaRival(v, p, dtEfetivo);
-    }
+    if (!vilaRivalPertoDaCamera(v)) continue;
+    trocarContexto(v);
+    try { atualizarPovo(dt); } finally { restaurarContexto(); }
   }
 }
 
@@ -4093,9 +3816,13 @@ function recontarDonoDoQuarteirao(bx, by) {
 
 // Todo prédio do jogo, seu e de toda vila rival viva, numa lista só — usado
 // pela detecção de combate e pela busca de prédio abandonado para ocupar.
+// ETAPA 4 do motor único: 'jogo.predios' pode SER 'v.predios' de uma vila
+// rival em contexto (ver trocarContexto) — sem o filtro abaixo, essa vila
+// apareceria duas vezes na lista (uma como 'jogo.predios', outra dentro do
+// próprio 'rivaisVivas()').
 function todosOsPredios() {
   const lista = jogo.predios.slice();
-  for (const v of rivaisVivas()) lista.push(...v.predios);
+  for (const v of rivaisVivas()) if (v !== vilaEmContexto) lista.push(...v.predios);
   return lista;
 }
 
@@ -4159,7 +3886,7 @@ function construirIndiceCombate() {
   };
   for (const p of jogo.pessoas) if (faseDaIdade(p.idade) !== FASE.CRIANCA) add(0, p);
   for (const v of rivaisVivas())
-    for (const p of v.gente) if (faseDaIdade(p.idade) !== FASE.CRIANCA) add(v.id, p);
+    for (const p of v.pessoas) if (faseDaIdade(p.idade) !== FASE.CRIANCA) add(v.id, p);
   indiceCombateEm = jogo.tempo;
 }
 function garantirIndiceCombate() {
@@ -4210,8 +3937,18 @@ function matarPorCombate(vitima, vFaccao, venFaccao) {
     aviso('⚔️ ' + nomeCompleto(vitima) + ' morreu em combate');
     removerPessoa(vitima);
   } else {
+    // ETAPA 4 do motor único: 'vitima' vive em 'v.pessoas' agora, e
+    // 'removerPessoa' (a mesma função de sempre) só acha ela — e só solta
+    // o posto/casa dela certo — com o contexto da PRÓPRIA vila trocado
+    // (ver 'trocarContexto'); 'matarPorCombate' roda fora de qualquer
+    // troca (chamado de 'processarDuelos', junto com o resto do quadro do
+    // jogador), então troca e devolve por conta própria, só pra este passo.
     const v = vilaPorId(vFaccao);
-    if (v) { removerGenteRival(v, vitima); v.pop = Math.max(0, v.pop - 1); }
+    if (v) {
+      trocarContexto(v);
+      try { removerPessoa(vitima); } finally { restaurarContexto(); }
+      v.pop = v.pessoas.length;   // fresco na hora — a absorção confere v.pop
+    }
     if (envolveJogador)
       crônica((vitima.nome + ' ' + vitima.sobrenome) + ' de ' + (v ? v.nome : 'uma vila rival') + ' morreu em combate.', true, 'vida');
   }
@@ -4886,6 +4623,36 @@ function ruaFundadora(centro) {
     for (const [tx, ty] of ladoDoQuarteirao(bx, by, lado)) por(tx, ty);
 }
 
+/*
+   ETAPA 4 do motor único — BUG ACHADO AO VIVO (medindo 60 dias de vida de
+   uma vila recém-fundada, sem uma casa nova sair do papel em nenhum
+   deles). 'anelDoQuarteirao' (chamada na fundação de toda vila rival)
+   só enche 'v.ruas' — o anel DECORATIVO (Etapa 1: "nunca é lido por
+   pathfinding nenhum, só marca 'não construir aqui'"). O anel de VERDADE
+   ('jogo.estradas'/'v.estradas', o que 'encostaNaRua'/'escolherLote'/
+   'crescerRua' realmente enxergam) nunca nascia — só o jogador ganha essa
+   rua de graça, em 'ruaFundadora', na fundação do jogo. Sem ela,
+   'escolherLote' nunca acha lote (não há rua nenhuma pra encostar) e
+   'crescerRua' nunca cresce nada (precisa ENCOSTAR numa rua existente pra
+   começar — sem ela, não tem de onde partir): a vila rival travava pra
+   sempre com só centro+casa, por mais dia que passasse.
+
+   Mesma ideia de 'ruaFundadora', mas SEM tocar 'jogo.malhaOx'/'malhaOy' —
+   essa origem é da GRADE INTEIRA do mundo, compartilhada por você e por
+   toda vila rival (é o que faz 'quarteiraoDe' bater igual pros dois
+   lados); mexer nela pela fundação de uma vila rival deslocaria a grade
+   de todo mundo, inclusive a sua. Usa a origem que já existe (a do
+   jogador, ancorada primeiro) e só fecha o anel ao redor do QUARTEIRÃO
+   DA VILA RIVAL nela.
+*/
+function ruaFundadoraRival(v) {
+  const [bx, by] = quarteiraoDe(v.tx, v.ty);
+  for (let lado = 0; lado < 4; lado++)
+    for (const [tx, ty] of ladoDoQuarteirao(bx, by, lado)) {
+      if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); limparArvoresRentesA(tx, ty); }
+    }
+}
+
 function erguerPredio(chave, tx, ty) {
   const def = PREDIO[chave];
   if (!podePagar(def.custo)) return false;
@@ -5033,9 +4800,17 @@ function distribuirOficios() {
      esvaziou) entra na mesma lista de vagas, contanto que dê pra chegar
      andando. É assim que o território muda de mão sem clique nenhum: seu
      povo simplesmente ocupa o que ninguém mais usa.
+
+     ETAPA 4 do motor único: esta função roda pra QUALQUER vila em contexto
+     (ver trocarContexto), não só pro jogador — 'rivaisVivas().filter(v =>
+     v !== vilaEmContexto)' exclui a própria vila da lista de "outras vilas"
+     quando é uma rival quem está rodando (senão ela apareceria duplicada,
+     já que 'jogo.predios' já É 'v.predios' dela durante a troca). Pro
+     jogador (vilaEmContexto null) o filtro não muda nada — nenhuma vila é
+     === null, a lista de rivais sai inteira, igual sempre foi.
   */
   const vagasAoAlcance = jogo.predios.concat(
-    rivaisVivas().flatMap(v => v.predios.filter(predioAbandonado))
+    rivaisVivas().filter(v => v !== vilaEmContexto).flatMap(v => v.predios.filter(predioAbandonado))
   );
   for (const pr of vagasAoAlcance) {
     if (!temVaga(pr) && !(predioAbandonado(pr) && (pr.def.fazenda || pr.def.mina || pr.def.posto) && pr.progresso >= 1)) continue;
@@ -5058,7 +4833,12 @@ function distribuirOficios() {
     // sempre (break) antes de prédio abandonado existir na lista.
     if (i < 0) continue;
     const cand = disponiveis.splice(i, 1)[0];
-    if (predioAbandonado(pr)) { transferirPredio(pr, 0); crônica('Sua vila ocupou ' + pr.def.nome + ' abandonad' + (pr.def.nome.endsWith('a')?'a':'o') + '.', true, 'vila'); }
+    // ETAPA 4 do motor único: quem ocupa é a vila EM CONTEXTO (a sua, ou uma
+    // rival rodando através de trocarContexto) — não sempre o jogador.
+    if (predioAbandonado(pr)) {
+      transferirPredio(pr, vilaEmContexto ? vilaEmContexto.id : 0);
+      crônica('Sua vila ocupou ' + pr.def.nome + ' abandonad' + (pr.def.nome.endsWith('a')?'a':'o') + '.', true, 'vila');
+    }
     pr.trabalhador = cand.id; cand.fazendaId = pr.id;
     cand.oficio = pr.def.posto || (pr.def.pesca ? 'pescador' : 'fazendeiro');
     cand.estado = 'indoFazenda'; cand.alvo = pr;
@@ -5472,7 +5252,7 @@ function conselho() {
   const obrasDe = teste => jogo.predios.filter(p => p.progresso < 1 && teste(p.def)).length;
   const folga = cap - pop;
   const querMaisTeto = folga <= Math.max(8, pop * 0.4) && obrasDe(d => d.moradia) < 2;
-  if (querMaisTeto && comidaDias >= 90 && saldoComidaPorAno() > 864) {
+  if (querMaisTeto && comidaDias >= 90 && saldoComidaAtual() > 864) {
     // ITEM 2 — melhorar rende teto no MESMO lote, sem abrir quarteirão nem
     // gastar terreno novo: tenta antes de erguer prédio do zero.
     if (tentarMelhorarAntes('sobrado')) return;
@@ -5779,32 +5559,29 @@ function rebrotarMata() {
    divididas por 365: ao longo de um ano de jogo o comportamento é o mesmo de
    uma taxa anual, só que distribuído dia a dia em vez de dar um salto.
 */
-function tickDia() {
-  jogo.diaTotal = (jogo.diaTotal || 0) + 1;
-  // Obra de rua num pedaço de malha que ninguém alcança: cancela e devolve o
-  // canteiro, senão ela fica pendurada segurando a cota de obras da vila.
-  const principalDaMalha = pedacoPrincipal();
-  for (let i = jogo.obrasEstrada.length - 1; i >= 0; i--) {
-    const o = jogo.obrasEstrada[i];
-    const t = o.tiles[o.feitos];
-    if (!t) continue;
-    if (principalDaMalha && pedacoDoTile(t[0], t[1]) && pedacoDoTile(t[0], t[1]) !== principalDaMalha) {
-      jogo.obrasEstrada.splice(i, 1);
-      crônica('Uma obra de rua ficou isolada da cidade e foi abandonada.', false, 'obra');
-    }
-  }
+/*
+   ETAPA 4 do motor único — 'jogo.saldoComida' é uma média móvel medida
+   quadro a quadro só pro jogador (ver 'passo', que nunca roda com uma vila
+   rival em contexto — não faz parte da troca de 'trocarContexto'). Uma
+   vila rival em contexto nunca tem essa amostragem pronta; usar o valor
+   do jogador ali seria aplicar O FLUXO DE COMIDA DO JOGADOR pra decidir
+   imigração de uma vila que não tem nada a ver com ele. Pra qualquer vila
+   que não seja "a de verdade, sendo jogada agora", cai no mesmo cálculo
+   teórico que 'saldoComidaPorAno' já usa como fallback (puramente de
+   'jogo.predios'/'jogo.pessoas', então correto pra QUALQUER vila trocada).
+*/
+const saldoComidaAtual = () => vilaEmContexto ? saldoTeorico() * 0.3 : saldoComidaPorAno();
 
-  // ITEM 2: o pedido NÃO caduca mais sozinho — ele fica na aba de pedidos
-  // pendentes até você permitir ou recusar. Some só se o terreno deixar de
-  // servir, porque aí não há mais o que autorizar.
-  for (let i = jogo.pedidos.length - 1; i >= 0; i--) {
-    const ped = jogo.pedidos[i];
-    const def = PREDIO[ped.chave];
-    if (!areaValida(ped.tx, ped.ty, def.w, def.h, def)) {
-      crônica('O terreno pedido para ' + def.nome + ' já foi ocupado — o pedido caiu.', false, 'obra');
-      jogo.pedidos.splice(i, 1);
-    }
-  }
+/*
+   O bloco demográfico — envelhecer, casar, nascer, imigrar, morrer — vale
+   IGUAL pra qualquer vila: a sua, rodando aqui todo dia de jogo, ou uma
+   rival, rodando dentro do contexto trocado (ver 'trocarContexto',
+   'diaDaVilaRival'). Fatorado pra fora de 'tickDia' por isso: 'tickDia'
+   sozinho tem coisa que é só do jogador (crise, feira, HUD, e principalmente
+   'tickVilas' — chamá-lo com uma vila rival já em contexto rodaria toda
+   vila de novo, inclusive ela mesma).
+*/
+function demografiaDoDia() {
   const mortos = [], nascidos = [];
 
   for (const p of jogo.pessoas) {
@@ -5899,7 +5676,7 @@ function tickDia() {
      está sendo jogado fora, e recusar gente seria o contrário do certo.
   */
   const fartura = diasDeComida() > 120 ||
-    (diasDeComida() > 45 && saldoComidaPorAno() > COMIDA_POR_ANO * 3);
+    (diasDeComida() > 45 && saldoComidaAtual() > COMIDA_POR_ANO * 3);
   if (!jogo.fome && vagasNaVila > 0 && fartura) {
     if (rnd() < Math.min(0.45, vagasNaVila * 0.04)) {
       const casa = casaComVaga();
@@ -5923,13 +5700,45 @@ function tickDia() {
     }
   }
 
+  return { mortos: mortos.length, nascidos: nascidos.length };
+}
+
+function tickDia() {
+  jogo.diaTotal = (jogo.diaTotal || 0) + 1;
+  // Obra de rua num pedaço de malha que ninguém alcança: cancela e devolve o
+  // canteiro, senão ela fica pendurada segurando a cota de obras da vila.
+  const principalDaMalha = pedacoPrincipal();
+  for (let i = jogo.obrasEstrada.length - 1; i >= 0; i--) {
+    const o = jogo.obrasEstrada[i];
+    const t = o.tiles[o.feitos];
+    if (!t) continue;
+    if (principalDaMalha && pedacoDoTile(t[0], t[1]) && pedacoDoTile(t[0], t[1]) !== principalDaMalha) {
+      jogo.obrasEstrada.splice(i, 1);
+      crônica('Uma obra de rua ficou isolada da cidade e foi abandonada.', false, 'obra');
+    }
+  }
+
+  // ITEM 2: o pedido NÃO caduca mais sozinho — ele fica na aba de pedidos
+  // pendentes até você permitir ou recusar. Some só se o terreno deixar de
+  // servir, porque aí não há mais o que autorizar.
+  for (let i = jogo.pedidos.length - 1; i >= 0; i--) {
+    const ped = jogo.pedidos[i];
+    const def = PREDIO[ped.chave];
+    if (!areaValida(ped.tx, ped.ty, def.w, def.h, def)) {
+      crônica('O terreno pedido para ' + def.nome + ' já foi ocupado — o pedido caiu.', false, 'obra');
+      jogo.pedidos.splice(i, 1);
+    }
+  }
+
+  const r = demografiaDoDia();
+
   tickCrises();
   fecharDiaDoFluxo();
   tickVilas();
   conselho();
   conferirMissoes();
   atualizarHUD();
-  return { mortos: mortos.length, nascidos: nascidos.length };
+  return r;
 }
 
 function removerPessoa(p) {
@@ -5959,105 +5768,143 @@ function tetoEstoque() {
   return 300 + armazens * 700;
 }
 
+/*
+   ETAPA 4 do motor único — 'render'/'avancarObras' viviam DENTRO de
+   'recuperarOffline', fechando sobre 'rel' (o relatório de volta pro
+   jogador). Fatorados pra fora, module-level, porque a mesma conta —
+   produção sem ninguém "ao vivo" pra render + obra que segue avançando —
+   é EXATAMENTE o que uma vila rival adormecida precisa a cada dia de jogo
+   (ver 'diaDaVilaRival'), não só o jogador reabrindo o app. 'aoConcluir' é
+   opcional: 'recuperarOffline' passa um contador pro relatório; uma vila
+   adormecida não precisa contar nada, então não passa nenhum.
+*/
+const EFIC_AUSENTE = 0.55;   // sem ninguém "ao vivo" por perto, rende pouco mais da metade
+
+// Produz e consome no mesmo passo. Se o consumo fosse descontado de uma vez
+// no fim, qualquer ausência longa viraria fome e a vila parava de nascer.
+function renderDia(seg) {
+  if (seg <= 0) return;
+  const por = { madeira:0, comida:0, pedra:0 };
+  for (const p of jogo.pessoas) {
+    const fase = faseDaIdade(p.idade);
+    if (fase === FASE.CRIANCA) continue;
+    const ef = (fase === FASE.IDOSO ? 0.6 : 1) * EFIC_AUSENTE;
+    const of = OFICIO[p.oficio];
+    // Desconto de ida e volta; e a fruta do mato segue a estação, como no jogo aberto.
+    if (of && of.rec) por[of.rec] += TAXA * ef * 0.45 *
+      (of.rec === 'comida' ? MATO_COMIDA * estacaoNoMato() : 1);
+    else if (p.oficio === 'fazendeiro') por.comida += LAVOURA_SEG * (fase === FASE.IDOSO ? 0.67 : 1) * EFIC_AUSENTE;
+  }
+  const teto = tetoEstoque();
+  for (const k in por) jogo.recursos[k] = Math.min(Math.max(teto, jogo.recursos[k]), jogo.recursos[k] + por[k] * seg);
+  jogo.recursos.comida -= popAtual() * COMIDA_POR_ANO * (seg / ANO);
+  if (jogo.recursos.comida <= 0) { jogo.recursos.comida = 0; jogo.fome = true; }
+  else if (jogo.fome && jogo.recursos.comida > popAtual() * 2) jogo.fome = false;
+}
+
+/*
+   MESMA CONTA DE 'renderDia' ACIMA, SÓ QUE SEM MEXER EM NADA — pro painel
+   "Vilas rivais" mostrar quanto a vila ganha e perde por dia sem aplicar o
+   resultado. Se a fórmula de produção mudar em 'renderDia', muda aqui
+   junto — as duas leem os mesmos nomes (TAXA, EFIC_AUSENTE, MATO_COMIDA),
+   não duas fórmulas que podem se descolar uma da outra.
+*/
+function projetarFluxoDoDia() {
+  const por = { madeira:0, comida:0, pedra:0 };
+  for (const p of jogo.pessoas) {
+    const fase = faseDaIdade(p.idade);
+    if (fase === FASE.CRIANCA) continue;
+    const ef = (fase === FASE.IDOSO ? 0.6 : 1) * EFIC_AUSENTE;
+    const of = OFICIO[p.oficio];
+    if (of && of.rec) por[of.rec] += TAXA * ef * 0.45 *
+      (of.rec === 'comida' ? MATO_COMIDA * estacaoNoMato() : 1);
+    else if (p.oficio === 'fazendeiro') por.comida += LAVOURA_SEG * (fase === FASE.IDOSO ? 0.67 : 1) * EFIC_AUSENTE;
+  }
+  const seg = ANO_DIA;
+  return {
+    madeira: por.madeira * seg,
+    comida: por.comida * seg - popAtual() * COMIDA_POR_ANO * (seg / ANO),
+    pedra: por.pedra * seg,
+  };
+}
+
+// As obras que o conselho enfileira também precisam sair do papel — senão a
+// vila para de crescer justamente enquanto ninguém está simulando ela quadro
+// a quadro.
+/*
+   Tudo aqui anda proporcional aos SEGUNDOS REAIS que passaram, não "uma
+   rodada por chamada". Com o tick agora sendo diário, uma chamada por dia de
+   jogo com passo fixo adiantaria o canteiro em anos de trabalho.
+
+   1,65 é o ritmo que o jogo sempre teve sem o jogador por perto: equivale a
+   um operário e meio martelando sem parar.
+*/
+const OBRA_POR_SEGUNDO = 1.65;
+/*
+   BUG ACHADO MEDINDO — a vila crescia rápido demais sem o jogador, bem mais
+   rápido que com ele por perto. "1,65... um operário e meio martelando"
+   descreve o ritmo da VILA, mas o código dava esse ritmo INTEIRO pra CADA
+   canteiro aberto ao mesmo tempo (até três, o teto de OBRAS_AO_MESMO_TEMPO)
+   — uma casa (tempo:70) terminava em bem menos de um dia, o conselho
+   enfileirava outra no dia seguinte, sem parar. Medido ao vivo: 8 pra 481
+   pessoas em 480 dias fora (contra 5 pra 8 em 8 dias de jogo aberto, o mesmo
+   período proporcional) — um circuito casa→gente→trabalhador→recurso→casa
+   girando livre, sem o freio de mão de obra que o jogo aberto sempre teve
+   (equipe pequena por obra, gente ocupada com outra coisa, canteiro "parado"
+   sem ninguém). Reparte o mesmo punhado de gente entre os canteiros abertos
+   — três construções ao mesmo tempo dividem o mesmo ritmo, não recebem um
+   cada — em vez de dar mais rápido pra quem tem mais.
+*/
+function avancarObrasDia(seg, aoConcluir) {
+  const braços = jogo.pessoas.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA).length;
+  if (!braços || seg <= 0) return;
+
+  const emObra = jogo.predios.filter(p => p.progresso < 1);
+  if (!emObra.length) return;
+  const ritmoPorObra = OBRA_POR_SEGUNDO / emObra.length;
+  for (const pr of emObra) {
+    pr.progresso += (seg * ritmoPorObra) / pr.def.tempo;
+    if (pr.progresso >= 1) { concluirPredio(pr); if (aoConcluir) aoConcluir(); }
+  }
+
+  // Um trecho de rua leva uns 3 s de trabalho; sem ninguém "ao vivo", seis.
+  let trechos = Math.max(1, Math.floor(seg / 6));
+  for (const obra of jogo.obrasEstrada.slice()) {
+    while (trechos > 0 && obra.feitos < obra.tiles.length && jogo.recursos.pedra >= 1) {
+      const t = obra.tiles[obra.feitos];
+      jogo.recursos.pedra -= 1;
+      jogo.estradas.add(nk(t[0], t[1]));
+      limparNo(t[0], t[1]);
+      limparArvoresRentesA(t[0], t[1]);
+      obra.feitos++;
+      trechos--;
+    }
+    if (obra.feitos >= obra.tiles.length) jogo.obrasEstrada.splice(jogo.obrasEstrada.indexOf(obra), 1);
+  }
+
+  // A oficina e o estábulo também não param, no ritmo de sempre.
+  for (const pr of jogo.predios) {
+    if (pr.progresso < 1 || !pr.def.produz) continue;
+    const def = VEICULO[pr.def.produz];
+    if (rnd() > seg / def.tempo) continue;          // um veículo a cada def.tempo
+    if (!podePagar(def.custo)) continue;
+    const dono = jogo.pessoas.find(p => !p.veiculo && faseDaIdade(p.idade) === FASE.ADULTO &&
+      OFICIO[p.oficio] && OFICIO[p.oficio].rec);
+    if (!dono) continue;
+    pagar(def.custo);
+    dono.veiculo = pr.def.produz;
+    crônica(nomeCompleto(dono) + ' passou a trabalhar com ' + (pr.def.produz === 'carroca' ? 'uma carroça' : 'um cavalo') + '.');
+  }
+}
+
 function recuperarOffline(segundos) {
   const s = Math.min(segundos, OFFLINE_MAX);
   // Vinte segundos já contam. O piso de um minuto fazia toda troca rápida de
   // app cair fora da conta.
   if (s < 20) return null;
   const rel = { segundos: s, madeira:0, comida:0, pedra:0, nascidos:0, mortos:0, obras:0, anos:0 };
-  const EFIC = 0.55;   // sem o jogador por perto, rende pouco mais da metade
   emRecuperacao = true;
   const inicio = { madeira: jogo.recursos.madeira, comida: jogo.recursos.comida, pedra: jogo.recursos.pedra };
-
-  // Produz e consome no mesmo passo. Se o consumo fosse descontado de uma vez
-  // no fim, qualquer ausência longa viraria fome e a vila parava de nascer.
-  function render(seg) {
-    if (seg <= 0) return;
-    const por = { madeira:0, comida:0, pedra:0 };
-    for (const p of jogo.pessoas) {
-      const fase = faseDaIdade(p.idade);
-      if (fase === FASE.CRIANCA) continue;
-      const ef = (fase === FASE.IDOSO ? 0.6 : 1) * EFIC;
-      const of = OFICIO[p.oficio];
-      // Desconto de ida e volta; e a fruta do mato segue a estação, como no jogo aberto.
-      if (of && of.rec) por[of.rec] += TAXA * ef * 0.45 *
-        (of.rec === 'comida' ? MATO_COMIDA * estacaoNoMato() : 1);
-      else if (p.oficio === 'fazendeiro') por.comida += LAVOURA_SEG * (fase === FASE.IDOSO ? 0.67 : 1) * EFIC;
-    }
-    const teto = tetoEstoque();
-    for (const k in por) jogo.recursos[k] = Math.min(Math.max(teto, jogo.recursos[k]), jogo.recursos[k] + por[k] * seg);
-    jogo.recursos.comida -= popAtual() * COMIDA_POR_ANO * (seg / ANO);
-    if (jogo.recursos.comida <= 0) { jogo.recursos.comida = 0; jogo.fome = true; }
-    else if (jogo.fome && jogo.recursos.comida > popAtual() * 2) jogo.fome = false;
-  }
-
-  // As obras que o conselho enfileira durante a ausência também precisam sair
-  // do papel — senão a vila para de crescer justamente enquanto você dorme.
-  /*
-     Tudo aqui anda proporcional aos SEGUNDOS REAIS que passaram, não "uma
-     rodada por chamada". Com o tick agora sendo diário, uma chamada por dia de
-     jogo com passo fixo adiantaria o canteiro em anos de trabalho.
-
-     1,65 é o ritmo que o jogo sempre teve sem você: equivale a um operário e
-     meio martelando sem parar.
-  */
-  const OBRA_POR_SEGUNDO = 1.65;
-  /*
-     BUG ACHADO MEDINDO — a vila crescia rápido demais sem você, bem mais
-     rápido que com você. "1,65... um operário e meio martelando" descreve
-     o ritmo da VILA, mas o código dava esse ritmo INTEIRO pra CADA canteiro
-     aberto ao mesmo tempo (até três, o teto de OBRAS_AO_MESMO_TEMPO) — uma
-     casa (tempo:70) terminava em bem menos de um dia, o conselho enfileirava
-     outra no dia seguinte, sem parar. Medido ao vivo: 8 pra 481 pessoas em
-     480 dias fora (contra 5 pra 8 em 8 dias de jogo aberto, o mesmo período
-     proporcional) — um circuito casa→gente→trabalhador→recurso→casa girando
-     livre, sem o freio de mão de obra que o jogo aberto sempre teve (equipe
-     pequena por obra, gente ocupada com outra coisa, canteiro "parado" sem
-     ninguém). Reparte o mesmo punhado de gente entre os canteiros abertos —
-     três construções ao mesmo tempo dividem o mesmo ritmo, não recebem um
-     cada — em vez de dar mais rápido pra quem tem mais.
-  */
-  function avancarObras(seg) {
-    const braços = jogo.pessoas.filter(p => faseDaIdade(p.idade) !== FASE.CRIANCA).length;
-    if (!braços || seg <= 0) return;
-
-    const emObra = jogo.predios.filter(p => p.progresso < 1);
-    if (!emObra.length) return;
-    const ritmoPorObra = OBRA_POR_SEGUNDO / emObra.length;
-    for (const pr of emObra) {
-      pr.progresso += (seg * ritmoPorObra) / pr.def.tempo;
-      if (pr.progresso >= 1) { concluirPredio(pr); rel.obras++; }
-    }
-
-    // Um trecho de rua leva uns 3 s de trabalho; sem você, seis.
-    let trechos = Math.max(1, Math.floor(seg / 6));
-    for (const obra of jogo.obrasEstrada.slice()) {
-      while (trechos > 0 && obra.feitos < obra.tiles.length && jogo.recursos.pedra >= 1) {
-        const t = obra.tiles[obra.feitos];
-        jogo.recursos.pedra -= 1;
-        jogo.estradas.add(nk(t[0], t[1]));
-        limparNo(t[0], t[1]);
-        limparArvoresRentesA(t[0], t[1]);
-        obra.feitos++;
-        trechos--;
-      }
-      if (obra.feitos >= obra.tiles.length) jogo.obrasEstrada.splice(jogo.obrasEstrada.indexOf(obra), 1);
-    }
-
-    // A oficina e o estábulo também não param, no ritmo de sempre.
-    for (const pr of jogo.predios) {
-      if (pr.progresso < 1 || !pr.def.produz) continue;
-      const def = VEICULO[pr.def.produz];
-      if (rnd() > seg / def.tempo) continue;          // um veículo a cada def.tempo
-      if (!podePagar(def.custo)) continue;
-      const dono = jogo.pessoas.find(p => !p.veiculo && faseDaIdade(p.idade) === FASE.ADULTO &&
-        OFICIO[p.oficio] && OFICIO[p.oficio].rec);
-      if (!dono) continue;
-      pagar(def.custo);
-      dono.veiculo = pr.def.produz;
-      crônica(nomeCompleto(dono) + ' passou a trabalhar com ' + (pr.def.produz === 'carroca' ? 'uma carroça' : 'um cavalo') + '.');
-    }
-  }
 
   // A vida da vila anda por ANO. Contar em anos aqui faria uma noite inteira
   // fora não render tick nenhum, já que um ano leva doze horas.
@@ -6073,8 +5920,8 @@ function recuperarOffline(segundos) {
     while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
   };
   for (let i = 0; i < dias; i++) {
-    render(ANO_DIA);
-    avancarObras(ANO_DIA);
+    renderDia(ANO_DIA);
+    avancarObrasDia(ANO_DIA, () => rel.obras++);
     conselho();                              // o conselho decide algumas vezes por dia
     const r = tickDia();
     rel.nascidos += r.nascidos; rel.mortos += r.mortos;
@@ -6083,8 +5930,8 @@ function recuperarOffline(segundos) {
     if (jogo.ano !== anoAntes) anotarAno();   // a curva não fica com buraco
   }
   const resto = s - dias * ANO_DIA;
-  render(resto);
-  avancarObras(resto);
+  renderDia(resto);
+  avancarObrasDia(resto, () => rel.obras++);
   avancarRelogio(resto);
   jogo.mesAnterior = mesAtual();
   jogo.diaAnterior = diaDoAno();
@@ -7124,6 +6971,11 @@ el('rua-limpar').onclick = () => { limparTracado(); aviso('Traçado apagado'); }
 const toastEl = el('toast');
 let toastT = 0;
 function aviso(msg) {
+  // ETAPA 4 do motor único: toast é só pro jogador — sem este freio, o
+  // conselho de uma vila rival em contexto (autoAprovar forçado, ver
+  // trocarContexto) dispararia avisos do tipo "fulano estava sem trabalho"
+  // pra gente que nem é da sua vila.
+  if (vilaEmContexto) return;
   toastEl.textContent = msg;
   toastEl.classList.add('on');
   clearTimeout(toastT);
@@ -7135,8 +6987,10 @@ let avisouTeto = -999;
 let emRecuperacao = false;
 function flutuar(x, y, texto) {
   // Voltando de 6 horas fora, dezenas de obras terminam de uma vez: sem isto
-  // a tela abre coberta de 'pronto!'.
-  if (emRecuperacao) return;
+  // a tela abre coberta de 'pronto!'. Mesma razão vale pra vila rival em
+  // contexto — as coordenadas ali dentro são do MUNDO DELA, não fariam
+  // sentido flutuando na tela do jogador.
+  if (emRecuperacao || vilaEmContexto) return;
   flutuantes.push({ x, y, texto, t:0 });
 }
 
@@ -8186,11 +8040,18 @@ function abrirProducao() {
    PAINEL "VILAS RIVAIS" — item 3 do pedido ("quero poder ver como está o
    desempenho das outras vilas"). Mesmo padrão visual de 'abrirProducao'
    logo acima (classes '.prod'/'.topo'/'.titulo'/'.saldo'/'.linhas'/
-   '.mais'/'.menos' já existem pra isso, não inventa layout novo) e mesma
-   fórmula de economia da vizinha ('saldoDiarioRival', só lê — quem muda o
-   estoque de verdade é sempre 'diaDaVilaRival'). Ordenado da mais próspera
-   pra menos ('prosperidadeDe' já existe — é a mesma nota que decide
-   fronteira e migração — então a ordem aqui já é "quem está ganhando").
+   '.mais'/'.menos' já existem pra isso, não inventa layout novo). Ordenado
+   da mais próspera pra menos ('prosperidadeDe' já existe — é a mesma nota
+   que decide fronteira e migração — então a ordem aqui já é "quem está
+   ganhando").
+
+   ETAPA 4 do motor único: os números de cada vila rival agora são
+   ESTOQUE DE VERDADE ('v.recursos', via 'trocarContexto') mais uma
+   projeção read-only ('projetarFluxoDoDia', a mesma conta de 'renderDia')
+   — não mais 'saldoDiarioRival', a fórmula agregada aposentada junto com o
+   resto do modelo antigo. Cada troca de contexto aqui é só de LEITURA
+   (nada muda de estado) e só acontece quando o painel abre — nunca por
+   quadro, então o custo de trocar pra até quatro vilas não pesa em nada.
 */
 function abrirRivais() {
   const lista = el('rivais-lista');
@@ -8224,19 +8085,27 @@ function abrirRivais() {
 
   const vivas = rivaisVivas().slice().sort((a, b) => prosperidadeDe(b) - prosperidadeDe(a));
   for (const v of vivas) {
-    const saldo = saldoDiarioRival(v);
-    const teto = 300 + v.blocos.length * 220;
+    trocarContexto(v);
+    let saldo, teto, recursos, pop, predios;
+    try {
+      saldo = projetarFluxoDoDia();
+      teto = tetoEstoque();
+      recursos = { madeira: jogo.recursos.madeira, comida: jogo.recursos.comida, pedra: jogo.recursos.pedra };
+      pop = jogo.pessoas.length;
+      predios = jogo.predios.length;
+    } finally { restaurarContexto(); }
+
     const d = document.createElement('div');
     d.className = 'prod';
     d.style.borderLeftColor = v.cor;
     d.innerHTML =
       '<div class="topo"><span class="titulo">🏳️ ' + v.nome + '</span>' +
-      '<span class="saldo">' + Math.round(v.pop) + ' de ' + capacidadeMoradiaRival(v) + '</span></div>' +
+      '<span class="saldo">' + pop + ' de ' + capacidadeMoradiaRival(v) + '</span></div>' +
       '<div class="linhas">' +
-        linhaFluxo('🌾', 'comida', v.comida, teto, saldo.comida) +
-        linhaFluxo('🪵', 'madeira', v.madeira, teto, saldo.madeira) +
-        linhaFluxo('⛏', 'pedra', v.pedra, teto, saldo.pedra) +
-        '<div><span>prédios</span><span class="v">' + v.predios.length + '</span></div>' +
+        linhaFluxo('🌾', 'comida', recursos.comida, teto, saldo.comida) +
+        linhaFluxo('🪵', 'madeira', recursos.madeira, teto, saldo.madeira) +
+        linhaFluxo('⛏', 'pedra', recursos.pedra, teto, saldo.pedra) +
+        '<div><span>prédios</span><span class="v">' + predios + '</span></div>' +
         '<div><span>quarteirões</span><span class="v">' + v.blocos.length + '</span></div>' +
       '</div>';
     lista.appendChild(d);
@@ -9468,7 +9337,7 @@ function desenharPessoa(g, pReal, selecionado, tingir, dx0, dy0) {
 */
 function janelaAcesa(g, pr, dx0, dy0) {
   if (!pr.trabalhador || pr.progresso < 1) return;
-  const p = pr.vila ? (vilaPorId(pr.vila) || { gente: [] }).gente.find(x => x.id === pr.trabalhador)
+  const p = pr.vila ? (vilaPorId(pr.vila) || { pessoas: [] }).pessoas.find(x => x.id === pr.trabalhador)
                      : pessoaPorId(pr.trabalhador);
   if (!p || p.dentro !== pr.id) return;
   const x = pr.cx + (dx0 || 0), y = (pr.ty + pr.def.h) * TILE - 7 + (dy0 || 0);
@@ -9762,7 +9631,7 @@ function passo(dt) {
   if (dtx || dty) { const dm = deltaTelaParaMundo(dtx, dty); cam.x += dm.x; cam.y += dm.y; }
 
   atualizarPovo(dt);
-  atualizarGenteRival(dt);
+  atualizarPessoasRival(dt);
   processarDuelos(dt);
   atualizarProducao(dt);
 
@@ -10380,7 +10249,7 @@ function desenharVilaNormal() {
          (ver abaixo) valem aqui — por FACÇÃO: uma vila cheia não pode roubar
          a cota de outra.
       */
-      const gv = v.gente, ng = gv.length;
+      const gv = v.pessoas, ng = gv.length;
       v.inicioDoDesenho = ng ? ((v.inicioDoDesenho || 0) + 1) % ng : 0;
       let adultosV = 0, criancasV = 0;
       for (let k = 0; k < ng; k++) {
@@ -10667,11 +10536,29 @@ function gravar() {
         // ou até a facção de outra vila (conquistado), não necessariamente a
         // desta. É por isso que não dá pra assumir 'v.id' na leitura.
         predios: v.predios.map(p => [p.chave, p.tx, p.ty, p.vari, p.vila, p.trabalhador, p.moradores]),
-        // Combate não sobrevive ao save (dura segundos, e guardaria referência
-        // direta a outra pessoa — JSON não representa isso). Gente rival, sim.
-        gente: v.gente.map(p => Object.assign({}, p, {
-          alvoCombate: null, duelo: null, emCombate: null, estadoAntesDoCombate: null,
-        })),
+        /*
+           ETAPA 4 do motor único — 'v.pessoas' agora É a população de
+           verdade da vila (mesmo molde 'criarPessoa' que o jogador usa,
+           não mais o objeto cru de 'v.gente', aposentado). Mesmo formato
+           compacto do save de 'jogo.pessoas' logo abaixo — as duas
+           populações têm o mesmo molde, então o mesmo formato serve.
+           Combate não sobrevive ao save (dura segundos, guardaria
+           referência direta a outra pessoa — JSON não representa isso).
+        */
+        pessoas: v.pessoas.map(p => ({ id:p.id, n:p.nome, s:p.sobrenome, sx:p.sexo,
+          i:+p.idade.toFixed(2), vm:+p.vidaMax.toFixed(1), tr:p.traco,
+          x:Math.round(p.x), y:Math.round(p.y), of:p.oficio, ca:p.casaId, co:p.conjugeId, ve:p.veiculo,
+          pa:p.paiId, ma:p.maeId, g:p.geracao, nas:p.nasceu,
+          ft:{ obras:+p.feitos.obras.toFixed(2), colhido:Math.round(p.feitos.colhido), filhos:p.feitos.filhos } })),
+        /*
+           BUG ACHADO AGORA, ANTES DE VIRAR PROBLEMA — 'v.estradas' (etapa 1
+           do motor único) é um Set; 'JSON.stringify' de um Set vira '{}'
+           (sem as próprias chaves enumeráveis), então sem esta conversão a
+           malha de rua de CADA vila rival se perderia por completo a cada
+           save/reload — silenciosamente, sem erro nenhum pra avisar.
+           'obrasEstrada' já é array simples, serializa sem ajuda.
+        */
+        estradas: [...v.estradas],
       })),
       // A média móvel do livro-caixa também vai no save: sem ela o painel
       // abria dizendo 'ainda sem movimento' por um minuto depois de recarregar.
@@ -10728,17 +10615,27 @@ function carregar() {
     jogo.dono = s.dono || {};
     jogo.vilas = (s.vilas || []).map(v => Object.assign({}, v, {
       ruas: v.ruas || [],
-      // Save de antes da gente decorativa existir não tem este campo — a
-      // vila reaparece sem ninguém andando por ela até o próximo dia de
-      // jogo, quando 'sincronizarGenteRival' preenche sozinha. Save de antes
-      // do emprego/combate existirem tem gente, mas sem os campos novos —
-      // Object.assign sobre um objeto-base cobre os que faltarem.
-      gente: (v.gente || []).map(p => Object.assign({
-        predioId: null, papel: null, dentro: null, portaX: undefined, portaY: undefined,
-        sulcoX: 0, sulcoY: 0, sulcoT: 0, emCombate: null, alvoCombate: null,
-        alvoCombateFaccao: 0, estadoAntesDoCombate: null, duelo: null, morto: false,
-        proximaChecagemCombate: 0, veiculo: null, carga: 0, cargaTipo: null,
-      }, p)),
+      /*
+         ETAPA 4/7 do motor único — 'v.pessoas' começa vazio aqui e é
+         preenchido logo abaixo (fora deste '.map', porque reconstruir
+         gente de verdade passa por 'trocarContexto', que precisa da vila
+         já com TODOS os outros campos prontos — 'recursos'/'ano'/
+         'anoFrac'/'clima', ver etapa 2). 'v.gente' (o modelo antigo) foi
+         aposentado — sai de vez, não fica como sobra morta no save.
+
+         Save de ANTES da etapa 2 não tem 'recursos'/'ano'/'anoFrac'/
+         'clima' — os mesmos valores de partida que 'criarRivais' usa pra
+         uma vila nova, senão 'trocarContexto' quebraria com esses campos
+         faltando.
+      */
+      pessoas: [],
+      recursos: v.recursos || { madeira: 220, comida: 380, pedra: 80, tabua: 0, ferramenta: 0 },
+      ano: v.ano !== undefined ? v.ano : 1, anoFrac: v.anoFrac || 0, clima: v.clima || 'limpo',
+      // Mesmo motivo do 'estradas'/'jogo.estradas' do jogador: Set não
+      // sobrevive a JSON.stringify sozinho (vira '{}'), precisa reconstruir
+      // a partir do array salvo.
+      estradas: new Set(v.estradas || []),
+      obrasEstrada: v.obrasEstrada || [],
       predios: (v.predios || []).map(([chave, tx, ty, vari, donoSalvo, trabSalvo, moradoresSalvos]) => {
         const def = PREDIO[chave];
         const pr = { id: proxPredioId++, chave, def, tx, ty,
@@ -10752,10 +10649,6 @@ function carregar() {
         return pr;
       }),
     }));
-    // O contador de id da gente rival começa do zero a cada sessão; sem isto,
-    // um id recém-criado podia repetir o de alguém já carregado, e 'janelaAcesa'
-    // (que acha o trabalhador pelo id) apontaria para a pessoa errada.
-    for (const v of jogo.vilas) for (const p of v.gente) if (p.id >= proxGenteRivalId) proxGenteRivalId = p.id + 1;
     if (s.fluxo) for (const k in s.fluxo) fluxoMedio[k] = s.fluxo[k];
     velocidade = VELOCIDADES.includes(s.velocidade) ? s.velocidade : 1;
     jogo.clima = s.clima || 'limpo';
@@ -10836,6 +10729,61 @@ function carregar() {
     }
     // Reatribui os postos de fazenda pelos ids salvos.
     for (const pr of jogo.predios) if (pr.trabalhador && !pessoaPorId(pr.trabalhador)) pr.trabalhador = null;
+
+    /*
+       ETAPA 4/7 do motor único — a população de cada vila rival.
+
+       Save NOVO (grava 'v.pessoas', ver 'gravar'): reconstrói pelo MESMO
+       molde 'criarPessoa' de cima, preservando id/traço/ofício/tudo — só
+       que dentro do contexto trocado da própria vila (ver
+       'trocarContexto'), pra 'criarPessoa' empurrar cada um pro
+       'v.pessoas' certo (mesma referência que 'jogo.pessoas' durante a
+       troca) em vez do do jogador.
+
+       Save VELHO (de antes desta etapa — só tem 'gente' no formato antigo,
+       ou nada): decisão já tomada com você — a vila rival refunda a
+       população do zero (mesmo lugar, mesma cor; só a gente recomeça).
+       'sincronizarPessoasRival' é a mesma rotina que a fundação usa.
+    */
+    (s.vilas || []).forEach((vSalva, i) => {
+      const v = jogo.vilas[i];
+      if (!v) return;
+      if (Array.isArray(vSalva.pessoas)) {
+        trocarContexto(v);
+        try {
+          for (const d of vSalva.pessoas) {
+            const p = criarPessoa({ x:d.x, y:d.y, idade:d.i, sexo:d.sx, nome:d.n, sobrenome:d.s });
+            p.id = d.id; p.vidaMax = d.vm;
+            p.traco = TRACOS[d.tr] ? d.tr : escolher(NOMES_TRACOS);
+            p.feitos = d.ft || { obras: 0, colhido: 0, filhos: 0 };
+            p.oficio = d.of || 'nenhum';
+            p.casaId = d.ca; p.conjugeId = d.co; p.veiculo = d.ve || null;
+            p.paiId = d.pa || null; p.maeId = d.ma || null;
+            p.geracao = d.g || 1;
+            p.nasceu = d.nas !== undefined ? d.nas : Math.max(1, v.ano - Math.floor(p.idade));
+            p.estado = faseDaIdade(p.idade) === FASE.CRIANCA ? 'brincando' : 'ocioso';
+          }
+        } finally { restaurarContexto(); }
+        // Reatribui os postos da vizinha pelos ids salvos, mesma lógica de cima.
+        for (const pr of v.predios) if (pr.trabalhador && !v.pessoas.some(p => p.id === pr.trabalhador)) pr.trabalhador = null;
+      } else {
+        sincronizarPessoasRival(v);
+      }
+      /*
+         BUG ACHADO AO VIVO (ver 'ruaFundadoraRival'): save de QUALQUER
+         idade — de antes da etapa 1 (nem tinha 'estradas' Set) até save
+         feito nesta mesma sessão antes deste conserto — pode carregar uma
+         vila rival sem NENHUMA rua de verdade, travada pra sempre (sem
+         rua não tem lote, sem lote não cresce). Fecha o anel se ainda
+         estiver vazia; se já tem rua de verdade (save mais novo que este
+         conserto), não mexe em nada — 'estradas.add' de um tile que já
+         existe é barato e inofensivo, mas só roda o laço quando falta.
+      */
+      if (!v.estradas.size) {
+        trocarContexto(v);
+        try { ruaFundadoraRival(v); } finally { restaurarContexto(); }
+      }
+    });
 
     return s.salvoEm || Date.now();
   } catch (e) { return null; }
