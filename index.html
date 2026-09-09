@@ -1342,6 +1342,25 @@ function marcarOcupacao(p, on) {
 function popMax() {
   let n = 0;
   for (const p of jogo.predios) if (p.progresso >= 1) n += p.def.pop;
+  /*
+     ETAPA 6 do motor único — teto de população pra vila RIVAL. Sem isto,
+     uma vila rival cresce sem limite (mesma regra do jogador: nasce e
+     imigra enquanto houver moradia — ver 'demografiaDoDia' — e o próprio
+     conselho() dela constrói moradia sem parar, então nada segurava o
+     número). Medido ao vivo: conselho() (mais especificamente
+     distribuirOficios(), que varre a população inteira várias vezes)
+     custa de 5 a 12ms numa vila de 50-300 pessoas, mas sobe pra 38-94ms
+     perto de 500+ — com até QUATRO vilas rivais tocando o dia no mesmo
+     tickDia() (todas mudam de dia junto, não é caso raro), isso vira uns
+     50-90ms de trava num quadro só, a cada dia de jogo. TETO_ADULTOS_
+     RIVAL/TETO_CRIANCAS_RIVAL (também usados na fundação, ver
+     'sincronizarPessoasRival') agora valem como teto de verdade, não só
+     tamanho inicial — cortando aqui, o próprio conselho() da vila para
+     de pedir mais moradia sozinho assim que bate no teto (mesma conta de
+     'querMaisTeto'), então a população se estabiliza sem precisar de
+     nenhum freio a mais em nascimento/imigração.
+  */
+  if (vilaEmContexto) n = Math.min(n, TETO_ADULTOS_RIVAL + TETO_CRIANCAS_RIVAL);
   return n;
 }
 const popAtual = () => jogo.pessoas.length;
@@ -3148,14 +3167,27 @@ function lugarDeVilaRival(ex, ey, ang) {
 }
 
 function fundarVilaRival(v) {
-  erguerNaVilaRival(v, 'centro');
+  let temCentro = erguerNaVilaRival(v, 'centro');
   erguerNaVilaRival(v, 'casa');
+  /*
+     BUG ACHADO AO VIVO (etapa 6) — em jogo novo, de vez em quando a
+     primeira tentativa de erguer o Centro (3x3, a maior das duas) falhava
+     mesmo com lote de sobra no quarteirão — tentar de novo, já com a casa
+     (2x2) no lugar, sempre encontrava vaga. Não cheguei à causa exata
+     (suspeita: alguma conta que depende de estado que só se assenta depois
+     da primeira fundação da sessão), mas a repetição é barata e sempre
+     resolveu nos testes — sem ela, a vila ficava PRA SEMPRE sem Centro:
+     'centroDaVila()' cai pra 'jogo.predios[0]' (a casa, dimensão errada) e
+     boa parte do conselho (que assume Centro de pé) trava.
+  */
+  if (!temCentro) temCentro = erguerNaVilaRival(v, 'centro');
   anelDoQuarteirao(v, ...quarteiraoDe(v.tx, v.ty));
   // ETAPA 4 do motor único: a rua de VERDADE (ver 'ruaFundadoraRival') —
   // sem ela nem 'escolherLote' acha lote nem 'crescerRua' tem de onde
   // partir, e a vila trava pra sempre com só centro+casa.
   trocarContexto(v);
   try { ruaFundadoraRival(v); } finally { restaurarContexto(); }
+  if (!temCentro) erguerNaVilaRival(v, 'centro');   // última tentativa, já com rua de verdade
   // Só a semente inicial de gente — quem cresce e dá emprego/casa a partir
   // daqui é a demografia/conselho de verdade, na primeira vez que
   // 'diaDaVilaRival' rodar pra esta vila.
@@ -3624,22 +3656,19 @@ function erguerNaVilaRival(v, chave) {
 
 /* --------------------------------------------------- os habitantes ------- */
 /*
-   GENTE NA VILA RIVAL, DE VERDADE — até 500 adultos e 50 crianças por vila,
-   com emprego de verdade num prédio de verdade. A ressalva do bloco antigo
-   ainda vale ("modelo, não segunda simulação" no topo deste arquivo): não
-   ganham A* nem malha viária própria — andam em linha reta, do jeito que
-   sempre andaram aqui. O que muda é que agora têm um EMPREGO e um ENDEREÇO
-   ('predioId'), e é isso que os torna capazes de trabalhar à vista, de morrer
-   por alguém, e de ter um prédio conquistado quando morrem.
-
-   Reaproveita o sistema de posto da Fase 7 quase sem alteração: 'entrarNoPosto'
-   e 'sairDoPosto' só tocam x/y/portaX/portaY/dentro/sulco — nenhum desses
-   campos é exclusivo de 'jogo.pessoas'. Trabalhador ao ar livre (lavoura,
-   cais) vaga pelo próprio lote; trabalhador sob um teto some de vista, com a
-   mesma janela acesa do seu aldeão.
+   GENTE NA VILA RIVAL, DE VERDADE — desde a etapa 4, a MESMA simulação da
+   sua vila (A*, emprego, moradia, tudo, via 'trocarContexto'), não um
+   modelo à parte. Este teto (adultos + crianças) hoje faz DOIS papéis:
+   tamanho da leva inicial na fundação ('sincronizarPessoasRival') E teto
+   de verdade pra população em jogo ('popMax()', etapa 6) — sem o segundo,
+   uma vila rival cresceria sem limite, e o conselho()/distribuirOficios()
+   dela (que varre a população inteira a cada dia) foi MEDIDO custando de
+   dezenas a quase cem milissegundos com população de centenas, num quadro
+   só, toda vez que o dia muda — com até quatro vilas rivais mudando de
+   dia junto (ver 'popMax').
 */
-const TETO_ADULTOS_RIVAL = 500;
-const TETO_CRIANCAS_RIVAL = 50;
+const TETO_ADULTOS_RIVAL = 200;
+const TETO_CRIANCAS_RIVAL = 25;
 
 // Um ponto qualquer dentro do território da vila — usado só na fundação
 // (ver 'sincronizarPessoasRival' logo abaixo), pra espalhar a gente inicial
@@ -4662,9 +4691,25 @@ function erguerPredio(chave, tx, ty) {
   return true;
 }
 
+/*
+   ETAPA 6 do motor único — teto de PRÉDIOS pra vila rival. O teto de
+   população (ver 'popMax') sozinho não bastava: mesmo com gente capada,
+   uma vila rica e cheia (pop perto do teto, madeira/pedra sobrando) ainda
+   engatilha "bairro novo" (conselho(), item 5) pra sempre — quarteirão
+   novo, prédio novo, sem fim, porque esse gatilho olha só recurso e "está
+   cheio", não "já tem prédio de menos". MEDIDO AO VIVO: uma vila que
+   cresceu até 140 prédios (mesmo com população já capada) levou 485ms só
+   no conselho() — quase meio segundo de trava num quadro só. As buscas
+   de lote/vaga que 'conselho()'/'distribuirOficios()' fazem varrem
+   'jogo.predios' várias vezes cada; é a CONTAGEM DE PRÉDIO, não só de
+   gente, que dita o custo.
+*/
+const TETO_PREDIOS_RIVAL = 45;
+
 // Item 4: os aldeões não constroem mais por conta própria — eles pedem. O
 // conselho escolhe o lote e manda o pedido; quem decide é você.
 function construirAuto(chave) {
+  if (vilaEmContexto && jogo.predios.length >= TETO_PREDIOS_RIVAL) return false;
   const def = PREDIO[chave];
   if (!podePagar(def.custo)) return false;
   const lote = escolherLote(def);

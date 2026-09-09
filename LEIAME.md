@@ -2440,6 +2440,85 @@ medido aqui, migração de save mais ampla se precisar, conferência visual
 final) — mas o motor em si, o ponto central do pedido original, já roda
 igual dos dois lados.
 
+## Teto medido, save antigo e conferência visual (etapas 6, 7 e 8 de 8)
+
+Fecha o plano de 8 etapas.
+
+**Etapa 6 — o teto de verdade.** Medindo ao vivo (o pedido explícito da
+etapa 5: "vou medir o custo real... e baixar o teto pro que aguentar"),
+achei DOIS custos diferentes, não um só:
+
+- O movimento "ao vivo" (`atualizarPovo` de verdade, pathfinding
+  incluído) é barato mesmo em população grande — 534 pessoas, câmera
+  enquadrando a vila inteira, saíram em ~1,5ms por quadro. Não era esse o
+  risco.
+- `conselho()`/`distribuirOficios()` — que varrem `jogo.predios`/
+  `jogo.pessoas` várias vezes cada, toda vez que o dia muda — são bem mais
+  caros, e o custo segue mais o NÚMERO DE PRÉDIOS do que a população: uma
+  vila que cresceu (com o teto de população antigo, 550) até 140 prédios
+  levou **485ms só no `conselho()`** — quase meio segundo travado num
+  quadro só. Com até quatro vilas rivais mudando de dia junto (mesmo
+  `tickDia()`, sempre — não é caso raro), a soma broke a casa dos 60-90ms
+  já com população bem mais modesta.
+
+Dois freios, não um: `TETO_ADULTOS_RIVAL`/`TETO_CRIANCAS_RIVAL` (500/50 →
+**200/25**) agora valem como teto de POPULAÇÃO de verdade — `popMax()`
+capa o valor devolvido pra qualquer vila em contexto, e o próprio
+`conselho()` da vila para de pedir mais moradia sozinho assim que bate no
+teto (mesma conta de `querMaisTeto`, sem precisar de freio extra em
+nascimento/imigração). E um `TETO_PREDIOS_RIVAL` novo (**45**) capa
+`construirAuto()` — o gatilho de "bairro novo" (conselho, item 5) olha só
+recurso sobrando e população perto do teto, então uma vila rica continuava
+abrindo quarteirão e prédio pra sempre mesmo com gente já capada; isso
+fecha essa porta direto na fonte.
+
+Testado ao vivo, do zero: uma vila rival, crescendo só por dia comprimido
+(sem eu forçar população), bateu o teto de prédios (45) e PAROU — população
+estabilizou em 96 (bem abaixo do teto de 225, naturalmente limitada pela
+moradia que os 45 prédios comportam) e ficou EXATAMENTE nesse número por
+180 dias seguidos medidos. `conselho()` nesse estado estável: **~10ms** —
+a maior parte do caminho de volta pro custo barato medido em vilas
+pequenas, contra os 485ms do descontrole antigo. Com até quatro vilas
+nesse mesmo estado, o pior caso realista fica por volta de 40ms — um
+tranco breve uma vez por dia de jogo (~4 minutos reais), não mais uma
+trava de quase meio segundo.
+
+**Bug achado no caminho, sem relação com desempenho** — testando fundação
+do zero repetidas vezes, uma em cada duas vilas nascia sem Centro (só
+`casa`), mesmo com lote de sobra no quarteirão — `erguerNaVilaRival` pro
+Centro (3x3) falhava na primeira tentativa, mas tentar de novo (já com a
+casa no lugar) sempre achava vaga. Não cheguei à causa exata, mas a
+repetição é barata e resolveu de forma confiável em vários testes
+seguidos — sem ela, a vila ficava PRA SEMPRE sem Centro (`centroDaVila()`
+cai pra `jogo.predios[0]`, a casa, dimensão errada) e boa parte do
+conselho trava. `fundarVilaRival` agora tenta o Centro de novo depois da
+casa, e mais uma vez depois da rua de verdade, se ainda faltar.
+
+**Etapa 7 — save antigo, confirmado.** Já estava praticamente pronto desde
+a etapa 4 (`carregar()` refunda a população de uma vila sem `v.pessoas`
+salvo, preservando prédio e território). Testado agora de propósito: peguei
+um save real (uma vila com 96 pessoas/45 prédios), apaguei à mão os campos
+novos (`pessoas`/`recursos`/`ano`/`anoFrac`/`clima`/`estradas`,
+simulando um save de antes da etapa 2) e recarreguei — a vila manteve os
+45 prédios e a malha de 155 tiles, e a população recomeçou do zero no
+molde novo (96 pessoas frescas, `criarPessoa` de verdade, tingidas
+certo) — exatamente a decisão combinada ("vila rival recomeça do zero,
+mesmo lugar, mesma cor — só a gente recomeça").
+
+**Etapa 8 — conferência visual.** Vila rival com 45 prédios (toda a
+variedade: fazenda, centro, casa, sobrado, casarão, depósito) e ~90
+aldeões rodando de verdade, vista de perto: prédio e gente aparecem,
+tingidos, com aldeões andando entre as construções — confirma que
+`desenharPredio`/`desenharPessoa` (já compartilhados entre jogador e
+rival desde antes deste plano) continuam funcionando sem qualquer ajuste,
+porque só o FORMATO por trás de `v.pessoas`/`v.predios` mudou ao longo
+das 8 etapas, nunca como são desenhados.
+
+**Com isso, o plano de 8 etapas do motor único termina aqui.** Toda vila —
+a sua ou uma rival — corre a mesma simulação, com o mesmo freio de
+desempenho (ao vivo perto da câmera, adormecida longe) e o mesmo teto
+medido de verdade, não estimado.
+
 ---
 
 ## Estrutura
