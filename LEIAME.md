@@ -2589,6 +2589,31 @@ byte. `pessoaPorId`/`entregaMaisProxima` continuam corretos pro jogador
 (testado: acham a pessoa certa, o depósito certo) — a otimização é
 transparente, não muda resultado, só o custo.
 
+## Tamanho da Fazenda Grande e do Centro
+
+Pedido explícito: Fazenda Grande desenhava grande demais perto dos outros
+prédios; Centro devia ocupar o quarteirão inteiro, sem perder qualidade.
+
+Todo prédio na folha de arte (`MAPA_PREDIOS`) é desenhado a 1,5× a
+largura do próprio lote (`ESCALA_PREDIO`) — Fazenda Grande (lote 4×3, o
+maior do jogo, empatada com a Prefeitura) seguia essa mesma conta, só que
+o lote grande já a deixava a maior peça do jogo por padrão. Reduzida à
+mão (as duas últimas medidas da entrada, o tamanho DESENHADO — o recorte
+na folha não muda, só o quanto ele é encolhido antes de desenhar).
+
+Centro já estava sendo desenhado MENOR que o próprio recorte na folha
+(84×74 desenhado contra 132×116 de recorte — reduzido antes disso, por
+algum motivo perdido no histórico). Passou a desenhar perto do tamanho
+nativo da folha, um pouco além (145×128) — cobre quase todo o quarteirão
+sem ampliar de verdade (só uns 10% além do nativo), então sem ficar
+borrado: o corte já tinha resolução de sobra, só não estava sendo usada.
+O LOTE de verdade do Centro continua 3×3 (`PREDIO.centro`) — é só a arte
+que cresce; construção, ocupação de tile e tudo mais no jogo não mudam.
+
+Testado ao vivo, de perto: Centro sai como um castelo grande e nítido,
+claramente dominando o quarteirão; Fazenda Grande ficou proporcional às
+outras construções ao redor. Sem erro no console.
+
 ---
 
 ## Estrutura
