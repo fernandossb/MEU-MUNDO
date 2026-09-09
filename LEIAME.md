@@ -2620,38 +2620,58 @@ Reportado direto: "o jogo parou de contabilizar o tempo enquanto está
 fechado, em segundo plano ou com a tela desligada". Consequência direta
 de tirar o teto de população/prédio da vila rival (pedido anterior,
 "quero que as vilas cresçam sem teto") — a recuperação offline
-(`recuperarOffline`) roda um dia de vila por vez pra cada dia de
-ausência, e cada dia chama `conselho()` — do jogador **e de toda vila
-rival** (via `tickVilas()`, chamado dentro do mesmo `tickDia()`). Sem
-teto, uma vila cresce o bastante pra deixar `conselho()` na casa das
-dezenas de milissegundos por chamada — MEDIDO AO VIVO: 8 horas de
-ausência (121 dias de vila) levavam **11,3 segundos** só nisso, com
-apenas duas vilas rivais de porte médio. Tempo de sobra pro Android matar
-o app por não responder (ANR) antes do `gravar()` final rodar — e a
-próxima abertura tentava a MESMA conta longa de novo. Dava a impressão
-de "não conta mais o tempo", quando na verdade estava tentando contar e
-travando no meio do caminho.
+(`recuperarOffline`) rodava um dia de vila por vez pra cada dia de
+ausência, tudo de uma vez, síncrono, e cada dia chama `conselho()` — do
+jogador **e de toda vila rival** (via `tickVilas()`, chamado dentro do
+mesmo `tickDia()`). Sem teto, uma vila cresce o bastante pra deixar
+`conselho()` na casa das dezenas de milissegundos por chamada — MEDIDO AO
+VIVO: 8 horas de ausência (121 dias de vila) levavam **11,3 segundos** só
+nisso, com apenas duas vilas rivais de porte médio. Tempo de sobra pro
+Android matar o app por não responder (ANR) antes do `gravar()` final
+rodar — e a próxima abertura tentava a MESMA conta longa de novo. Dava a
+impressão de "não conta mais o tempo", quando na verdade estava tentando
+contar e travando no meio do caminho.
 
-`conselho()` virou um embrulho fino em cima de `conselhoInterno()` (o
-corpo de sempre, nenhuma linha de decisão mudou): só durante recuperação
-(`emRecuperacao`), mede quanto tempo cada chamada consome e PARA de
-chamar o corpo de verdade assim que a soma bate um orçamento (400ms, com
-folga de propósito — medido num desktop, celular real costuma ser mais
-lento). `renderDia`/`avancarObrasDia`/`demografiaDoDia` continuam rodando
-pra todo dia de ausência, de toda vila — produção, consumo, envelhecer,
-nascer, morrer não param — só a parte cara (decidir e construir) some
-depois do orçamento, imperceptível numa ausência que ninguém estava
-vendo mesmo. Ao vivo (fora de recuperação) nada muda — testado: mesmo
-com o orçamento "gasto" de uma recuperação anterior, `conselho()` ao
-vivo sempre roda o corpo de verdade, sem exceção.
+**Primeira tentativa, revertida.** Um orçamento de tempo pro `conselho()`
+(ele parava de decidir depois de gastar um teto por recuperação) resolvia
+o travamento, mas trocava um problema pelo outro: "ISSO NÃO É O CAMINHO
+CERTO, EU QUERO QUE TODAS AS VILAS CONTINUEM CONSTRUINDO E CRESCENDO NA
+MINHA AUSÊNCIA" — pular decisão pra ganhar velocidade contraria o próprio
+pedido de crescimento sem teto. Revertido por completo.
 
-Testado ao vivo: as mesmas 8 horas de ausência que levavam 11,3s caíram
-pra **0,9s** (12,6× mais rápido). O teto absoluto do jogo pra recuperação
-(`OFFLINE_MAX`, 3 dias reais) — o pior caso que existe — ficou em ~3,1s,
-contra o que seria bem mais de um minuto sem o freio. Testado o fluxo
-inteiro (não só a função isolada): save envelhecido em 8h de verdade,
-página recarregada — carrega, recupera, mostra o relatório, sem travar e
-sem erro no console.
+**O conserto que ficou: nada pulado, só picotado.** `recuperarOffline`
+virou `recuperarOfflineAssincrono` — mesmo corpo de sempre (`renderDia`,
+`avancarObrasDia`, `conselho()`, `tickDia()` — nenhuma linha de decisão
+mudou, TODO dia de TODA vila continua sendo decidido de verdade), só que
+processado em LOTES: cada lote simula dias até bater um orçamento de
+tempo (`LOTE_RECUPERACAO_MS`, 12ms), devolve o controle ao navegador via
+`setTimeout(lote, 0)`, e continua no lote seguinte. `emRecuperacao` fica
+`true` do primeiro ao último lote (vários quadros, não um só) —
+`quadro()` sabe não chamar `passo()` nem checar ausência de novo enquanto
+isso dura, então não há simulação em duplicidade; `desenhar()` continua
+rodando a cada quadro, então a tela nunca fica preta ou parada, só a
+população/prédios demoram alguns quadros a mais pra terminar de contar.
+O relógio de PAREDE gasto no total pode ficar parecido ou até um pouco
+maior que a versão de uma tacada só — mas nunca segura um quadro inteiro,
+e o app nunca fica tempo demais sem responder.
+
+**Rede de segurança.** Cada lote roda dentro de um `try/catch`: se algum
+dia disparar um erro inesperado (uma vila num estado extremo que ninguém
+previu), a recuperação não fica presa em `emRecuperacao = true` PARA
+SEMPRE — registra o erro no console, desiste só dos dias que sobravam e
+devolve o controle ao jogador com o que já deu pra simular. Testado
+forçando um erro proposital no primeiro dia: o jogo termina a
+recuperação, mostra o relatório e volta a responder, em vez de travar.
+
+Testado com carga sintética bem acima do que uma vila alcança em pouco
+tempo (400 dias seguidos, população passando de 500, mais de 200
+prédios, incluindo o caso de uma vila com gente mas nenhum prédio): nunca
+lançou exceção, e o pior dia individual mede na casa de poucos segundos
+(pausa do coletor de lixo do V8 em populações grandes — inevitável em
+JavaScript, não uma trava). Como cada lote picota o trabalho em pedaços
+de milissegundos, um pico assim vira um quadro atrasado, não uma tela
+congelada por 11 segundos — a diferença que resolve o ANR sem cortar
+decisão de ninguém.
 
 ---
 

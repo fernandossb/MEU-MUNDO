@@ -5266,47 +5266,20 @@ function tentarMelhorarAntes(chaveBase) {
 }
 
 /*
-   BUG ACHADO AO VIVO — "o jogo parou de contabilizar o tempo fechado".
-   Consequência direta de tirar o teto de população/prédio (pedido
-   anterior, "quero que as vilas cresçam sem teto"): 'recuperarOffline'
-   roda um dia de jogo por vez pra cada dia de ausência, e cada dia chama
-   'conselho()' — do jogador E de toda vila rival (via 'tickVilas' dentro
-   de 'tickDia', chamado nesse mesmo laço). Sem teto, uma vila grande
-   deixa 'conselho()' na casa das dezenas de milissegundos (a busca de
-   lote/vaga escala com o tamanho da vila, mesmo otimizada) — medido ao
-   vivo: 8 horas de ausência (121 dias de vila) levaram 11,3 SEGUNDOS só
-   nisso, com só duas vilas rivais de porte médio. Numa ausência mais
-   longa, ou com quatro vilas grandes, isso passa fácil de meio minuto —
-   tempo suficiente pro Android matar o app por não responder (ANR) antes
-   do 'gravar()' final rodar, e a próxima abertura tenta a MESMA conta
-   longa de novo. Dava a impressão de "não conta mais o tempo".
-
-   'conselho()' virou um embrulho fino em cima de 'conselhoInterno()' (o
-   corpo de sempre, sem mudar uma linha de decisão): SÓ durante recuperação
-   (`emRecuperacao`), mede quanto tempo cada chamada consome e PARA de
-   chamar o corpo de verdade assim que a soma bate um orçamento —
-   'renderDia'/'avancarObrasDia'/'demografiaDoDia' continuam rodando pra
-   TODO dia de ausência, de TODA vila (produção, consumo, envelhecer,
-   nascer, morrer não param) — só a parte cara (decidir e construir) some
-   depois do orçamento, o que é imperceptível numa ausência que ninguém
-   estava vendo mesmo. Ao vivo (fora de recuperação) nada muda.
+   PEDIDO EXPLÍCITO REVERTIDO — cheguei a dar um orçamento de tempo pro
+   conselho() durante a recuperação offline (ver histórico/git), pra
+   consertar o travamento de "o jogo parou de contar o tempo fechado".
+   Errado: "quero que todas as vilas continuem construindo e crescendo na
+   minha ausência" — um orçamento que PARA de decidir/construir depois de
+   uns milissegundos quebra bem isso, na ausência mais longa (que é
+   justamente quando mais importa a vila ter seguido evoluindo). O
+   travamento em si não era o conselho() ser chamado — é ele ser chamado
+   MUITAS VEZES SEGUIDAS, SEM RESPIRAR, na mesma passada síncrona. O
+   conserto de verdade é 'recuperarOffline' parar de fazer tudo de uma vez
+   só (ver 'recuperarOfflineAssincrono' logo abaixo) — conselho() volta a
+   rodar o corpo inteiro, sem cortar nada, toda vez.
 */
-let orcamentoConselhoMs = 0;
-// Medido num desktop; celular real costuma ser mais lento — a margem é
-// de propósito, pra sobrar fôlego pro resto do laço (renderDia/
-// avancarObrasDia/demografiaDoDia, chamados pra cada vila em CADA dia de
-// ausência — baratos um a um, mas multiplicados por até 1095 dias
-// (OFFLINE_MAX) × toda vila, ainda somam segundos por conta própria).
-const ORCAMENTO_CONSELHO_MS = 400;   // total, pra toda a recuperação — ver acima
 function conselho() {
-  if (!emRecuperacao) { conselhoInterno(); return; }
-  if (orcamentoConselhoMs >= ORCAMENTO_CONSELHO_MS) return;
-  const t0 = performance.now();
-  conselhoInterno();
-  orcamentoConselhoMs += performance.now() - t0;
-}
-
-function conselhoInterno() {
   distribuirOficios();
   // Fila cheia: o conselho para de pedir até você responder alguma coisa.
   if (jogo.pedidos.length >= MAX_PEDIDOS) return;
@@ -6076,14 +6049,39 @@ function avancarObrasDia(seg, aoConcluir) {
   }
 }
 
-function recuperarOffline(segundos) {
+/*
+   PEDIDO EXPLÍCITO — "quero que todas as vilas continuem construindo e
+   crescendo na minha ausência". O travamento relatado ("o jogo parou de
+   contar o tempo fechado") nunca foi simular cada dia de ausência de
+   verdade — era fazer TUDO numa única passada síncrona, sem respirar:
+   numa ausência longa, com vila grande (sem teto de crescimento — pedido
+   anterior), isso trava a aba por segundos seguidos (medido: 11,3s pra
+   8 horas de ausência) — tempo de sobra pro Android matar o app por não
+   responder. A primeira tentativa de conserto deu um orçamento de tempo
+   pro conselho() e cortava decisão depois dele — errado, contraria
+   exatamente este pedido, revertido (ver 'conselho()' acima).
+
+   O conserto de verdade: continuar simulando TODO dia de ausência, com
+   TODA decisão de TODA vila, sem pular nada — só em LOTES. Processa
+   alguns dias, devolve o controle pro navegador (via setTimeout) antes
+   de segurar um quadro inteiro, e continua no lote seguinte.
+   `emRecuperacao` fica true do início ao fim (vários quadros, não um só)
+   — 'quadro()' sabe não rodar 'passo()' nem checar ausência de novo
+   enquanto isso dura (ver mais abaixo), então não há simulação em
+   duplicidade. O
+   relógio de PAREDE gasto pode ficar parecido ou até um pouco maior que
+   antes — mas nunca trava a tela, e o app nunca fica tempo demais sem
+   responder.
+*/
+const LOTE_RECUPERACAO_MS = 12;   // por lote — sobra folga pro quadro renderizar entre um e outro
+
+function recuperarOfflineAssincrono(segundos, aoTerminar) {
   const s = Math.min(segundos, OFFLINE_MAX);
   // Vinte segundos já contam. O piso de um minuto fazia toda troca rápida de
   // app cair fora da conta.
-  if (s < 20) return null;
+  if (s < 20) { aoTerminar(null); return; }
   const rel = { segundos: s, madeira:0, comida:0, pedra:0, nascidos:0, mortos:0, obras:0, anos:0 };
   emRecuperacao = true;
-  orcamentoConselhoMs = 0;   // orçamento fresco pra esta recuperação — ver 'conselho'
   const inicio = { madeira: jogo.recursos.madeira, comida: jogo.recursos.comida, pedra: jogo.recursos.pedra };
 
   // A vida da vila anda por ANO. Contar em anos aqui faria uma noite inteira
@@ -6099,28 +6097,51 @@ function recuperarOffline(segundos) {
     jogo.anoFrac += seg / ANO;
     while (jogo.anoFrac >= 1) { jogo.anoFrac -= 1; jogo.ano++; }
   };
-  for (let i = 0; i < dias; i++) {
-    renderDia(ANO_DIA);
-    avancarObrasDia(ANO_DIA, () => rel.obras++);
-    conselho();                              // o conselho decide algumas vezes por dia
-    const r = tickDia();
-    rel.nascidos += r.nascidos; rel.mortos += r.mortos;
-    const anoAntes = jogo.ano;
-    avancarRelogio(ANO_DIA);
-    if (jogo.ano !== anoAntes) anotarAno();   // a curva não fica com buraco
-  }
-  const resto = s - dias * ANO_DIA;
-  renderDia(resto);
-  avancarObrasDia(resto, () => rel.obras++);
-  avancarRelogio(resto);
-  jogo.mesAnterior = mesAtual();
-  jogo.diaAnterior = diaDoAno();
-  conferirEstacaoPintada();
 
-  emRecuperacao = false;
-  for (const k in inicio) rel[k] = Math.round(jogo.recursos[k] - inicio[k]);
-  rel.predios = jogo.predios.length;
-  return rel;
+  let i = 0;
+  (function lote() {
+    const t0 = performance.now();
+    try {
+      while (i < dias && performance.now() - t0 < LOTE_RECUPERACAO_MS) {
+        renderDia(ANO_DIA);
+        avancarObrasDia(ANO_DIA, () => rel.obras++);
+        conselho();                              // o conselho decide algumas vezes por dia
+        const r = tickDia();
+        rel.nascidos += r.nascidos; rel.mortos += r.mortos;
+        const anoAntes = jogo.ano;
+        avancarRelogio(ANO_DIA);
+        if (jogo.ano !== anoAntes) anotarAno();   // a curva não fica com buraco
+        i++;
+      }
+    } catch (e) {
+      /* REDE DE SEGURANÇA — um erro inesperado no meio de um lote nunca pode
+         deixar 'emRecuperacao' travado em true para sempre: isso prenderia o
+         jogo numa tela presa pior que o problema original que este código
+         resolve. Registra o erro, desiste só dos dias que ainda faltavam e
+         segue para o fechamento normal abaixo — o jogador recupera o
+         controle com o que já foi simulado até aqui. */
+      console.error('recuperarOfflineAssincrono: erro no dia ' + i + ' de ' + dias, e);
+      i = dias;
+    }
+    if (i < dias) { setTimeout(lote, 0); return; }   // ainda falta dia — devolve o controle e continua
+
+    try {
+      const resto = s - dias * ANO_DIA;
+      renderDia(resto);
+      avancarObrasDia(resto, () => rel.obras++);
+      avancarRelogio(resto);
+      jogo.mesAnterior = mesAtual();
+      jogo.diaAnterior = diaDoAno();
+      conferirEstacaoPintada();
+    } catch (e) {
+      console.error('recuperarOfflineAssincrono: erro no fechamento', e);
+    }
+
+    emRecuperacao = false;
+    for (const k in inicio) rel[k] = Math.round(jogo.recursos[k] - inicio[k]);
+    rel.predios = jogo.predios.length;
+    aoTerminar(rel);
+  })();
 }
 
 /* ------------------------------------------------------- câmera/entrada -- */
@@ -9740,11 +9761,26 @@ function quadro(t) {
   const agoraReal = Date.now();
   const buraco = (agoraReal - ultimoReal) / 1000;
   ultimoReal = agoraReal;
-  if (buraco > 20) { voltarDaAusencia(agoraReal - buraco * 1000); dt = 0; }
-  else if (dt > 25) { voltarDaAusencia(agoraReal - dt * 1000); dt = 0; }
+  /*
+     PEDIDO EXPLÍCITO — 'recuperarOfflineAssincrono' agora se espalha por
+     VÁRIOS quadros (lotes, com 'setTimeout' entre eles — ver lá), não
+     mais um só. Enquanto ela está em andamento ('emRecuperacao' fica
+     true do primeiro ao último lote), este quadro não pode: (1) checar
+     ausência de novo — acharia o MESMO buraco de novo e chamaria
+     'voltarDaAusencia' outra vez, uma recuperação dentro da outra; (2)
+     rodar 'passo()' — a vila já está sendo simulada dia a dia pelo
+     lote, rodar o jogo "ao vivo" JUNTO bagunçaria tudo (dia avançando
+     duas vezes, gente sendo atualizada por dois caminhos ao mesmo
+     tempo). 'desenhar()' continua rodando — a tela mostra a vila
+     evoluindo em vez de parecer travada.
+  */
+  if (!emRecuperacao) {
+    if (buraco > 20) { voltarDaAusencia(agoraReal - buraco * 1000); dt = 0; }
+    else if (dt > 25) { voltarDaAusencia(agoraReal - dt * 1000); dt = 0; }
+  }
   if (dt > 0.05) dt = 0.05;
 
-  if (!folhaAberta() && dt > 0) {
+  if (!emRecuperacao && !folhaAberta() && dt > 0) {
     const limite = performance.now() + ORCAMENTO_SIMULACAO;
     passosNoQuadro = 0;
     for (let i = 0; i < velocidade; i++) {
@@ -11074,21 +11110,31 @@ function novaVila(seed) {
 redimensionar();
 const salvoEm = carregar();
 conferirEstacaoPintada();     // o mapa nasce na estação certa
+// Comum às duas saídas do arranque (vila nova, ou recuperação — agora em
+// lotes, então só termina quando o último lote chama de volta).
+function terminarArranque() {
+  atualizarHUD();
+  atualizarBadgePedidos();
+  if (jogo.pedidos.length) mostrarPedido();
+  desenharMinimapa();
+}
 if (!salvoEm || !jogo.predios.length) {
   novaVila(SEMENTE_PADRAO);
+  terminarArranque();
 } else {
   sorteio = (SEED ^ 0x9e3779b9) >>> 0;
   const fora = (Date.now() - salvoEm) / 1000;
-  const rel = recuperarOffline(fora);
-  if (rel) {
-    rel.fechadoEm = salvoEm; rel.abertoEm = Date.now();
-    setTimeout(() => mostrarRelatorio(rel), 260);
-  }
+  recuperarOfflineAssincrono(fora, rel => {
+    if (rel) {
+      rel.fechadoEm = salvoEm; rel.abertoEm = Date.now();
+      setTimeout(() => mostrarRelatorio(rel), 260);
+    }
+    terminarArranque();
+  });
 }
-atualizarHUD();
-atualizarBadgePedidos();
-if (jogo.pedidos.length) mostrarPedido();
-desenharMinimapa();
+// O quadro começa já — não espera a recuperação (que agora pode levar
+// vários quadros): 'emRecuperacao' segura 'passo()' sozinho enquanto ela
+// dura, mas a tela já desenha e a aba já responde desde o primeiro quadro.
 requestAnimationFrame(quadro);
 // Sem armazenamento não há continuidade: melhor dizer do que deixar o jogador
 // achar que o mundo muda sozinho.
@@ -11118,7 +11164,9 @@ function marcarSaida() {
 function voltarDaAusencia(quando) {
   const inicio = quando || saiuEm || jogo.fechadoEm || 0;
   // Zera as DUAS marcas: visibilitychange e focus disparam em sequência, e sem
-  // isto o segundo recontava as mesmas horas de ausência.
+  // isto o segundo recontava as mesmas horas de ausência. Zerar AQUI, antes
+  // do trabalho assíncrono começar, também evita uma segunda recuperação
+  // entrar por cima enquanto a primeira ainda está em lotes.
   saiuEm = 0;
   jogo.fechadoEm = 0;
   ultimo = performance.now();
@@ -11126,19 +11174,20 @@ function voltarDaAusencia(quando) {
   if (!inicio) return;
   const fora = (Date.now() - inicio) / 1000;
   if (fora < 20) return;
-  const rel = recuperarOffline(fora);
-  ultimo = performance.now();
-  ultimoReal = Date.now();
-  if (!rel) return;
-  rel.fechadoEm = inicio;
-  rel.abertoEm = Date.now();
-  atualizarHUD(); atualizarBadgePedidos(); desenharMinimapa(); gravar();
-  // Ausência curta não merece um relatório na cara: um aviso basta, e ele
-  // serve de prova de que o relógio andou.
-  // Relatório na cara só para ausência longa; aviso curto no meio; e nada
-  // quando o tempo de vila arredonda para zero — 'esteve fora 0 mês' é ruído.
-  if (fora >= 600) mostrarRelatorio(rel);
-  else if (fora >= ANO_DIA) aviso('⏱️ ' + tempoDaVila(fora) + ' de vila enquanto você esteve fora');
+  recuperarOfflineAssincrono(fora, rel => {
+    ultimo = performance.now();
+    ultimoReal = Date.now();
+    if (!rel) return;
+    rel.fechadoEm = inicio;
+    rel.abertoEm = Date.now();
+    atualizarHUD(); atualizarBadgePedidos(); desenharMinimapa(); gravar();
+    // Ausência curta não merece um relatório na cara: um aviso basta, e ele
+    // serve de prova de que o relógio andou.
+    // Relatório na cara só para ausência longa; aviso curto no meio; e nada
+    // quando o tempo de vila arredonda para zero — 'esteve fora 0 mês' é ruído.
+    if (fora >= 600) mostrarRelatorio(rel);
+    else if (fora >= ANO_DIA) aviso('⏱️ ' + tempoDaVila(fora) + ' de vila enquanto você esteve fora');
+  });
 }
 
 // Quanto tempo de VILA vale um tanto de tempo real. Um ano de vila é um dia de
