@@ -2873,6 +2873,57 @@ depois aparece em pé na frente.
 
 ---
 
+## Arte nova dos aldeões, com as posições reorganizadas
+
+Duas folhas novas — uma do homem, uma da mulher — em grade de 12 × 4
+(célula de 117 × 192). Vieram como JPEG, com o xadrez de transparência
+CHAPADO nos pixels (não há canal alfa) e uma linha separadora escura
+desenhada na borda de cada célula.
+
+**As posições não vinham organizadas.** Revisado quadro a quadro,
+ampliado, as quatro linhas NÃO são quatro direções — elas misturam:
+
+| Onde | Direção real |
+|---|---|
+| linha 0, quadros 0,1,2,5 | norte (de costas) |
+| linha 0, quadros 3,4,6–11 | sul (de frente) |
+| linha 1, quadro 0 | sul, parado |
+| linha 1, quadros 1,2 | sudoeste (3/4) |
+| linha 1, quadros 3–11 | oeste (perfil) |
+| linha 2, quadros 0–11 | sul |
+| linha 3, quadros 0–11 | sudoeste |
+
+Ou seja: só **quatro** direções de verdade, e o jogo pede oito. Leste e
+sudeste saem espelhando oeste e sudoeste. Nordeste e noroeste não
+existem na fonte: recebem os quadros de costas. Com `ESCALA_PESSOA` em
+1/3 o aldeão fecha em ~11px na tela — a diferença entre "oeste" e
+"noroeste" nesse tamanho não se lê.
+
+**O recorte** (`ferramentas/montar-pessoas.js`) tem quatro passos, cada
+um resolvendo um estrago do JPEG: joga fora a moldura (a linha
+separadora é escura e não passa no teste de fundo, então o espalhamento
+nunca começava); espalha o fundo claro e dessaturado a partir dali; tira
+os bolsões de xadrez PRESOS dentro da silhueta (entre o braço e o corpo,
+entre o cajado e a perna — o espalhamento não os alcança, e viravam
+manchas brancas no meio do aldeão); e come um pixel da borda, que é onde
+o JPEG deixa uma orla meio-fundo meio-desenho que vira contorno claro
+quando o quadro encolhe.
+
+**O alinhamento** é o que impede o aldeão de tremer ao andar. A escala é
+FIXA (não "cabe na caixa"): o recorte varia de 154 a 169px na fonte, e
+escalar cada quadro pra caber faria o aldeão encolher e crescer a cada
+passo. E o centro horizontal é o **centro de massa do terço de baixo**
+(pernas e botas), não o da caixa — a caixa cresce e encolhe conforme o
+cajado entra e sai dela, e centrar por ela balançaria o corpo de lado a
+cada quadro.
+
+**A criança não veio nas folhas novas** e continua a de sempre, copiada
+tal e qual da folha antiga: é arte de proporção infantil, que reduzir um
+adulto não daria. Ela destoa em cor — é bem mais saturada que os adultos
+novos.
+
+---
+
 ## Estrutura
 
 ```
