@@ -1,100 +1,135 @@
 /*
-   Monta a folha da GENTE (aldeões) a partir das duas folhas novas.
+   Monta a folha da GENTE (aldeões) a partir das folhas novas do usuário.
 
-   A FONTE. Duas imagens de 1408x768, uma do homem e uma da mulher, em grade
-   de 12 colunas x 4 linhas (célula de 117,33 x 192). Vieram como JPEG (.jfif)
-   com o xadrez de transparência CHAPADO nos pixels — não há canal alfa — e
-   com uma linha separadora azul-escura desenhada na borda de cada célula.
-   A conversão pra PNG é fora daqui (System.Drawing do Windows, o mesmo
-   caminho descrito em 'montar-predios.js').
+   TERCEIRA LEVA. A primeira (homem.png/mulher.png, 12x4) veio com as
+   direções EMBARALHADAS nas linhas. A segunda foi UM ARQUIVO POR DIREÇÃO
+   mas com a MESMA arte pra homem e mulher. Agora o usuário refez de novo:
+   UM ARQUIVO POR DIREÇÃO e POR SEXO. Só as quatro DIAGONAIS: 'sudoeste',
+   'sudeste', 'noroeste', 'nordeste'; o homem sem sufixo ('sudoeste.png'),
+   a mulher com sufixo 'mulher' ('sudoestemulher.png'). Cada folha tem uma
+   faixa de título em cima, uma grade de células e OITO quadros de caminhada
+   numa linha só.
 
-   AS POSIÇÕES NÃO VÊM ORGANIZADAS. Revisado quadro a quadro, ampliado, as
-   quatro linhas NÃO são quatro direções: elas misturam. O que existe de
-   verdade na fonte:
+   AS QUATRO CHEGAM E O JOGO PEDE OITO. 'direcaoDoAngulo' arredonda o ângulo
+   de caminhada (em MUNDO) para 8 fatias; a projeção isométrica gira isso 45°,
+   então cada fatia de MUNDO vira uma direção de TELA:
 
-     linha 0, quadros 0,1,2,5 ......... NORTE (de costas)
-     linha 0, quadros 3,4,6..11 ....... SUL   (de frente)
-     linha 1, quadro  0 ............... SUL   (parado, de frente)
-     linha 1, quadros 1,2 ............. SUDOESTE (3/4 virado à esquerda)
-     linha 1, quadros 3..11 ........... OESTE (perfil, andando à esquerda)
-     linha 2, quadros 0..11 ........... SUL
-     linha 3, quadros 0..11 ........... SUDOESTE
+     fatia 0 (sul do mundo)       → anda pra baixo-esquerda da tela
+     fatia 1 (sudoeste do mundo)  → anda pra esquerda
+     fatia 2 (oeste do mundo)     → anda pra cima-esquerda
+     fatia 3 (noroeste do mundo)  → anda pra cima
+     fatia 4 (norte do mundo)     → anda pra cima-direita
+     fatia 5 (nordeste do mundo)  → anda pra direita
+     fatia 6 (leste do mundo)     → anda pra baixo-direita
+     fatia 7 (sudeste do mundo)   → anda pra baixo
 
-   Ou seja: só QUATRO direções reais (sul, sudoeste, oeste, norte). O jogo
-   pede OITO. Leste e sudeste saem espelhando oeste e sudoeste — é o padrão
-   e ninguém percebe. Nordeste e noroeste não existem na fonte: recebem os
-   quadros de costas (o de trás espelhado, no caso do nordeste). Numa vila
-   desenhada com ESCALA_PESSOA de 1/3, um aldeão fecha em ~11px de altura na
-   tela: a diferença entre "oeste" e "noroeste" nesse tamanho não se lê.
+   Ou seja, o que importa pro sprite é a direção de TELA, e ela cai em quatro
+   arcos de duas fatias: baixo-esquerda, cima-esquerda, cima-direita,
+   baixo-direita — exatamente as quatro artes que chegaram. O mapa
+   'FATIA_PARA_ARTE' é isso. Nenhum espelhamento: as quatro artes cobrem tudo.
 
-   A CRIANÇA não veio nas folhas novas. A linha dela é copiada tal e qual da
-   folha ATUAL embutida no index.html — arte própria, proporção de criança,
-   que reduzir um adulto não daria.
+   A CRIANÇA não veio (e nem aparece mais em tela — ver 'criancaEscondida' no
+   index.html). A linha dela na folha é copiada tal e qual da folha atual, só
+   pra não deixar buraco.
 
-   Saída: 'pessoas.b64.txt', que entra no lugar de FOLHA_PESSOAS.
+   A arte da mulher veio um tico mais alta que a do homem (~9px na fonte de
+   1408x768). Como a escala do recorte é FIXA (senão o aldeão encolhe e cresce
+   a cada passo), a mulher renderiza proporcionalmente um tico mais alta — o
+   que é aceitável e até natural. Se algum dia incomodar, é só medir a altura
+   real de cada recorte e normalizar ali no 'porNoQuadro'.
 */
 const fs = require('fs');
 const { decodificar, codificar } = require('./png.js');
 
-const ORIG = 'C:/Users/PPCP/Downloads/aldeoes/';
+const ORIG = 'C:/Users/PPCP/Downloads/aldeoes2/';
 const ALVO = 'C:/Users/PPCP/Documents/PROJETOS/reino-infinito/index.html';
 
 /* --- o que o jogo espera (tem de bater com o index.html) --- */
 const LADO = 48;          // SP_LADO
-const QUADROS = 6;        // SP_QUADROS — andando
+const QUADROS = 6;        // SP_QUADROS — os quadros de caminhada
 const DIRECOES = 8;       // SP_DIRECOES
 const COLS_SAIDA = QUADROS + 1;   // +1 de parado
 const ANCORA_Y = 0.90;    // os pés a 90% da altura do quadro
 
-/* Altura do personagem dentro do quadro de 48px. Fixa de propósito: escalar
-   cada quadro pra "caber" faria o aldeão encolher e crescer a cada passo,
-   porque o recorte varia de 154 a 169px na fonte. */
-const ALTURA_ALVO = 40;
-const ALTURA_FONTE = 168;   // referência: o recorte mais alto da fonte
+/* Altura do personagem no quadro de 48px. FIXA — escalar cada quadro pra
+   "caber" faria o aldeão encolher e crescer a cada passo. */
+const ALTURA_ALVO = 42;
+const ALTURA_FONTE = 170;   // referência do recorte mais alto
 
-/* --- a grade da fonte --- */
-const COLS = 12, LINHAS = 4, MOLDURA = 3;
+/* --- a grade das folhas novas ---
+   8 colunas de quadro, entre as faixas vazias medidas na imagem. A linha do
+   sprite fica entre y≈205 e y≈405; o resto é título e células vazias. */
+const COLUNAS_X = [162, 325, 491, 659, 822, 980, 1148, 1309];  // centros
+const CAIXA_W = 96, LINHA_Y0 = 198, LINHA_Y1 = 412;
 
-/* Fundo: o xadrez é claro e dessaturado (branco ~255 e cinza-azulado ~188).
-   O desenho é todo saturado — palha, pele, pano, couro. A linha separadora
-   da célula é escura e não passa neste teste, por isso a moldura é jogada
-   fora antes (ver 'recortarCelula'). */
-const ehFundo = (r, g, b) => {
-  const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
-  return mn >= 170 && (mx - mn) <= 26;
+/* Fundo: as folhas são um mockup de UI. As do HOMEM têm célula cinza-clara
+   chapada (~223); as da MULHER vieram com um xadrez de transparência de dois
+   cinzas (~150 e ~184). Em vez de um limiar fixo, cada folha diz a sua faixa:
+   varre a moldura (as bordas são sempre fundo), pega os pixels sem cor e usa
+   a faixa de claridade deles — com folga — como "isto é fundo". O desenho é
+   saturado ou bem escuro (contornos, botas, cabelo), então não cai na faixa. */
+function faixaDeFundo(im) {
+  const { larg: L, alt: H, px } = im, cl = [];
+  const anota = (x, y) => {
+    const i = (y * L + x) * 4, r = px[i], g = px[i + 1], b = px[i + 2];
+    if (Math.max(r, g, b) - Math.min(r, g, b) <= 24) cl.push((r + g + b) / 3);
+  };
+  for (let x = 0; x < L; x += 2) { for (let y = 0; y < 3; y++) { anota(x, y); anota(x, H - 1 - y); } }
+  for (let y = 0; y < H; y += 2) { for (let x = 0; x < 3; x++) { anota(x, y); anota(L - 1 - x, y); } }
+  cl.sort((a, b) => a - b);
+  const lo = cl[Math.floor(cl.length * 0.02)] - 12;
+  const hi = cl[Math.floor(cl.length * 0.98)] + 16;
+  return { lo, hi };
+}
+const fazEhFundo = ({ lo, hi }) => (r, g, b) => {
+  const lt = (r + g + b) / 3;
+  return lt >= lo && lt <= hi && (Math.max(r, g, b) - Math.min(r, g, b)) <= 24;
 };
 
-function recortarCelula(im, x0, y0, w, h) {
+/* Cada fatia do 'direcaoDoAngulo' recebe a arte da direção de TELA em que
+   ela anda (ver comentário grande no topo).
+
+   As quatro artes ficam nas quatro DIAGONAIS de tela; as quatro fatias
+   cardeais de tela (esquerda, cima, direita, baixo) caem no meio de duas
+   artes. Pra esquerda e direita a escolha é a FRENTE dos dois lados (SO à
+   esquerda, SE à direita) — aldeão andando de lado com o rosto pra câmera lê
+   melhor que de costas, e fica simétrico. Cima é de costas; baixo é de
+   frente.
+
+     fatia:  0=sul 1=SO 2=oeste 3=NO 4=norte 5=NE 6=leste 7=SE   (nome de MUNDO)
+     tela:   ↙     ←    ↖       ↑    ↗       →    ↘      ↓
+     arte:   SO    SO   NO      NO   NE      SE   SE     SE
+*/
+const SO = 'sudoeste', SE = 'sudeste', NO = 'noroeste', NE = 'nordeste';
+const FATIA_PARA_ARTE = [SO, SO, NO, NO, NE, SE, SE, SE];
+const SUFIXO = ['', 'mulher'];   // 0 = homem (sem sufixo), 1 = mulher
+
+function recortarColuna(im, cx, ehFundo) {
   const { larg: L, px } = im;
+  const x0 = Math.max(0, Math.round(cx - CAIXA_W / 2)), y0 = LINHA_Y0;
+  const w = CAIXA_W, h = LINHA_Y1 - LINHA_Y0;
   const p = Buffer.alloc(w * h * 4);
   for (let y = 0; y < h; y++)
     px.copy(p, y * w * 4, ((y0 + y) * L + x0) * 4, ((y0 + y) * L + x0 + w) * 4);
 
-  // 1. joga fora a moldura (a linha separadora) e semeia o espalhamento dali
+  // espalha o fundo a partir da borda
   const vis = new Uint8Array(w * h), fila = [];
-  for (let y = 0; y < h; y++)
-    for (let x = 0; x < w; x++)
-      if (x < MOLDURA || y < MOLDURA || x >= w - MOLDURA || y >= h - MOLDURA) {
-        const i = y * w + x; vis[i] = 1; p[i * 4 + 3] = 0; fila.push(i);
-      }
   const semear = (x, y) => {
     if (x < 0 || y < 0 || x >= w || y >= h) return;
     const i = y * w + x; if (vis[i]) return; vis[i] = 1;
     if (ehFundo(p[i * 4], p[i * 4 + 1], p[i * 4 + 2])) { p[i * 4 + 3] = 0; fila.push(i); }
   };
+  for (let x = 0; x < w; x++) { semear(x, 0); semear(x, h - 1); }
+  for (let y = 0; y < h; y++) { semear(0, y); semear(w - 1, y); }
   while (fila.length) {
     const i = fila.pop(), x = i % w, y = (i / w) | 0;
     semear(x + 1, y); semear(x - 1, y); semear(x, y + 1); semear(x, y - 1);
   }
-
-  /* 2. bolsões de xadrez PRESOS dentro da silhueta (entre o braço e o corpo,
-        entre o cajado e a perna) não são alcançados pelo espalhamento —
-        ficavam como manchas brancas no meio do aldeão. Como nada no desenho
-        é claro E dessaturado, dá pra tirar todos de uma vez. */
+  // bolsões de fundo presos dentro da silhueta
   for (let i = 0; i < w * h; i++)
     if (p[i * 4 + 3] && ehFundo(p[i * 4], p[i * 4 + 1], p[i * 4 + 2])) p[i * 4 + 3] = 0;
 
-  // 3. maior ilha: qualquer resto solto (respingo de JPEG) some
+  // maior ilha
   const v2 = new Uint8Array(w * h); let melhor = null;
   for (let s = 0; s < w * h; s++) {
     if (v2[s] || p[s * 4 + 3] <= 8) continue;
@@ -114,19 +149,14 @@ function recortarCelula(im, x0, y0, w, h) {
   if (melhor) for (const i of melhor) fica[i] = 1;
   for (let i = 0; i < w * h; i++) if (!fica[i]) p[i * 4 + 3] = 0;
 
-  /* 4. o JPEG deixa uma orla de um pixel meio-fundo meio-desenho em volta da
-        silhueta; ela vira um contorno claro quando o quadro encolhe. Come um
-        pixel da borda — a 40px de altura final, ninguém sente falta. */
+  // come um pixel da borda (a orla meio-fundo do JPEG)
   const orla = Buffer.from(p);
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const i = y * w + x; if (orla[i * 4 + 3] <= 8) continue;
-      let borda = false;
       for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]])
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h || orla[(ny * w + nx) * 4 + 3] <= 8) borda = true;
-      if (borda) p[i * 4 + 3] = 0;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || orla[(ny * w + nx) * 4 + 3] <= 8) { p[i * 4 + 3] = 0; break; }
     }
-
   return { larg: w, alt: h, px: p };
 }
 
@@ -141,10 +171,8 @@ function caixa(im) {
   return { x0, y0, x1, y1, w: x1 - x0 + 1, h: y1 - y0 + 1 };
 }
 
-/* Onde o corpo PISA, horizontalmente. Centrar pela caixa faria o aldeão
-   balançar de lado a cada passo: a caixa cresce e encolhe conforme o cajado
-   entra e sai dela. O centro de massa do terço de baixo (pernas e botas) é
-   estável — é por ele que os quadros se alinham. */
+/* Centro horizontal pelo centro de massa das pernas (terço de baixo) — a
+   caixa balança conforme o cajado entra e sai dela. */
 function centroDosPes(im, bb) {
   let soma = 0, n = 0;
   const ya = bb.y0 + Math.round(bb.h * 0.66);
@@ -154,16 +182,13 @@ function centroDosPes(im, bb) {
   return n ? soma / n : (bb.x0 + bb.x1) / 2;
 }
 
-/* Redução por média de caixa, com alfa pré-multiplicado (senão a borda ganha
-   um halo escuro). Desenha o recorte já posicionado dentro do quadro final. */
-function porNoQuadro(cel, bb, pesX, espelhar) {
+function porNoQuadro(cel, bb, pesX) {
   const q = Buffer.alloc(LADO * LADO * 4);
   const esc = ALTURA_ALVO / ALTURA_FONTE;
-  const pesY = LADO * ANCORA_Y;              // onde os pés pousam no quadro
+  const pesY = LADO * ANCORA_Y;
   for (let dy = 0; dy < LADO; dy++)
     for (let dx = 0; dx < LADO; dx++) {
-      // volta do quadro final para a fonte
-      const fx0 = (( espelhar ? (LADO - 1 - dx) : dx ) - LADO / 2) / esc + pesX;
+      const fx0 = (dx - LADO / 2) / esc + pesX;
       const fy0 = (dy - pesY) / esc + bb.y1 + 1;
       const fx1 = fx0 + 1 / esc, fy1 = fy0 + 1 / esc;
       let r = 0, g = 0, b = 0, a = 0, n = 0;
@@ -184,37 +209,11 @@ function porNoQuadro(cel, bb, pesX, espelhar) {
   return q;
 }
 
-/* --- de onde sai cada direção ---
-   [linha, coluna] na folha da fonte. 'esp' espelha na horizontal.
-   A ordem das direções é a do jogo ('direcaoDoAngulo'):
-   0 sul, 1 sudoeste, 2 oeste, 3 noroeste, 4 norte, 5 nordeste, 6 leste, 7 sudeste. */
-const SUL      = [[2,0],[2,1],[2,2],[2,3],[2,4],[2,5]];
-const SUL_PARADO = [1,0];
-const SUDOESTE = [[3,0],[3,1],[3,2],[3,3],[3,4],[3,5]];
-const SUDOESTE_PARADO = [3,1];
-const OESTE    = [[1,3],[1,4],[1,5],[1,6],[1,7],[1,8]];
-const OESTE_PARADO = [1,3];
-// só quatro quadros de costas existem; vai e volta pra fechar os seis
-const NORTE    = [[0,0],[0,1],[0,2],[0,5],[0,2],[0,1]];
-const NORTE_PARADO = [0,0];
-
-const DIRECAO = [
-  { nome:'sul',      andar:SUL,      parado:SUL_PARADO,      esp:false },
-  { nome:'sudoeste', andar:SUDOESTE, parado:SUDOESTE_PARADO, esp:false },
-  { nome:'oeste',    andar:OESTE,    parado:OESTE_PARADO,    esp:false },
-  { nome:'noroeste', andar:NORTE,    parado:NORTE_PARADO,    esp:false },
-  { nome:'norte',    andar:NORTE,    parado:NORTE_PARADO,    esp:false },
-  { nome:'nordeste', andar:NORTE,    parado:NORTE_PARADO,    esp:true  },
-  { nome:'leste',    andar:OESTE,    parado:OESTE_PARADO,    esp:true  },
-  { nome:'sudeste',  andar:SUDOESTE, parado:SUDOESTE_PARADO, esp:true  },
-];
-
-/* --- lê a folha atual do index.html, só pra reaproveitar a criança --- */
+/* --- lê a folha atual só pra reaproveitar a criança --- */
 function folhaAtual() {
   const t = fs.readFileSync(ALVO, 'utf8');
   const marca = 'const FOLHA_PESSOAS = "data:image/png;base64,';
   const i0 = t.indexOf(marca);
-  if (i0 < 0) throw new Error('FOLHA_PESSOAS não encontrada');
   const i1 = t.indexOf('";', i0 + marca.length);
   const b64 = t.slice(i0 + marca.length, i1);
   const tmp = require('os').tmpdir() + '/pessoas-atual.png';
@@ -226,53 +225,57 @@ function folhaAtual() {
 const LARG_SAIDA = LADO * COLS_SAIDA;
 const ALT_SAIDA = LADO * DIRECOES * 3;
 const folha = Buffer.alloc(LARG_SAIDA * ALT_SAIDA * 4);
-
 const colar = (q, col, linha) => {
   for (let y = 0; y < LADO; y++)
     q.copy(folha, ((linha * LADO + y) * LARG_SAIDA + col * LADO) * 4, y * LADO * 4, (y + 1) * LADO * 4);
 };
 
-const fontes = { 0: 'homem.png', 1: 'mulher.png' };
-for (const personagem of [0, 1]) {
-  const im = decodificar(ORIG + fontes[personagem]);
-  const CW = im.larg / COLS, CH = im.alt / LINHAS;
-  const cache = new Map();
-  const pegar = (l, c) => {
-    const k = l + ',' + c;
-    if (!cache.has(k)) {
-      const x0 = Math.round(c * CW), y0 = Math.round(l * CH);
-      const cel = recortarCelula(im, x0, y0, Math.round((c + 1) * CW) - x0, Math.round((l + 1) * CH) - y0);
-      const bb = caixa(cel);
-      cache.set(k, { cel, bb, pes: centroDosPes(cel, bb) });
-    }
-    return cache.get(k);
-  };
-  DIRECAO.forEach((dir, d) => {
-    const linha = personagem * DIRECOES + d;
-    dir.andar.forEach(([l, c], i) => {
-      const f = pegar(l, c);
-      colar(porNoQuadro(f.cel, f.bb, f.pes, dir.esp), i, linha);
-    });
-    const p = pegar(dir.parado[0], dir.parado[1]);
-    colar(porNoQuadro(p.cel, p.bb, p.pes, dir.esp), QUADROS, linha);
+// cache: cada arquivo de direção é lido e recortado uma vez
+const artes = new Map();
+function quadrosDe(arq) {
+  if (artes.has(arq)) return artes.get(arq);
+  const im = decodificar(ORIG + arq);
+  const faixa = faixaDeFundo(im);
+  const ehFundo = fazEhFundo(faixa);
+  const qs = COLUNAS_X.map(cx => {
+    const cel = recortarColuna(im, cx, ehFundo);
+    const bb = caixa(cel);
+    return { cel, bb, pes: centroDosPes(cel, bb) };
   });
-  console.log(fontes[personagem] + ': 8 direções x ' + COLS_SAIDA + ' quadros');
+  artes.set(arq, qs);
+  console.log(arq.padEnd(18) + `fundo[${faixa.lo.toFixed(0)}..${faixa.hi.toFixed(0)}]  `
+    + qs.map(q => q.bb.w + 'x' + q.bb.h).join(' '));
+  return qs;
 }
+
+for (const personagem of [0, 1]) {          // 0 = homem, 1 = mulher — arte separada
+  for (let d = 0; d < DIRECOES; d++) {
+    const linha = personagem * DIRECOES + d;
+    const qs = quadrosDe(FATIA_PARA_ARTE[d] + SUFIXO[personagem] + '.png');
+    // 8 quadros na fonte, o jogo quer 6 de andar + 1 parado.
+    // andar: quadros 0..5. parado: quadro 0 (pé junto).
+    for (let i = 0; i < QUADROS; i++) {
+      const f = qs[i];
+      colar(porNoQuadro(f.cel, f.bb, f.pes), i, linha);
+    }
+    const p = qs[0];
+    colar(porNoQuadro(p.cel, p.bb, p.pes), QUADROS, linha);
+  }
+}
+console.log('homem e mulher: 8 direções cada, arte própria, ' + COLS_SAIDA + ' quadros');
 
 /* criança: copiada da folha de hoje, sem tocar */
 const atual = folhaAtual();
-if (atual.larg !== LARG_SAIDA)
-  console.log('AVISO: folha atual tem ' + atual.larg + 'px de largura, a nova tem ' + LARG_SAIDA);
 for (let d = 0; d < DIRECOES; d++) {
-  const orig = 2 * DIRECOES + d;      // linha da criança na folha atual
+  const orig = 2 * DIRECOES + d;
   for (let col = 0; col < COLS_SAIDA; col++)
     for (let y = 0; y < LADO; y++) {
       const de = ((orig * LADO + y) * atual.larg + col * LADO) * 4;
-      const para = (((2 * DIRECOES + d) * LADO + y) * LARG_SAIDA + col * LADO) * 4;
+      const para = ((orig * LADO + y) * LARG_SAIDA + col * LADO) * 4;
       atual.px.copy(folha, para, de, de + LADO * 4);
     }
 }
-console.log('criança: copiada da folha atual');
+console.log('criança: copiada da folha atual (fora de tela de qualquer jeito)');
 
 const png = codificar(LARG_SAIDA, ALT_SAIDA, folha);
 fs.writeFileSync('pessoas.png', png);

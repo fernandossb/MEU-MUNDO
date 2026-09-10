@@ -2941,6 +2941,60 @@ adultos novos, e destoava no meio da vila.
 
 ---
 
+## Arte dos aldeões, terceira leva: um arquivo por direção E por sexo
+
+O adulto foi refeito de novo. Agora vêm **oito** arquivos: quatro do
+homem (`sudoeste`, `sudeste`, `noroeste`, `nordeste`) e quatro da mulher
+com o mesmo nome mais o sufixo `mulher` (`sudoestemulher`…). Cada folha
+tem uma faixa de título, uma grade e **oito quadros de caminhada numa
+linha só**. O texto DENTRO da imagem às vezes discorda do nome do
+arquivo (uma diz "NORTE" no título e se chama `nordeste`); **o nome do
+arquivo é que manda** — foi o pedido.
+
+**Quatro direções na fonte, oito no jogo.** `direcaoDoAngulo` fatia o
+ângulo de caminhada (em coordenada de MUNDO) em 8; a projeção isométrica
+gira tudo 45°, então cada fatia vira uma direção de TELA. As quatro
+artes são exatamente as quatro diagonais de tela (↙ ↖ ↗ ↘). As quatro
+fatias que sobram (←, ↑, →, ↓) caem no meio de duas artes e recebem a
+vizinha mais natural:
+
+| fatia (nome de mundo) | tela | arte usada |
+|---|---|---|
+| 0 sul / 1 sudoeste | ↙ ← | sudoeste (frente) |
+| 2 oeste / 3 noroeste | ↖ ↑ | noroeste (costas) |
+| 4 norte | ↗ | nordeste (costas) |
+| 5 nordeste / 6 leste / 7 sudeste | → ↘ ↓ | sudeste (frente) |
+
+Para ← e → a escolha é a arte de FRENTE dos dois lados: aldeão de lado
+com o rosto pra câmera lê melhor que de costas, e fica simétrico.
+Nenhum espelhamento — as quatro artes cobrem os oito rumos.
+
+**Fundo adaptativo.** As folhas do homem vieram com célula cinza-clara
+chapada (~223); as da mulher, com um xadrez de transparência de dois
+cinzas (~150 e ~184) — o limiar fixo do homem deixava o xadrez escuro
+passar por desenho e o recorte trazia a caixa inteira. Agora cada folha
+mede a própria moldura (a borda é sempre fundo), pega os pixels sem cor
+e usa a faixa de claridade deles, com folga, como "isto é fundo". O
+desenho é saturado ou bem escuro (contorno, bota, cabelo), então não
+cai na faixa. O resto do recorte é o de sempre: espalha o fundo da
+borda, tira bolsão preso na silhueta, fica com a maior ilha, come um
+pixel de orla do JPEG.
+
+**A mulher veio ~9px mais alta** que o homem na fonte de 1408×768. Como
+a escala do recorte é FIXA (senão o aldeão encolhe e cresce a cada
+passo), ela renderiza um tico mais alta — aceitável, e até natural.
+
+**Um senão de arte, não de código:** a folha `noroestemulher` tem a saia
+num tom mais quente (terracota) que as outras três da mulher (marrom
+neutro). Depois de encolhida some quase toda a diferença, mas em quem
+reparar a aldeã "esquenta" a roupa ao virar pra cima. Trocar isso é
+recolorir a fonte, não mexer no montador.
+
+**A criança continua sendo a arte antiga**, copiada tal e qual — mas ela
+não aparece mais em tela (ver acima).
+
+---
+
 ## Estrutura
 
 ```
