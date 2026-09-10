@@ -2779,6 +2779,39 @@ limitação de origem explicada acima.
 
 ---
 
+## A base dos prédios invadia a rua, sempre pra cima e pra esquerda
+
+Reportado direto: "os sprites dos prédios estão invadindo as ruas
+visualmente, não só a parte aérea, a base do prédio também; eles invadem
+sempre na mesma direção (superior esquerda)".
+
+O sprite de cada prédio é desenhado centrado num ponto de ÂNCORA, e essa
+âncora era `(centro X do lote, base Y do lote)`. O problema: `mundoParaIso`
+(a projeção 2:1 que dá o visual isométrico) mistura X e Y — então esse
+ponto NÃO cai no centro horizontal do losango que o lote vira na tela.
+Cai exatamente **meio lote à esquerda** dele: `def.h / 2` tiles, medido e
+confirmado (Centro, lote 3x3 → 42px à esquerda; casa 2x2 → 28px). Como o
+sprite é centrado nessa âncora, todo prédio herda o mesmo empurrão pra
+esquerda — que em isométrico se lê como "pra cima e pra esquerda", a tal
+"superior esquerda" do relato. Sistemático, igual pra todos, sempre a
+mesma direção: a assinatura de um erro de conta, não de arte torta.
+
+O conserto: soma `def.h * TILE / 2` ao deslocamento horizontal do desenho
+(`dx0`), recentrando cada prédio no losango de verdade. **Só a horizontal**
+— a profundidade (a ordem de desenho, quem fica na frente de quem) e a
+vertical não mudam em nada, então nenhum prédio troca de camada com a
+gente ou com o vizinho. Não mexe no tamanho do sprite (pedido explícito:
+"não reduza o tamanho deles") nem no lote de colisão. A parte AÉREA (torre
+alta passando por cima da rua) continua como era — isso é de propósito, e
+o relato já dizia que o problema era a BASE.
+
+Testado ao vivo com losango do lote e grade de quarteirão desenhados por
+cima, antes e depois: antes, todo prédio pendia pro canto superior
+esquerdo do próprio lote, com a base cruzando a rua desse lado; depois,
+cada um centrado no lote, base dentro da rua nos quatro lados.
+
+---
+
 ## Estrutura
 
 ```

@@ -10478,17 +10478,30 @@ function desenharVilaNormal() {
       const p = mundoParaIso(n.x, n.y);   // calcula uma vez, usa na ordenação E no desenho
       lista.push({ y:p.y, k:0, o:n, px:p.x, py:p.y });
     }
+  /*
+     BUG ACHADO AO VIVO — "a base dos prédios invade a rua, sempre na mesma
+     direção (superior esquerda)". A âncora de projeção do prédio é (centro X
+     do lote, base Y do lote); como 'mundoParaIso' mistura X e Y, esse ponto
+     NÃO cai no centro horizontal do losango que o lote vira na tela — cai
+     meio lote (def.h/2 tiles) à esquerda dele, e o sprite, centrado nessa
+     âncora, herda o mesmo deslocamento pra esquerda (que em isométrico lê
+     como "pra cima e pra esquerda"). 'corrigeX' recentra o desenho no
+     losango de verdade — SÓ a horizontal: profundidade (a ordenação, 'd.y')
+     e a vertical ('d.dy0') não mudam, então nada de ordem de desenho nem de
+     altura de base se mexe.
+  */
+  const corrigeX = pr => pr.def.h * TILE / 2;
   for (const pr of jogo.predios) {
     if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
     const d = projetar(pr.cx, (pr.ty + pr.def.h) * TILE);
-    lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0, dy0:d.dy0 });
+    lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0 + corrigeX(pr), dy0:d.dy0 });
   }
   if (emDisputa())
     for (const v of rivaisVivas()) {
       for (const pr of v.predios) {
         if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
         const d = projetar(pr.cx, (pr.ty + pr.def.h) * TILE);
-        lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0, dy0:d.dy0 });
+        lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0 + corrigeX(pr), dy0:d.dy0 });
       }
       /*
          A gente da vizinha entra na mesma fila que a sua, na mesma ordenação
