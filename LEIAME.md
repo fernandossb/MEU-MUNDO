@@ -2995,6 +2995,39 @@ não aparece mais em tela (ver acima).
 
 ---
 
+## Castelo nítido (arte nova, folha própria)
+
+Primeira das três fases da reforma dos quarteirões. A arte antiga do
+Centro estava guardada a **296×245px**, e no zoom máximo o jogo a
+esticava pra ~800px — ampliação de ~4,7×, o borrão que se via. O usuário
+refez em 1024×1024.
+
+A pasta-fonte das outras 15 artes de prédio **não existe mais**, então
+não dá pra regerar `predios.png` com o castelo dentro. O castelo vai
+numa **folha separada** (`FOLHA_CENTRO` / `imgCentro` no index.html);
+`arteDePredio` e `desenharPredio` escolhem a imagem pela chave
+(`folhaDoPredio` — só o Centro está fora da folha grande).
+
+**Fundo.** A folha veio JPEG (.jfif) com o xadrez de transparência
+chapado nos pixels — e o castelo é de pedra CINZA, então um limiar de
+fundo largo comeria parede. `ferramentas/montar-centro.js` usa duas
+faixas estreitas em volta dos dois cinzas do xadrez (a pedra cai no vão
+entre elas ou tem cor demais), espalha da borda **em 8 direções** (as
+células de mesma cor só se tocam pela quina — com 4 vizinhos o flood
+ficava preso na primeira fileira), tira os bolsões grandes presos na
+silhueta, descasca a teia de 1px das transições, fica com a maior ilha.
+
+O `dw` da entrada de `MAPA_PREDIOS` segue **147** (mesmo tamanho na tela
+de antes) — a nitidez vem da fonte guardada a 949px, não de esticar. O
+lote de verdade continua 3×3 nesta fase; a Fase 3 leva pra 16×16.
+
+**Peso:** o index.html foi de ~6,7MB pra ~8,8MB. É o custo de um castelo
+nítido, e o usuário priorizou isso. No pinch máximo com o lote 16×16 da
+Fase 3 ainda vai sobrar leve ampliação — se incomodar, pede fonte
+~1600px.
+
+---
+
 ## Estrutura
 
 ```
