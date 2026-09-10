@@ -3084,6 +3084,43 @@ sozinha no jogo com a grade nova.
 
 ---
 
+## Textura de chão: as fotos de gramado e de pedra
+
+O usuário mandou duas fotos — um gramado e um calçamento de pedra — pra
+substituir o verde e o marrom chapados do chão.
+
+`ferramentas/montar-chao.js` reduz cada foto pra 560px e a torna
+**repetível**: desloca a imagem por meia largura/altura (leva as costuras
+da borda pro meio) e cura a cruz do meio cruzando-a com a imagem sem
+deslocar (interior liso ali). As duas empilhadas viram `chao.png` /
+`FOLHA_CHAO`. `montarChunk` monta os padrões repetíveis
+(`padraoGrama`/`padraoRua`) uma vez e limpa os chunks já vistos.
+
+**Grama — AO VIVO, não assada.** Assar a foto no chunk (672px = 1:1 com o
+mundo) vira borrão no zoom + cisalhamento isométrico. Então ela é
+desenhada no laço de `desenharVilaNormal`, na resolução da tela: varre os
+tiles CAMPO/FLORESTA visíveis (fora de rua e de prédio), monta um Path2D,
+e preenche com o padrão alinhado ao MUNDO — alfa 0,72 + um passe de
+`overlay` pra puxar o contraste dos fios. A base procedural do chunk
+continua embaixo e dá a sombra de vale/relevo e a tinta de estação.
+Medido: +0,6 a 1,7ms por quadro; nada abaixo de z≈0,34 (longe demais pra
+ver fio de capim).
+
+**Rua — a foto no lugar do calçamento vetorial.** `desenharEstrada`
+preenche o tile inteiro com o padrão de pedra alinhado ao mundo (tiles
+vizinhos continuam a pedra sem emenda) e só marca uma sombra fina onde a
+rua encontra terra. `desenharEstradaRival` idem, tingido na cor da vila.
+`RUA_TILES`/`GRAMA_TILES` controlam de quantos tiles é o azulejo antes de
+repetir.
+
+**Castelo −15%.** A escala do Centro em `caixaDoPredio` caiu de 1,7 pra
+**1,445** (`1,7 × 0,85`) — a torre estava passando do quarteirão.
+
+**Peso:** +~1MB de base64 (index.html ~9,9MB). Se apertar, dá pra baixar
+`LARG` em `montar-chao.js` de 560 pra ~460.
+
+---
+
 ## Estrutura
 
 ```
