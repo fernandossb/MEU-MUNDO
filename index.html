@@ -9521,16 +9521,17 @@ const SP_DIRECOES = 8;
 const DESENHO_PESSOA = 34;           // tamanho na tela, em pixels de mundo
 const ANCORA_Y = 0.90;               // os pés ficam a 90% da altura do quadro
 /*
-   PEDIDO EXPLÍCITO — "os aldeões estão grandes demais, deixe-os com 1/4 do
-   tamanho atual, e suavize o acabamento". Um aldeão de 34px do lado de um
-   prédio que ocupa quase o quarteirão inteiro estava fora de escala. 0,25
-   entra como fator ÚNICO no 'esc' de 'desenharPessoa' — daí ele se propaga
-   sozinho pra tudo que já escala com 'esc': sombra, carga, faísca, cavalo,
-   carroça. A folha é reduzida uma vez no carregamento pra metade
-   (48→24px) com suavização, pra o desenho final não ser um único salto de
-   ~6× (que sai áspero) e sim dois passos suaves. Ver 'imgPessoasSuave'.
+   PEDIDO EXPLÍCITO — "os aldeões estão grandes demais, suavize o acabamento".
+   Um aldeão de 34px do lado de um prédio que ocupa quase o quarteirão
+   inteiro estava fora de escala. O fator abaixo entra como número ÚNICO no
+   'esc' de 'desenharPessoa' — daí se propaga sozinho pra tudo que já escala
+   com 'esc': sombra, carga, faísca, cavalo, carroça. Pedido primeiro em 1/4,
+   depois ajustado pra 1/3 (um pouco maior, ainda em escala com o prédio). A
+   folha é reduzida uma vez no carregamento pra metade (48→24px) com
+   suavização, pra o desenho final não ser um único salto áspero e sim dois
+   passos suaves. Ver 'imgPessoasSuave'.
 */
-const ESCALA_PESSOA = 0.25;
+const ESCALA_PESSOA = 1 / 3;
 
 const imgPessoas = new Image();
 let pessoasProntas = false;

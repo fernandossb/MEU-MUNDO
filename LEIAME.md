@@ -2848,12 +2848,13 @@ de lado.
 
 Dois pedidos sobre a gente:
 
-**"Estão grandes demais — 1/4 do tamanho, e suavize o acabamento."** Um
-aldeão de 34px do lado de um prédio que ocupa quase o quarteirão inteiro
-estava fora de escala. `ESCALA_PESSOA` (0,25) entra como fator único no
-`esc` de `desenharPessoa` — daí se propaga sozinho pra sombra, carga,
-faísca, cavalo e carroça, que já escalavam com `esc`. O anel de seleção
-virou proporcional ao aldeão (era fixo). Pro acabamento: a folha de
+**"Estão grandes demais — e suavize o acabamento."** Um aldeão de 34px
+do lado de um prédio que ocupa quase o quarteirão inteiro estava fora de
+escala. `ESCALA_PESSOA` (pedido em 1/4, depois ajustado pra 1/3) entra
+como fator único no `esc` de `desenharPessoa` — daí se propaga sozinho
+pra sombra, carga, faísca, cavalo e carroça, que já escalavam com `esc`.
+O anel de seleção virou proporcional ao aldeão (era fixo). Pro
+acabamento: a folha de
 sprites é reduzida à METADE uma vez no carregamento, com suavização
 (`imgPessoasSuave`) — desenhar direto num salto de ~6× saía áspero
 mesmo com o filtro do canvas ligado; dois passos suaves (48→24→~8px)
