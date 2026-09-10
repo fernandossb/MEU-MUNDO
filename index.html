@@ -6540,6 +6540,57 @@ function moverPredioPara(pr, tx, ty) {
   return true;
 }
 
+/*
+   MOTOR DE ALINHAMENTO DA MELHORIA — pedido explícito: "quando a fazenda
+   pequena vira grande, ela invade a rua do canto superior direito; monte um
+   motor de posicionamento pra alinhar toda vez que um prédio aumentar".
+
+   Toda melhoria cresce +1 tile de largura, mesmo sprite 1,5× o lote. Se o
+   lote antigo estava numa ESQUINA (encostado em DUAS ruas), crescer a partir
+   do canto mantém a esquina, e a sobra de telhado do prédio maior passa por
+   cima da rua lateral. Em vez de crescer do canto, varre um quadrado de
+   posições em volta e escolhe a que:
+     1. cabe e encosta em rua (requisito de sempre);
+     2. ainda cobre parte do lote antigo (nada de teleporte);
+     3. tem o MENOR "atrito de rua" — e rua LATERAL (leste/oeste) pesa mais
+        que rua acima/abaixo, porque é a lateral que o telhado largo do
+        sprite cruza feio; o beiral por cima da calçada de cima/baixo já era
+        assim pra todo prédio e ninguém reclamou;
+     4. entre essas, a mais perto de onde ele já estava.
+   Não usa 'quarteiraoDe'/'origemMalha' de propósito: essa grade é a do
+   jogador, e este código também roda pra vila rival (via 'conselho' no
+   contexto trocado), cuja malha tem outra origem. Só 'jogo.estradas', que
+   o contexto troca certo.
+*/
+function alinharMelhoria(pr, w, h) {
+  const alvoX = pr.tx + Math.round((pr.def.w - w) / 2);
+  const alvoY = pr.ty + Math.round((pr.def.h - h) / 2);
+  const atritoDeRua = (x, y) => {
+    let cima = 0, baixo = 0, esq = 0, dir = 0;
+    for (let i = 0; i < w; i++) {
+      if (jogo.estradas.has(nk(x + i, y - 1))) cima = 1;
+      if (jogo.estradas.has(nk(x + i, y + h))) baixo = 1;
+    }
+    for (let i = 0; i < h; i++) {
+      if (jogo.estradas.has(nk(x - 1, y + i))) esq = 1;
+      if (jogo.estradas.has(nk(x + w, y + i))) dir = 1;
+    }
+    return (cima + baixo) + (esq + dir) * 3;
+  };
+  let melhor = null;
+  for (let dx = -3; dx <= 3; dx++)
+    for (let dy = -3; dy <= 3; dy++) {
+      const x = alvoX + dx, y = alvoY + dy;
+      if (!cabeAqui(x, y, w, h, pr) || !encostaNaRua(x, y, w, h)) continue;
+      // ainda tem de pegar parte do lote antigo, senão o prédio "pula".
+      if (x > pr.tx + pr.def.w - 1 || x + w - 1 < pr.tx ||
+          y > pr.ty + pr.def.h - 1 || y + h - 1 < pr.ty) continue;
+      const custo = atritoDeRua(x, y) * 100 + Math.abs(dx) + Math.abs(dy);
+      if (!melhor || custo < melhor.custo) melhor = { tx: x, ty: y, custo };
+    }
+  return melhor;
+}
+
 /* --- melhorar --- */
 // Devolve true quando a melhoria realmente aconteceu, false em qualquer
 // desistência (falta material, sem espaço) — item 2: o conselho
@@ -6553,10 +6604,10 @@ function melhorarPredio(pr) {
   const custo = custoDaMelhoria(pr.chave, chaveNova);
   if (!podePagar(custo)) { aviso('Falta material: ' + custoTexto(custo)); return false; }
 
-  // O prédio maior pode precisar de mais um bloco: tenta encaixar em volta do
-  // canto atual antes de desistir.
-  let destino = null;
-  for (const [dx, dy] of [[0,0],[-1,0],[0,-1],[-1,-1],[1,0],[0,1]]) {
+  // Primeiro o motor de alinhamento (tira o prédio maior da esquina); se ele
+  // não achar nada, a busca antiga em volta do canto atual.
+  let destino = alinharMelhoria(pr, nova.w, nova.h);
+  for (const [dx, dy] of destino ? [] : [[0,0],[-1,0],[0,-1],[-1,-1],[1,0],[0,1]]) {
     const tx = pr.tx + dx, ty = pr.ty + dy;
     if (cabeAqui(tx, ty, nova.w, nova.h, pr) && encostaNaRua(tx, ty, nova.w, nova.h)) {
       destino = { tx, ty }; break;
@@ -9469,10 +9520,44 @@ const SP_QUADROS = 6;
 const SP_DIRECOES = 8;
 const DESENHO_PESSOA = 34;           // tamanho na tela, em pixels de mundo
 const ANCORA_Y = 0.90;               // os pés ficam a 90% da altura do quadro
+/*
+   PEDIDO EXPLÍCITO — "os aldeões estão grandes demais, deixe-os com 1/4 do
+   tamanho atual, e suavize o acabamento". Um aldeão de 34px do lado de um
+   prédio que ocupa quase o quarteirão inteiro estava fora de escala. 0,25
+   entra como fator ÚNICO no 'esc' de 'desenharPessoa' — daí ele se propaga
+   sozinho pra tudo que já escala com 'esc': sombra, carga, faísca, cavalo,
+   carroça. A folha é reduzida uma vez no carregamento pra metade
+   (48→24px) com suavização, pra o desenho final não ser um único salto de
+   ~6× (que sai áspero) e sim dois passos suaves. Ver 'imgPessoasSuave'.
+*/
+const ESCALA_PESSOA = 0.25;
 
 const imgPessoas = new Image();
 let pessoasProntas = false;
-imgPessoas.onload = () => { pessoasProntas = true; };
+/*
+   A folha reduzida à metade, feita UMA vez quando a original carrega. O
+   aldeão final é minúsculo (~8px vindo de um quadro de 48px), e um
+   'drawImage' que encolhe 6× de uma vez sai áspero mesmo com suavização —
+   o filtro do canvas só olha uma vizinhança pequena. Encolher primeiro
+   pra metade com suavização e depois desenhar a partir daí divide o
+   trabalho em dois passos macios. 'SP_LADO_SUAVE' é o lado do quadro nessa
+   folha; 'desenharPessoa' escolhe a folha suave quando ela está pronta.
+*/
+const SP_LADO_SUAVE = SP_LADO / 2;
+let imgPessoasSuave = null;
+imgPessoas.onload = () => {
+  pessoasProntas = true;
+  try {
+    const cv = document.createElement('canvas');
+    cv.width = Math.round(imgPessoas.width / 2);
+    cv.height = Math.round(imgPessoas.height / 2);
+    const g = cv.getContext('2d');
+    g.imageSmoothingEnabled = true;
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(imgPessoas, 0, 0, cv.width, cv.height);
+    imgPessoasSuave = cv;
+  } catch (e) { /* sem a suave, cai na original — só um pouco menos macio */ }
+};
 imgPessoas.src = FOLHA_PESSOAS;
 
 // south, south-west, west, north-west, north, north-east, east, south-east.
@@ -9499,12 +9584,14 @@ const linhaDoPersonagem = p =>
 function desenharPessoa(g, pReal, selecionado, tingir, dx0, dy0) {
   const p = (dx0 || dy0) ? Object.assign({}, pReal, { x: pReal.x + (dx0 || 0), y: pReal.y + (dy0 || 0) }) : pReal;
   const montado = p.veiculo === 'cavalo';
-  const esc = faseDaIdade(p.idade) === FASE.CRIANCA ? 0.78 : 1;
+  const esc = (faseDaIdade(p.idade) === FASE.CRIANCA ? 0.78 : 1) * ESCALA_PESSOA;
   const tam = DESENHO_PESSOA * esc;
 
   if (selecionado) {
-    g.strokeStyle = 'rgba(150,235,140,.9)'; g.lineWidth = 1.7;
-    g.beginPath(); g.ellipse(p.x, p.y + 7, 13, 6, 0, 0, 6.2832); g.stroke();
+    // Anel de seleção proporcional ao aldeão (agora minúsculo) — um pouco
+    // mais largo que ele, pra ficar visível sem tapá-lo.
+    g.strokeStyle = 'rgba(150,235,140,.9)'; g.lineWidth = Math.max(1, 1.7 * esc * 4);
+    g.beginPath(); g.ellipse(p.x, p.y + tam * 0.18, tam * 0.62, tam * 0.3, 0, 0, 6.2832); g.stroke();
   }
   if (montado) desenharCavalo(g, p, esc, 0);
   else {
@@ -9528,13 +9615,18 @@ function desenharPessoa(g, pReal, selecionado, tingir, dx0, dy0) {
   const x = p.x - tam / 2;
   const y = p.y - tam * ANCORA_Y - ergue;
 
+  // Folha suave (metade) quando pronta — deixa o encolhimento final até o
+  // tamanho de aldeão bem menos áspero. Fallback: a original.
+  const folha = imgPessoasSuave || imgPessoas;
+  const ld = imgPessoasSuave ? SP_LADO_SUAVE : SP_LADO;
+
   // Gente de vila rival: mesmo sprite, tingido na cor dela (item da disputa
   // de território — ver 'recorteTingido').
   if (tingir) {
-    const r = recorteTingido(imgPessoas, col * SP_LADO, linha * SP_LADO, SP_LADO, SP_LADO, tam, tam, tingir);
+    const r = recorteTingido(folha, col * ld, linha * ld, ld, ld, tam, tam, tingir);
     g.drawImage(r, 0, 0, tam, tam, x, y, tam, tam);
   } else {
-    g.drawImage(imgPessoas, col * SP_LADO, linha * SP_LADO, SP_LADO, SP_LADO, x, y, tam, tam);
+    g.drawImage(folha, col * ld, linha * ld, ld, ld, x, y, tam, tam);
   }
 
   // Carga nas costas, por cima do sprite.
@@ -10471,6 +10563,27 @@ function desenharVilaNormal() {
     return { y: p.y, dx0: p.x - ancoraX, dy0: p.y - ancoraY };
   };
 
+  /*
+     PEDIDO EXPLÍCITO — "o aldeão tem de ficar NA FRENTE do prédio onde
+     trabalha; hoje ele entra atrás e embaixo, fica estranho". O sprite do
+     prédio cobre o lote inteiro e ordena pela testada (frente do lote), então
+     um lavrador no meio da própria roça ordena ATRÁS do celeiro e some.
+     Conserta na ordenação: se o aldeão está DE FATO pisando no lote do prédio
+     em que trabalha ('p.fazendaId' — lavoura e cais mantêm o trabalhador do
+     lado de fora), a profundidade dele é empurrada pra logo depois da do
+     prédio. Andando na rua ou longe, ordena normal.
+  */
+  const profPredio = new Map();   // id do prédio -> profundidade (y projetado)
+  const filaPessoaY = (p, dY) => {
+    if (p.fazendaId == null) return dY;
+    const alvo = profPredio.get(p.fazendaId);
+    if (!alvo) return dY;
+    const b = alvo.pr;
+    const noLote = p.x >= b.tx * TILE && p.x < (b.tx + b.def.w) * TILE
+                && p.y >= b.ty * TILE && p.y < (b.ty + b.def.h) * TILE;
+    return noLote ? Math.max(dY, alvo.y + 0.02) : dY;
+  };
+
   const lista = [];
   for (const ch of visiveis)
     for (const n of ch.nos) {
@@ -10494,6 +10607,7 @@ function desenharVilaNormal() {
   for (const pr of jogo.predios) {
     if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
     const d = projetar(pr.cx, (pr.ty + pr.def.h) * TILE);
+    profPredio.set(pr.id, { y: d.y, pr });
     lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0 + corrigeX(pr), dy0:d.dy0 });
   }
   if (emDisputa())
@@ -10501,6 +10615,7 @@ function desenharVilaNormal() {
       for (const pr of v.predios) {
         if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
         const d = projetar(pr.cx, (pr.ty + pr.def.h) * TILE);
+        profPredio.set(pr.id, { y: d.y, pr });
         lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0 + corrigeX(pr), dy0:d.dy0 });
       }
       /*
@@ -10522,7 +10637,7 @@ function desenharVilaNormal() {
         if (faseDaIdade(p.idade) === FASE.CRIANCA) { if (criancasV >= MAX_CRIANCAS_NA_TELA) continue; criancasV++; }
         else { if (adultosV >= MAX_ADULTOS_NA_TELA) continue; adultosV++; }
         const d = projetar(p.x, p.y);
-        lista.push({ y:d.y, k:2, o:p, dx0:d.dx0, dy0:d.dy0 });
+        lista.push({ y:filaPessoaY(p, d.y), k:2, o:p, dx0:d.dx0, dy0:d.dy0 });
       }
     }
   {
@@ -10544,7 +10659,7 @@ function desenharVilaNormal() {
         adultosNaTela++;
       }
       const d = projetar(p.x, p.y);
-      lista.push({ y:d.y, k:2, o:p, dx0:d.dx0, dy0:d.dy0 });
+      lista.push({ y:filaPessoaY(p, d.y), k:2, o:p, dx0:d.dx0, dy0:d.dy0 });
     }
   }
   lista.sort((a, b) => a.y - b.y);

@@ -2812,6 +2812,66 @@ cada um centrado no lote, base dentro da rua nos quatro lados.
 
 ---
 
+## Prédio que cresce sai da esquina (motor de alinhamento)
+
+Reportado direto: "quando a fazenda pequena vira fazenda grande, ela
+invade a rua do canto superior direito; talvez deva montar um motor de
+posicionamento pra alinhar toda vez que um prédio aumentar de tamanho".
+
+Toda melhoria (fazenda→fazenda grande, casa→sobrado, sobrado→casarão,
+depósito→mercado) cresce +1 tile de largura, com o MESMO sprite 1,5× o
+lote. A busca antiga tentava crescer a partir do canto atual do lote —
+se o prédio estava numa ESQUINA (encostado em duas ruas), continuava na
+esquina, e a sobra de telhado do prédio maior passava por cima da rua
+lateral.
+
+`alinharMelhoria` (`index.html`) é o motor pedido: varre um quadrado de
+posições em volta e, entre as que cabem, encostam em rua e ainda cobrem
+parte do lote antigo, escolhe a de menor "atrito de rua" — e rua LATERAL
+(leste/oeste) pesa 3× mais que rua acima/abaixo, porque é a lateral que
+o telhado largo cruza feio; o beiral por cima da calçada de cima/baixo
+já era assim pra todo prédio. Empate, desempata pela menor distância de
+onde o prédio estava. Não usa a grade de quarteirão (`origemMalha`) de
+propósito: essa é a do jogador, e o mesmo código roda pra vila rival no
+contexto trocado, cuja malha tem outra origem — só `jogo.estradas`, que
+o contexto troca certo. Se o motor não achar nada, a busca antiga entra
+como reserva.
+
+Testado ao vivo: fazenda no canto NO de um quarteirão, melhorada — antes
+ficava com o lote cruzando a rua oeste; depois desliza um tile pro
+miolo, encosta só na rua norte, e o sprite maior não cruza rua nenhuma
+de lado.
+
+---
+
+## Aldeões menores, e na frente do prédio onde trabalham
+
+Dois pedidos sobre a gente:
+
+**"Estão grandes demais — 1/4 do tamanho, e suavize o acabamento."** Um
+aldeão de 34px do lado de um prédio que ocupa quase o quarteirão inteiro
+estava fora de escala. `ESCALA_PESSOA` (0,25) entra como fator único no
+`esc` de `desenharPessoa` — daí se propaga sozinho pra sombra, carga,
+faísca, cavalo e carroça, que já escalavam com `esc`. O anel de seleção
+virou proporcional ao aldeão (era fixo). Pro acabamento: a folha de
+sprites é reduzida à METADE uma vez no carregamento, com suavização
+(`imgPessoasSuave`) — desenhar direto num salto de ~6× saía áspero
+mesmo com o filtro do canvas ligado; dois passos suaves (48→24→~8px)
+saem macios.
+
+**"Fiquem na FRENTE do prédio onde trabalham — hoje entram atrás e
+embaixo."** O sprite do prédio cobre o lote inteiro e ordena pela
+testada (frente do lote), então um lavrador no meio da própria roça
+ordenava ATRÁS do celeiro e sumia. `filaPessoaY` conserta na ordenação:
+se o aldeão está DE FATO pisando no lote do prédio onde trabalha
+(`p.fazendaId` — lavoura e cais mantêm o trabalhador do lado de fora), a
+profundidade dele é empurrada pra logo depois da do prédio. Andando na
+rua ou longe do posto, ordena normal. Testado ao vivo: trabalhador no
+fundo do lote, atrás do casarão da fazenda — antes sumia por completo,
+depois aparece em pé na frente.
+
+---
+
 ## Estrutura
 
 ```
