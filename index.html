@@ -490,8 +490,9 @@ const SUB   = 2;            // amostras de terreno por tile (suavização)
 
 // Textura de chão (fotos do usuário). Quantos tiles a foto cobre antes de
 // repetir, e o quão forte ela entra por cima do terreno / da rua procedural.
-const GRAMA_TILES = 18, GRAMA_ALFA = 0.72;
-const RUA_TILES = 20;
+const GRAMA_TILES = 1, GRAMA_ALFA = 0.72;
+const RUA_TILES = 1;
+let caminhoGramaCache = null;   // Path2D dos tiles de grama à vista, entre quadros
 
 /*
    A PROJEÇÃO ISOMÉTRICA.
@@ -1074,8 +1075,8 @@ function acharNoLonge(x, y, tipo, raio, qualquerLugar) {
    vizinho — o transbordamento da Fazenda Grande que começou tudo isto.
 
    Cada cadeia tem os elos com a MESMA pegada:
-     casa = sobrado = predio(Casarão) = 5x5
-     deposito = mercado               = 5x4
+     casa = sobrado = predio(Casarão) = 3x3   (pedido do usuário)
+     deposito = mercado               = 3x2   (pedido do usuário)
      fazenda = fazendaGrande          = 6x5
    Prédio sem cadeia: pegada do próprio sprite. O quarteirão foi pra 18x18
    pra absorver isso (ver PERIODO_MALHA).
@@ -1086,11 +1087,11 @@ const PREDIO = {
     pop:6, entrega:true, cor:'#b08a52', teto:'#8d5f38',
   },
   casa: {
-    nome:'Casa', icone:'🏠', w:5, h:5, tempo:70, custo:{ madeira:30 },
+    nome:'Casa', icone:'🏠', w:3, h:3, tempo:70, custo:{ madeira:30 },
     pop:5, moradia:true, cor:'#c2a271', teto:'#9a4f3c',
   },
   deposito: {
-    nome:'Depósito', icone:'📦', w:5, h:4, tempo:110, custo:{ madeira:80 },
+    nome:'Depósito', icone:'📦', w:3, h:2, tempo:110, custo:{ madeira:80 },
     pop:0, entrega:true, cor:'#a98d63', teto:'#6d5a3c',
   },
   fazenda: {
@@ -1110,18 +1111,18 @@ const PREDIO = {
     pop:0, fazenda:true, pesca:true, beiraDagua:true, produz:'barco', cor:'#9a8a72', teto:'#5d6b74',
   },
   mercado: {
-    nome:'Mercado', icone:'🏪', w:5, h:4, tempo:160, custo:{ madeira:120, pedra:40 },
+    nome:'Mercado', icone:'🏪', w:3, h:2, tempo:160, custo:{ madeira:120, pedra:40 },
     pop:0, entrega:true, comercio:true, posto:'comerciante', cor:'#c4a06a', teto:'#8c3f3a',
   },
 
   /* --- moradia que cresce para cima: é assim que a vila ganha gente sem
          comer o mapa inteiro de casinhas --- */
   sobrado: {
-    nome:'Sobrado', icone:'🏘️', w:5, h:5, tempo:190, custo:{ madeira:180, pedra:60 },
+    nome:'Sobrado', icone:'🏘️', w:3, h:3, tempo:190, custo:{ madeira:180, pedra:60 },
     pop:9, moradia:true, andares:2, cor:'#c9b087', teto:'#8e4438',
   },
   predio: {
-    nome:'Casarão', icone:'🏢', w:5, h:5, tempo:280, custo:{ madeira:300, pedra:160 },
+    nome:'Casarão', icone:'🏢', w:3, h:3, tempo:280, custo:{ madeira:300, pedra:160 },
     pop:14, moradia:true, andares:3, cor:'#bfae90', teto:'#5b6a63',
   },
 
@@ -7875,11 +7876,13 @@ function sombraNoChao(g, x, y, rx, ry, forca) {
 /* ------------------------------------------------------------- estradas --- */
 
 // Alinha o padrão de textura de chão ao MUNDO (não ao tile/chunk), pra
-// costurar de um tile pro outro. 'tiles' = quantos tiles a foto cobre.
-function alinharPadrao(padrao, wx, wy, tiles) {
-  const esc = tiles * TILE / padrao.w, per = padrao.w * esc;
+// costurar de um tile pro outro. O padrão já vem no tamanho certo (ver
+// 'imgChao.onload'), então aqui é só um translate — 'fill' de padrão sem
+// escala é MUITO mais rápido que com escala pequena.
+function alinharPadrao(padrao, wx, wy) {
+  const w = padrao.w;
   padrao.pat.setTransform(new DOMMatrix(
-    [esc, 0, 0, esc, -(((wx % per) + per) % per), -(((wy % per) + per) % per)]));
+    [1, 0, 0, 1, -(((wx % w) + w) % w), -(((wy % w) + w) % w)]));
   return padrao.pat;
 }
 
@@ -7891,7 +7894,7 @@ function desenharEstrada(g, tx, ty) {
 
   if (padraoRua) {
     // A foto de pedra, o tile inteiro, alinhada ao mundo.
-    g.fillStyle = alinharPadrao(padraoRua, x, y, RUA_TILES);
+    g.fillStyle = alinharPadrao(padraoRua, x, y);
     g.fillRect(x, y, TILE, TILE);
   } else {
     // Rota de reserva (foto não carregou): o calçamento vetorial de sempre.
@@ -7953,7 +7956,7 @@ function desenharEstradaRival(g, tx, ty, temRua, cor, vilaId) {
     if (padraoRua) {
       // Mesma foto de pedra da sua rua, alinhada ao mundo (o tile local 0,0
       // representa o mundo tx*TILE,ty*TILE), só que tingida na cor da vila.
-      R.fillStyle = alinharPadrao(padraoRua, tx * TILE, ty * TILE, RUA_TILES);
+      R.fillStyle = alinharPadrao(padraoRua, tx * TILE, ty * TILE);
       R.fillRect(0, 0, TILE, TILE);
     } else {
       R.fillStyle = 'rgba(120,101,72,.55)';
@@ -9147,13 +9150,28 @@ const imgChao = new Image();
 let folhaChaoPronta = false, padraoGrama = null, padraoRua = null;
 imgChao.onload = () => {
   folhaChaoPronta = true;
-  // Recortes prontos como padrão repetível — um só, reaproveitado por chunk.
-  for (const [nome, q] of [['grama', MAPA_CHAO.grama], ['rua', MAPA_CHAO.rua]]) {
-    const c = document.createElement('canvas'); c.width = q[2]; c.height = q[3];
-    c.getContext('2d').drawImage(imgChao, q[0], q[1], q[2], q[3], 0, 0, q[2], q[3]);
+  // O padrão já sai no TAMANHO FINAL (GRAMA_TILES/RUA_TILES × TILE) — a foto
+  // é reduzida uma vez pra esse tamanho e vira um 'repeat' sem escala, que o
+  // 'fill' desenha rápido mesmo cobrindo a tela inteira.
+  for (const [nome, q, tiles] of [['grama', MAPA_CHAO.grama, GRAMA_TILES], ['rua', MAPA_CHAO.rua, RUA_TILES]]) {
+    const lado = Math.max(2, Math.round(tiles * TILE));
+    const c = document.createElement('canvas'); c.width = lado; c.height = lado;
+    const cg = c.getContext('2d');
+    cg.imageSmoothingEnabled = true;
+    if ('imageSmoothingQuality' in cg) cg.imageSmoothingQuality = 'high';
+    const menor = Math.min(q[2], q[3]);
+    if (lado <= menor) {
+      // Azulejo menor que a foto: RECORTA um quadrado do CENTRO em resolução
+      // nativa (nada de espremer a foto inteira num quadradinho e virar borra).
+      cg.drawImage(imgChao, q[0] + (q[2] - lado) / 2, q[1] + (q[3] - lado) / 2, lado, lado, 0, 0, lado, lado);
+    } else {
+      // Azulejo maior que a foto: cobre o quadrado mantendo a proporção.
+      const s = lado / menor;
+      cg.drawImage(imgChao, q[0], q[1], q[2], q[3], 0, 0, q[2] * s, q[3] * s);
+    }
     const p = document.createElement('canvas').getContext('2d').createPattern(c, 'repeat');
-    if (nome === 'grama') padraoGrama = { pat: p, w: q[2], h: q[3] };
-    else padraoRua = { pat: p, w: q[2], h: q[3] };
+    if (nome === 'grama') padraoGrama = { pat: p, w: lado };
+    else padraoRua = { pat: p, w: lado };
   }
   chunks.clear();                 // rebaka o terreno já visto com a grama
   if (typeof cacheEstradaTex !== 'undefined' && cacheEstradaTex) cacheEstradaTex.clear();
@@ -9258,19 +9276,20 @@ function caixaDoPredio(pr, q, dx0, dy0) {
      crescer. Resultado: tudo ficou pequeno de novo, o problema que o
      ESCALA_PREDIO existia pra resolver.
   */
-  // O Centro (castelo, lote 16x16) e o jardim (Praça, lote 7x5) têm arte
-  // grande de propósito e preenchem o próprio lote — não crescem "1,5x o
-  // padrão". Centro: escala 1 (era 1,445 → 1,7; a torre continuava passando
-  // do quarteirão, pedido do usuário). Os demais crescem 1,5x, como sempre.
-  const escala = pr.chave === 'centro' ? (w / q[4])
-               : pr.def.jardim         ? Math.min(2.2, 1.4 * w / q[4])
+  // Escalas especiais:
+  //  - Centro: escala 1 (largura do lote cravada). E o laço de desenho o
+  //    ancora no CENTRO do losango, não na ponta — o castelo fica centrado.
+  //  - jardim (Praça): preenche o lote.
+  //  - Fazenda Grande: +85% sobre o padrão, a pedido do usuário.
+  const escala = pr.chave === 'centro'        ? (w / q[4])
+               : pr.def.jardim                ? Math.min(2.2, 1.4 * w / q[4])
+               : pr.chave === 'fazendaGrande' ? ESCALA_PREDIO * 1.85
                : ESCALA_PREDIO;
   const dw = q[4] * escala, dh = q[5] * escala;
-  // O laço de desenho ancora o sprite na PONTA INFERIOR do losango do lote
-  // (a esquina SE, o ponto mais baixo/frente na tela — pedido do usuário) via
-  // 'corrigeX' = w/2. Aqui a base do sprite pousa nessa ponta e ele cresce
-  // pra cima: 'deslocaV = h - dh'. Sem mais "centraliza se couber".
-  const deslocaV = h - dh;
+  // Vertical: o laço ancora o sprite na PONTA INFERIOR do losango (esquina SE)
+  // e a base pousa nela crescendo pra cima ('deslocaV = h - dh'). O Centro é
+  // a exceção: ancorado no centro do losango, o sprite fica CENTRADO nele.
+  const deslocaV = pr.chave === 'centro' ? (h - dh) / 2 : h - dh;
   return {
     dx: pr.tx * TILE + (w - dw) / 2 + dx0,
     dy: pr.ty * TILE + deslocaV + dy0,
@@ -9331,12 +9350,14 @@ function janelasDe(pr) {
 function desenharPredio(g, pr, dx0, dy0) {
   dx0 = dx0 || 0; dy0 = dy0 || 0;
   const w = pr.def.w * TILE, h = pr.def.h * TILE;
+  // 'x,y' é o canto do lote projetado (âncora SE + corrigeX já em dx0/dy0) —
+  // referência pros detalhes vetoriais e pras barrinhas de progresso.
+  let x = pr.tx * TILE + dx0, y = pr.ty * TILE + dy0;
 
   if (pr.progresso < 1) {
-    // Canteiro: um retângulo sobre o CENTRO do losango do lote (a âncora SE
-    // que 'dx0/dy0' carregam serve pro sprite pronto, não pra este marcador).
+    // Canteiro: um retângulo sobre o CENTRO do losango do lote.
     const ci = mundoParaIso(pr.cx, pr.cy);
-    const x = ci.x - w / 2, y = ci.y - h / 2;
+    x = ci.x - w / 2; y = ci.y - h / 2;
     // Fundação marcada, andaime e barra de progresso.
     g.fillStyle = 'rgba(150,128,92,.32)';
     g.fillRect(x + 3, y + 3, w - 6, h - 6);
@@ -9391,8 +9412,7 @@ function desenharPredio(g, pr, dx0, dy0) {
     }
   } else {
     // Rota de reserva (folha ainda não carregou): desenho vetorial, ancorado
-    // como o sprite — 'dx0/dy0' + 'corrigeX' já vêm da esquina SE do lote.
-    const x = pr.tx * TILE + dx0, y = pr.ty * TILE + dy0;
+    // como o sprite — 'x,y' (topo da função) já vem da esquina SE do lote.
     const vari = varianteDe(pr);
     const sp = spritePredio(pr.chave, vari);
     g.drawImage(sp.cv, x - sp.ax, y - sp.ay, sp.larg, sp.alt);
@@ -9612,6 +9632,22 @@ const linhaDoPersonagem = p =>
    posição foi ajustada.
 */
 function desenharPessoa(g, pReal, selecionado, tingir, dx0, dy0) {
+  // LOD: no zoom de vila aberto (z < 0,95) o aldeão fecha em ~10px — o sprite
+  // inteiro não se lê e desenhar centenas deles comia metade do quadro (o
+  // "trava ao dar zoom" relatado). Aí ele vira um respingo: sombra + corpo.
+  if (cam.z < 0.95) {
+    const lx = pReal.x + (dx0 || 0), ly = pReal.y + (dy0 || 0);
+    const alt = (faseDaIdade(pReal.idade) === FASE.CRIANCA ? 0.78 : 1) * ESCALA_PESSOA * DESENHO_PESSOA;
+    g.fillStyle = 'rgba(0,0,0,.22)';
+    g.fillRect(lx - 1.7, ly + 0.6, 3.8, 1.9);
+    g.fillStyle = tingir || (linhaDoPersonagem(pReal) === 1 ? '#7c5c47' : '#69502f');
+    g.fillRect(lx - 1.5, ly - alt * 0.72, 3.1, alt * 0.78);
+    if (selecionado) {
+      g.strokeStyle = 'rgba(150,235,140,.9)'; g.lineWidth = 1;
+      g.strokeRect(lx - 2.6, ly - alt * 0.85, 5.4, alt * 1.05);
+    }
+    return;
+  }
   const p = (dx0 || dy0) ? Object.assign({}, pReal, { x: pReal.x + (dx0 || 0), y: pReal.y + (dy0 || 0) }) : pReal;
   const montado = p.veiculo === 'cavalo';
   const esc = (faseDaIdade(p.idade) === FASE.CRIANCA ? 0.78 : 1) * ESCALA_PESSOA;
@@ -10530,27 +10566,33 @@ function desenharVilaNormal() {
   const tx1 = Math.ceil((camX + vw) / TILE), ty1 = Math.ceil((camY + vh) / TILE);
 
   // A FOTO DE GRAMADO, AO VIVO. Assá-la no chunk (672px = 1:1 com o mundo)
-  // borrava tudo no zoom. Aqui ela entra na resolução da tela, alinhada ao
-  // mundo, nos tiles CAMPO/FLORESTA que a câmera alcança — inclusive os que
-  // estão sob prédio (o quintal do lote é grama de verdade; o sprite do
-  // prédio desenha por cima depois). Só a rua fica de fora (tem foto
-  // própria). A base procedural do chunk continua embaixo (sombra de
-  // vale/relevo, tinta de estação); a foto entra por cima com alfa.
-  if (padraoGrama && cam.z > 0.34) {
-    const cg = new Path2D();
-    for (let ty = ty0; ty <= ty1; ty++)
-      for (let tx = tx0; tx <= tx1; tx++) {
-        const b = biomaEm(tx, ty);
-        if ((b === B.CAMPO || b === B.FLORESTA) && !jogo.estradas.has(nk(tx, ty)))
-          cg.rect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
-      }
+  // borrava tudo no zoom. Aqui ela entra alinhada ao mundo, nos tiles CAMPO/
+  // FLORESTA que a câmera alcança — inclusive sob prédio (o quintal do lote é
+  // grama; o sprite desenha por cima depois). Só a rua fica de fora. A base
+  // procedural do chunk continua embaixo (sombra de relevo, tinta de estação).
+  //
+  // Só no zoom de vila (>= 0,5): mais longe a textura fica sub-pixel e o
+  // laço de tiles pesa à toa. O caminho é guardado entre quadros — só
+  // remonta quando a faixa de tiles à vista muda.
+  if (padraoGrama && cam.z >= 0.5) {
+    const chave = tx0 + ':' + ty0 + ':' + tx1 + ':' + ty1 + ':' + jogo.estradas.size;
+    if (!caminhoGramaCache || caminhoGramaCache.chave !== chave) {
+      const cg = new Path2D();
+      for (let ty = ty0; ty <= ty1; ty++)
+        for (let tx = tx0; tx <= tx1; tx++) {
+          const b = biomaEm(tx, ty);
+          if ((b === B.CAMPO || b === B.FLORESTA) && !jogo.estradas.has(nk(tx, ty)))
+            cg.rect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
+        }
+      caminhoGramaCache = { chave, cg };
+    }
     ctx.save();
-    ctx.fillStyle = alinharPadrao(padraoGrama, 0, 0, GRAMA_TILES);
+    ctx.fillStyle = alinharPadrao(padraoGrama, 0, 0);
     ctx.globalAlpha = GRAMA_ALFA;
-    ctx.fill(cg);
+    ctx.fill(caminhoGramaCache.cg);
     ctx.globalCompositeOperation = 'overlay';
     ctx.globalAlpha = 0.4;
-    ctx.fill(cg);
+    ctx.fill(caminhoGramaCache.cg);
     ctx.restore();
   }
 
@@ -10665,24 +10707,34 @@ function desenharVilaNormal() {
   /*
      ÂNCORA DO PRÉDIO = ESQUINA SE DO LOTE (a ponta INFERIOR do losango —
      o ponto mais baixo/à frente na tela). Pedido do usuário: "os prédios
-     se alinharem pela extremidade inferior do losango". 'projetar' recebe
-     essa esquina; 'corrigeX' = w/2 traz o sprite de volta pro centro
-     horizontal do losango (a projeção mistura X e Y, então a esquina SE
-     projeta meio lote à direita do centro visual). 'caixaDoPredio' põe a
-     BASE do sprite exatamente nessa ponta e cresce pra cima.
+     se alinharem pela extremidade inferior do losango". 'corrigeX' = w/2
+     traz o sprite de volta pro centro horizontal do losango. O CENTRO
+     (castelo) foge dessa regra: fica CENTRADO no losango (âncora no centro
+     do lote, corrigeX = 0), ver 'caixaDoPredio'.
   */
-  const corrigeX = pr => pr.def.w * TILE / 2;
+  const anchoraPredio = pr => pr.chave === 'centro'
+    ? [pr.cx, pr.cy]
+    : [(pr.tx + pr.def.w) * TILE, (pr.ty + pr.def.h) * TILE];
+  const corrigeX = pr => pr.chave === 'centro' ? 0 : pr.def.w * TILE / 2;
+  /*
+     CULL DO PRÉDIO — a margem é grande de propósito. O sprite é ancorado na
+     ponta do losango e CRESCE PRA CIMA (até ~420px no castelo); um prédio
+     cujo centro já saiu da tela pode ter o topo do telhado ainda à vista.
+     Margem curta = "os prédios somem" ao dar zoom, relatado pelo usuário.
+  */
+  const forasDoQuadro = (cx, cy) =>
+    cx < camX - 400 || cx > camXmax + 760 || cy < camY - 400 || cy > camYmax + 820;
   for (const pr of jogo.predios) {
-    if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
-    const d = projetar((pr.tx + pr.def.w) * TILE, (pr.ty + pr.def.h) * TILE);
+    if (forasDoQuadro(pr.cx, pr.cy)) continue;
+    const d = projetar(...anchoraPredio(pr));
     profPredio.set(pr.id, { y: d.y, pr });
     lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0 + corrigeX(pr), dy0:d.dy0 });
   }
   if (emDisputa())
     for (const v of rivaisVivas()) {
       for (const pr of v.predios) {
-        if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
-        const d = projetar((pr.tx + pr.def.w) * TILE, (pr.ty + pr.def.h) * TILE);
+        if (forasDoQuadro(pr.cx, pr.cy)) continue;
+        const d = projetar(...anchoraPredio(pr));
         profPredio.set(pr.id, { y: d.y, pr });
         lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0 + corrigeX(pr), dy0:d.dy0 });
       }

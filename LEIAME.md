@@ -3136,6 +3136,32 @@ repetir.
 - **`GRAMA_TILES` 9 → 18, `RUA_TILES` 10 → 20.** Azulejo maior: textura
   em resolução ~1:1 (sem ampliar nem reduzir) e repetição bem mais rara.
 
+### Terceira passada (pedido do usuário)
+
+- **`GRAMA_TILES` e `RUA_TILES` = 1.** O azulejo virou um **recorte de
+  28×28 do CENTRO da foto, em resolução nativa** (espremer a foto inteira
+  num quadradinho de 28px virava borra escura que tapava a cidade). Cada
+  tile é o mesmo recorte → textura fina e uniforme, sem repetição visível.
+  O padrão agora é montado no tamanho final em `imgChao.onload` (um
+  `repeat` sem escala; `fill` de padrão sem escala é MUITO mais rápido).
+- **Fazenda Grande +85%** — escala do sprite `ESCALA_PREDIO × 1,85` em
+  `caixaDoPredio`.
+- **O Centro foge da regra da ponta.** Volta a ser ancorado no CENTRO do
+  losango (`anchoraPredio`/`corrigeX` tratam `chave === 'centro'` à
+  parte) e `deslocaV = (h-dh)/2` o centraliza. Escala 1.
+- **Casa/Sobrado/Casarão = 3×3; Depósito/Mercado = 3×2** (mantendo a
+  escala do sprite). Cidade bem mais densa.
+- **"Os prédios somem / trava ao dar zoom" — consertado.**
+  - *Somem:* a margem de corte do prédio era ~150px; com a âncora na
+    ponta e o sprite crescendo pra cima (até ~420px no castelo), um
+    prédio cujo centro saiu da tela ainda tinha telhado à vista.
+    `forasDoQuadro` agora usa margem de 400–820px.
+  - *Trava:* medido — no zoom de vila aberto, desenhar centenas de
+    aldeões (sprite completo a ~10px) comia ~16ms/quadro. Abaixo de
+    `z 0,95` o aldeão vira um respingo (sombra + corpo, 2 `fillRect`).
+    O caminho da grama também passou a ser guardado entre quadros.
+    Resultado: de ~27–37ms pra ~5–15ms na faixa de zoom que travava.
+
 ---
 
 ## Estrutura
