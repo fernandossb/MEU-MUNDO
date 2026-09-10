@@ -490,8 +490,8 @@ const SUB   = 2;            // amostras de terreno por tile (suavização)
 
 // Textura de chão (fotos do usuário). Quantos tiles a foto cobre antes de
 // repetir, e o quão forte ela entra por cima do terreno / da rua procedural.
-const GRAMA_TILES = 9, GRAMA_ALFA = 0.72;
-const RUA_TILES = 10;
+const GRAMA_TILES = 18, GRAMA_ALFA = 0.72;
+const RUA_TILES = 20;
 
 /*
    A PROJEÇÃO ISOMÉTRICA.
@@ -9260,27 +9260,17 @@ function caixaDoPredio(pr, q, dx0, dy0) {
   */
   // O Centro (castelo, lote 16x16) e o jardim (Praça, lote 7x5) têm arte
   // grande de propósito e preenchem o próprio lote — não crescem "1,5x o
-  // padrão". A arte do castelo é quase quadrada (render 3/4), e um losango
-  // é 2:1. O 1,445 (era 1,7, menos 15% a pedido do usuário: a torre estava
-  // passando do quarteirão) casa a largura do lote sem a torre estourar a
-  // quadra. Os demais crescem 1,5x, como sempre.
-  const escala = pr.chave === 'centro' ? (1.445 * w / q[4])
-               : pr.def.jardim         ? Math.min(2.6, 1.7 * w / q[4])
+  // padrão". Centro: escala 1 (era 1,445 → 1,7; a torre continuava passando
+  // do quarteirão, pedido do usuário). Os demais crescem 1,5x, como sempre.
+  const escala = pr.chave === 'centro' ? (w / q[4])
+               : pr.def.jardim         ? Math.min(2.2, 1.4 * w / q[4])
                : ESCALA_PREDIO;
   const dw = q[4] * escala, dh = q[5] * escala;
-  // Vertical: prédio alto (dh > h) continua ancorado na base, crescendo pra
-  // cima do próprio lote — é o que faz casa e castelo parecerem em pé. Mas
-  // prédio que já cabe no lote (dh <= h) não tem por que colar na base —
-  // centralizado, como a horizontal já é, fica no lugar certo.
-  //
-  // O Centro é a exceção: a âncora que o laço de desenho passa é a TESTADA
-  // (frente do lote), que num lote 16x16 projeta lá no MEIO do losango — o
-  // castelo ficava empurrado pro fundo da quadra, com meio quarteirão de
-  // grama vazia na frente. Somar w/4 tiles desce a base do castelo até a
-  // ponta da frente do losango, e ele passa a preencher a quadra inteira.
-  const folgaV = h - dh;
-  let deslocaV = folgaV >= 0 ? folgaV / 2 : folgaV;
-  if (pr.chave === 'centro') deslocaV = folgaV + pr.def.w * TILE / 4;
+  // O laço de desenho ancora o sprite na PONTA INFERIOR do losango do lote
+  // (a esquina SE, o ponto mais baixo/frente na tela — pedido do usuário) via
+  // 'corrigeX' = w/2. Aqui a base do sprite pousa nessa ponta e ele cresce
+  // pra cima: 'deslocaV = h - dh'. Sem mais "centraliza se couber".
+  const deslocaV = h - dh;
   return {
     dx: pr.tx * TILE + (w - dw) / 2 + dx0,
     dy: pr.ty * TILE + deslocaV + dy0,
@@ -9341,10 +9331,13 @@ function janelasDe(pr) {
 function desenharPredio(g, pr, dx0, dy0) {
   dx0 = dx0 || 0; dy0 = dy0 || 0;
   const w = pr.def.w * TILE, h = pr.def.h * TILE;
-  const x = pr.tx * TILE + dx0, y = pr.ty * TILE + dy0;
 
   if (pr.progresso < 1) {
-    // Canteiro: fundação marcada, andaime e barra de progresso.
+    // Canteiro: um retângulo sobre o CENTRO do losango do lote (a âncora SE
+    // que 'dx0/dy0' carregam serve pro sprite pronto, não pra este marcador).
+    const ci = mundoParaIso(pr.cx, pr.cy);
+    const x = ci.x - w / 2, y = ci.y - h / 2;
+    // Fundação marcada, andaime e barra de progresso.
     g.fillStyle = 'rgba(150,128,92,.32)';
     g.fillRect(x + 3, y + 3, w - 6, h - 6);
     g.strokeStyle = 'rgba(232,206,150,.85)'; g.lineWidth = 2; g.setLineDash([7, 5]);
@@ -9397,6 +9390,9 @@ function desenharPredio(g, pr, dx0, dy0) {
       g.drawImage(folha, q[0], q[1], q[2], q[3], c.dx, c.dy, c.dw, c.dh);
     }
   } else {
+    // Rota de reserva (folha ainda não carregou): desenho vetorial, ancorado
+    // como o sprite — 'dx0/dy0' + 'corrigeX' já vêm da esquina SE do lote.
+    const x = pr.tx * TILE + dx0, y = pr.ty * TILE + dy0;
     const vari = varianteDe(pr);
     const sp = spritePredio(pr.chave, vari);
     g.drawImage(sp.cv, x - sp.ax, y - sp.ay, sp.larg, sp.alt);
@@ -9701,7 +9697,9 @@ function janelaAcesa(g, pr, dx0, dy0) {
   const p = pr.vila ? (vilaPorId(pr.vila) || { pessoas: [] }).pessoas.find(x => x.id === pr.trabalhador)
                      : pessoaPorId(pr.trabalhador);
   if (!p || p.dentro !== pr.id) return;
-  const x = pr.cx + (dx0 || 0), y = (pr.ty + pr.def.h) * TILE - 7 + (dy0 || 0);
+  // Com a âncora na ponta SE do losango, a base do sprite fica lá embaixo;
+  // sobe meia altura de lote pra a janela pousar na PAREDE, não no chão.
+  const x = pr.cx + (dx0 || 0), y = (pr.ty + pr.def.h) * TILE - pr.def.h * TILE * 0.5 + (dy0 || 0);
   const brilho = 0.42 + 0.30 * (Math.sin(agora / 430) + 1) / 2;
   g.fillStyle = 'rgba(255,206,116,' + brilho.toFixed(2) + ')';
   rrect(g, x - 4.5, y - 8, 9, 9.5, 2);
@@ -10533,15 +10531,17 @@ function desenharVilaNormal() {
 
   // A FOTO DE GRAMADO, AO VIVO. Assá-la no chunk (672px = 1:1 com o mundo)
   // borrava tudo no zoom. Aqui ela entra na resolução da tela, alinhada ao
-  // mundo, só nos tiles CAMPO/FLORESTA que a câmera alcança e que não estão
-  // sob prédio nem rua. A base procedural do chunk continua embaixo (dá a
-  // sombra de vale/relevo); a foto entra por cima com alfa.
+  // mundo, nos tiles CAMPO/FLORESTA que a câmera alcança — inclusive os que
+  // estão sob prédio (o quintal do lote é grama de verdade; o sprite do
+  // prédio desenha por cima depois). Só a rua fica de fora (tem foto
+  // própria). A base procedural do chunk continua embaixo (sombra de
+  // vale/relevo, tinta de estação); a foto entra por cima com alfa.
   if (padraoGrama && cam.z > 0.34) {
     const cg = new Path2D();
     for (let ty = ty0; ty <= ty1; ty++)
       for (let tx = tx0; tx <= tx1; tx++) {
         const b = biomaEm(tx, ty);
-        if ((b === B.CAMPO || b === B.FLORESTA) && !jogo.estradas.has(nk(tx, ty)) && !ocupado.has(nk(tx, ty)))
+        if ((b === B.CAMPO || b === B.FLORESTA) && !jogo.estradas.has(nk(tx, ty)))
           cg.rect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
       }
     ctx.save();
@@ -10663,21 +10663,18 @@ function desenharVilaNormal() {
       lista.push({ y:p.y, k:0, o:n, px:p.x, py:p.y });
     }
   /*
-     BUG ACHADO AO VIVO — "a base dos prédios invade a rua, sempre na mesma
-     direção (superior esquerda)". A âncora de projeção do prédio é (centro X
-     do lote, base Y do lote); como 'mundoParaIso' mistura X e Y, esse ponto
-     NÃO cai no centro horizontal do losango que o lote vira na tela — cai
-     meio lote (def.h/2 tiles) à esquerda dele, e o sprite, centrado nessa
-     âncora, herda o mesmo deslocamento pra esquerda (que em isométrico lê
-     como "pra cima e pra esquerda"). 'corrigeX' recentra o desenho no
-     losango de verdade — SÓ a horizontal: profundidade (a ordenação, 'd.y')
-     e a vertical ('d.dy0') não mudam, então nada de ordem de desenho nem de
-     altura de base se mexe.
+     ÂNCORA DO PRÉDIO = ESQUINA SE DO LOTE (a ponta INFERIOR do losango —
+     o ponto mais baixo/à frente na tela). Pedido do usuário: "os prédios
+     se alinharem pela extremidade inferior do losango". 'projetar' recebe
+     essa esquina; 'corrigeX' = w/2 traz o sprite de volta pro centro
+     horizontal do losango (a projeção mistura X e Y, então a esquina SE
+     projeta meio lote à direita do centro visual). 'caixaDoPredio' põe a
+     BASE do sprite exatamente nessa ponta e cresce pra cima.
   */
-  const corrigeX = pr => pr.def.h * TILE / 2;
+  const corrigeX = pr => pr.def.w * TILE / 2;
   for (const pr of jogo.predios) {
     if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
-    const d = projetar(pr.cx, (pr.ty + pr.def.h) * TILE);
+    const d = projetar((pr.tx + pr.def.w) * TILE, (pr.ty + pr.def.h) * TILE);
     profPredio.set(pr.id, { y: d.y, pr });
     lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0 + corrigeX(pr), dy0:d.dy0 });
   }
@@ -10685,7 +10682,7 @@ function desenharVilaNormal() {
     for (const v of rivaisVivas()) {
       for (const pr of v.predios) {
         if (pr.cx < camX - 140 || pr.cx > camX + vw + 140 || pr.cy < camY - 160 || pr.cy > camY + vh + 160) continue;
-        const d = projetar(pr.cx, (pr.ty + pr.def.h) * TILE);
+        const d = projetar((pr.tx + pr.def.w) * TILE, (pr.ty + pr.def.h) * TILE);
         profPredio.set(pr.id, { y: d.y, pr });
         lista.push({ y:d.y, k:1, o:pr, dx0:d.dx0 + corrigeX(pr), dy0:d.dy0 });
       }

@@ -3113,11 +3113,28 @@ rua encontra terra. `desenharEstradaRival` idem, tingido na cor da vila.
 `RUA_TILES`/`GRAMA_TILES` controlam de quantos tiles é o azulejo antes de
 repetir.
 
-**Castelo −15%.** A escala do Centro em `caixaDoPredio` caiu de 1,7 pra
-**1,445** (`1,7 × 0,85`) — a torre estava passando do quarteirão.
-
 **Peso:** +~1MB de base64 (index.html ~9,9MB). Se apertar, dá pra baixar
 `LARG` em `montar-chao.js` de 560 pra ~460.
+
+### Segunda passada (pedido do usuário)
+
+- **Grama também no lote do prédio.** O laço da grama parou de pular os
+  tiles `ocupado` — o quintal de todo lote agora é grama de verdade; o
+  sprite do prédio desenha por cima depois.
+- **Centro escala 1** (era 1,445). A torre continuava passando do
+  quarteirão. Agora o castelo fica contido na quadra, com folga de grama
+  em volta.
+- **Âncora do prédio na ponta INFERIOR do losango.** Antes o sprite era
+  ancorado na testada (frente do lote), que projeta no MEIO do losango.
+  Agora `projetar` recebe a esquina **SE** do lote (o ponto mais baixo/à
+  frente na tela), `corrigeX` virou `w/2`, e `deslocaV = h - dh` põe a
+  base do sprite nessa ponta — sem mais "centraliza se couber". O prédio
+  passa a sentar na frente do próprio lote, com o quintal atrás.
+  `janelaAcesa` sobe meia altura de lote pra a janela pousar na parede;
+  o marcador de canteiro usa o centro do losango (a âncora SE é só pro
+  sprite pronto).
+- **`GRAMA_TILES` 9 → 18, `RUA_TILES` 10 → 20.** Azulejo maior: textura
+  em resolução ~1:1 (sem ampliar nem reduzir) e repetição bem mais rara.
 
 ---
 
