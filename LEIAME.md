@@ -3028,6 +3028,62 @@ Fase 3 ainda vai sobrar leve ampliação — se incomodar, pede fonte
 
 ---
 
+## Quarteirão 18×18 e lote pela forma final
+
+Fases 2 e 3 da reforma, juntas (uma depende da outra: lote grande sem
+quarteirão grande espremeria a cidade).
+
+**O lote é a caixa do MAIOR sprite da cadeia de evolução** (pedido
+explícito do usuário). A Fazenda já nasce **6×5** — a pegada da Fazenda
+Grande, com folga. Casa/Sobrado/Casarão são as três **5×5**;
+Depósito/Mercado, **5×4**. Evoluir virou **troca de arte no mesmo
+lugar**: `melhorarPredio` não reposiciona mais nada. Sumiram, de vez:
+`alinharMelhoria` (o "motor de alinhamento" que varria posições em
+volta), `calcularReservaDeMelhoria` + os campos `reservaTx`/`reservaW` +
+`rtx`/`rw` no save, e o aviso "Não há espaço em volta". E como o sprite
+(1,5× a arte) agora **cabe dentro do lote**, ele parou de invadir o
+vizinho — o transbordamento da Fazenda Grande que começou toda esta
+conversa. Medido numa cidade de 368 prédios gerada no automático: **zero
+lotes se sobrepondo**.
+
+**`PERIODO_MALHA` foi de 9 pra 18** (rua, 17 de quarteirão, rua). Quase
+tudo que lê a grade (`quarteiraoDe`, `ladoDoQuarteirao`, `anelCompleto`,
+`quarteiroesPorPerto`, minimapa, planeta, fundação da vila rival) deriva
+de `PERIODO_MALHA` e acompanhou sozinho. `origemMalha` e `ruaFundadora`
+usam `RECUO_CENTRO = 9` pra encaixar o Centro no canto noroeste do
+quarteirão dele.
+
+**Prédio só no anel; jardim no meio.** `posicoesNoQuarteirao` continua
+devolvendo as 4 testadas, agora descartando qualquer lote que cruze a
+**reserva do jardim** — um retângulo central do tamanho da Praça.
+`reservaDoJardim`/`posicaoCentralNoQuarteirao` são as novas funções. A
+**Praça virou o jardim** (`def.jardim`): uma por quarteirão fechado e da
+vila, sempre no centro, sem trabalhador, sem encostar em rua
+(`precisaEncostarNaRua` é a checagem nova, que também já cobria o cais).
+Colocação manual da praça trava no centro do quarteirão sob a câmera
+(`tileAlvoDaCamera`).
+
+**Centro 16×16.** Preenche o próprio quarteirão. Como não sobra lote
+ali, a fundação (`ruaFundadora` e `ruaFundadoraRival`) fecha **também o
+quarteirão de baixo**, e a primeira casa nasce nele. `acharInicio`
+alargou a checagem de terreno pra caber a pegada do castelo.
+`caixaDoPredio` dá ao Centro escala `1,7×w/q[4]` (enche a largura do
+lote; a arte é quase quadrada e um losango é 2:1, então encher a largura
+já deixa a torre subir um pouco além da quadra — de propósito, castelo
+em morro) e um deslocamento vertical de `w/4` tiles pra base cair na
+ponta da frente do losango em vez de no meio dele.
+
+**Save v2 → v3.** `SAVE_KEY` mudou: todo save antigo é ignorado e a vila
+começa do zero (combinado). Rua e lote de período 9 não teriam como
+virar período 18 sem ficar torto.
+
+**A conferir quando aparecer:** vila rival nasce e cresce com o mesmo
+código (testado com fundação sintética — Centro centralizado, casa no
+quarteirão de baixo, dois anéis de rua), mas ainda não vi uma nascer
+sozinha no jogo com a grade nova.
+
+---
+
 ## Estrutura
 
 ```

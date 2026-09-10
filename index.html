@@ -1058,69 +1058,86 @@ function acharNoLonge(x, y, tipo, raio, qualquerLugar) {
 
 /* ---------------------------------------------------------- construções --- */
 
+/*
+   O LOTE É DO TAMANHO DA FORMA FINAL DA CADEIA (pedido explícito).
+
+   'w'/'h' agora é a caixa do MAIOR sprite que o prédio pode ter — contando
+   a cadeia de MELHORIA inteira. A Fazenda já nasce 6x5 (a pegada da Fazenda
+   Grande, com folga), então evoluir vira troca de arte no mesmo lugar: sem
+   reposicionar, sem 'alinharMelhoria', sem "Não há espaço". E como o sprite
+   (1,5x a arte) passa a caber DENTRO do lote, ele deixa de invadir o
+   vizinho — o transbordamento da Fazenda Grande que começou tudo isto.
+
+   Cada cadeia tem os elos com a MESMA pegada:
+     casa = sobrado = predio(Casarão) = 5x5
+     deposito = mercado               = 5x4
+     fazenda = fazendaGrande          = 6x5
+   Prédio sem cadeia: pegada do próprio sprite. O quarteirão foi pra 18x18
+   pra absorver isso (ver PERIODO_MALHA).
+*/
 const PREDIO = {
   centro: {
-    nome:'Centro da Vila', icone:'🏰', w:3, h:3, tempo:260, custo:{ madeira:250, pedra:100 },
+    nome:'Centro da Vila', icone:'🏰', w:16, h:16, tempo:260, custo:{ madeira:250, pedra:100 },
     pop:6, entrega:true, cor:'#b08a52', teto:'#8d5f38',
   },
   casa: {
-    nome:'Casa', icone:'🏠', w:2, h:2, tempo:70, custo:{ madeira:30 },
+    nome:'Casa', icone:'🏠', w:5, h:5, tempo:70, custo:{ madeira:30 },
     pop:5, moradia:true, cor:'#c2a271', teto:'#9a4f3c',
   },
   deposito: {
-    nome:'Depósito', icone:'📦', w:2, h:2, tempo:110, custo:{ madeira:80 },
+    nome:'Depósito', icone:'📦', w:5, h:4, tempo:110, custo:{ madeira:80 },
     pop:0, entrega:true, cor:'#a98d63', teto:'#6d5a3c',
   },
   fazenda: {
-    nome:'Fazenda', icone:'🌾', w:3, h:3, tempo:120, custo:{ madeira:60 },
+    nome:'Fazenda', icone:'🌾', w:6, h:5, tempo:120, custo:{ madeira:60 },
     pop:0, fazenda:true, cor:'#caa94f', teto:'#8f7a34',
   },
   oficina: {
-    nome:'Oficina', icone:'🛞', w:2, h:2, tempo:140, custo:{ madeira:90, pedra:30 },
+    nome:'Oficina', icone:'🛞', w:3, h:3, tempo:140, custo:{ madeira:90, pedra:30 },
     pop:0, produz:'carroca', posto:'ferreiro', forja:true, cor:'#9b7f5e', teto:'#5f4a33',
   },
   estabulo: {
-    nome:'Estábulo', icone:'🐴', w:3, h:2, tempo:150, custo:{ madeira:110, comida:60 },
+    nome:'Estábulo', icone:'🐴', w:5, h:4, tempo:150, custo:{ madeira:110, comida:60 },
     pop:0, produz:'cavalo', cor:'#a8865c', teto:'#74532f',
   },
   cais: {
-    nome:'Cais', icone:'🎣', w:2, h:2, tempo:130, custo:{ madeira:70 },
+    nome:'Cais', icone:'🎣', w:3, h:3, tempo:130, custo:{ madeira:70 },
     pop:0, fazenda:true, pesca:true, beiraDagua:true, produz:'barco', cor:'#9a8a72', teto:'#5d6b74',
   },
   mercado: {
-    nome:'Mercado', icone:'🏪', w:3, h:2, tempo:160, custo:{ madeira:120, pedra:40 },
+    nome:'Mercado', icone:'🏪', w:5, h:4, tempo:160, custo:{ madeira:120, pedra:40 },
     pop:0, entrega:true, comercio:true, posto:'comerciante', cor:'#c4a06a', teto:'#8c3f3a',
   },
 
   /* --- moradia que cresce para cima: é assim que a vila ganha gente sem
          comer o mapa inteiro de casinhas --- */
   sobrado: {
-    nome:'Sobrado', icone:'🏘️', w:2, h:2, tempo:190, custo:{ madeira:180, pedra:60 },
+    nome:'Sobrado', icone:'🏘️', w:5, h:5, tempo:190, custo:{ madeira:180, pedra:60 },
     pop:9, moradia:true, andares:2, cor:'#c9b087', teto:'#8e4438',
   },
   predio: {
-    nome:'Casarão', icone:'🏢', w:3, h:2, tempo:280, custo:{ madeira:300, pedra:160 },
+    nome:'Casarão', icone:'🏢', w:5, h:5, tempo:280, custo:{ madeira:300, pedra:160 },
     pop:14, moradia:true, andares:3, cor:'#bfae90', teto:'#5b6a63',
   },
 
   fazendaGrande: {
-    nome:'Fazenda Grande', icone:'🚜', w:4, h:3, tempo:230, custo:{ madeira:200, pedra:50 },
+    nome:'Fazenda Grande', icone:'🚜', w:6, h:5, tempo:230, custo:{ madeira:200, pedra:50 },
     pop:0, fazenda:true, lavouraGrande:true, cor:'#c9a94f', teto:'#8f7a34',
   },
   serraria: {
-    nome:'Serraria', icone:'🪚', w:3, h:2, tempo:180, custo:{ madeira:150, pedra:60 },
+    nome:'Serraria', icone:'🪚', w:5, h:4, tempo:180, custo:{ madeira:150, pedra:60 },
     pop:0, posto:'carpinteiro', serra:true, cor:'#a8875a', teto:'#6b4f33',
   },
   escola: {
-    nome:'Escola', icone:'🏫', w:3, h:2, tempo:210, custo:{ madeira:200, pedra:90 },
+    nome:'Escola', icone:'🏫', w:5, h:5, tempo:210, custo:{ madeira:200, pedra:90 },
     pop:0, posto:'professor', cor:'#d8c9a6', teto:'#7d3f36',
   },
   praca: {
-    nome:'Praça', icone:'⛲', w:3, h:2, tempo:120, custo:{ madeira:60, pedra:120 },
-    pop:0, praca:true, cor:'#9fb08a', teto:'#7f8f6e',
+    nome:'Praça', icone:'⛲', w:7, h:5, tempo:120, custo:{ madeira:60, pedra:120 },
+    pop:0, praca:true, jardim:true, cor:'#9fb08a', teto:'#7f8f6e',
   },
   prefeitura: {
-    nome:'Prefeitura', icone:'🏛️', w:4, h:3, tempo:320, custo:{ madeira:380, pedra:260 },
+    nome:'Prefeitura', icone:'🏛️', w:6, h:6, tempo:320, custo:{ madeira:380, pedra:260 },
     pop:8, entrega:true, posto:'administrador', cor:'#cbb99a', teto:'#4e5a63',
   },
 
@@ -1133,7 +1150,7 @@ const PREDIO = {
      esticar a malha viária.
   */
   mina: {
-    nome:'Mina', icone:'⛰️', w:2, h:2, tempo:200, custo:{ madeira:140, pedra:30 },
+    nome:'Mina', icone:'⛰️', w:3, h:3, tempo:200, custo:{ madeira:140, pedra:30 },
     pop:0, posto:'mineiro', mina:true, beiraRocha:true, cor:'#8d8b86', teto:'#5a5852',
   },
 };
@@ -1357,16 +1374,10 @@ const jogo = {
 
 const ocupado = new Map();
 
-// 'reservaTx'/'reservaW' (opcionais) ocupam uma faixa MAIOR que 'def.w' —
-// espaço guardado pra uma melhoria futura (ver MELHORIA/'calcularReservaDeMelhoria'
-// mais abaixo) sem mudar o desenho nem a colisão do prédio como ele é HOJE:
-// só o que fica bloqueado pra QUALQUER OUTRO prédio ao redor.
 function marcarOcupacao(p, on) {
-  const tx = p.reservaTx !== undefined ? p.reservaTx : p.tx;
-  const w = p.reservaW || p.def.w;
   for (let y = 0; y < p.def.h; y++)
-    for (let x = 0; x < w; x++) {
-      const k = nk(tx + x, p.ty + y);
+    for (let x = 0; x < p.def.w; x++) {
+      const k = nk(p.tx + x, p.ty + y);
       if (on) ocupado.set(k, p); else ocupado.delete(k);
     }
 }
@@ -2682,15 +2693,7 @@ function atualizarPessoa(p, dt) {
 
 let proxPredioId = 1;
 
-/*
-   'reserva' é opcional: {tx, w} pronto (o carregamento de save passa o que já
-   tinha sido calculado da primeira vez, pra não recalcular em cima de uma
-   'ocupado' ainda incompleta enquanto os prédios salvos vão sendo recriados
-   um por um) — 'undefined' (o caso normal, obra nova de verdade) calcula na
-   hora via 'calcularReservaDeMelhoria'; passar 'null' explícito desiste da
-   reserva de propósito.
-*/
-function criarPredio(chave, tx, ty, progresso, reserva) {
+function criarPredio(chave, tx, ty, progresso) {
   const def = PREDIO[chave];
   const pr = {
     id: proxPredioId++, chave, def, tx, ty,
@@ -2704,39 +2707,10 @@ function criarPredio(chave, tx, ty, progresso, reserva) {
     // como se fosse seu) mesmo morando no array certo (v.predios).
     vila: vilaEmContexto ? vilaEmContexto.id : undefined,
   };
-  if (reserva === undefined) reserva = calcularReservaDeMelhoria(chave, tx, ty, def);
-  if (reserva) { pr.reservaTx = reserva.tx; pr.reservaW = reserva.w; }
   jogo.predios.push(pr);
   marcarOcupacao(pr, true);
   invalidarArea(tx, ty, def.w, def.h);
   return pr;
-}
-
-/*
-   ITEM 2 — reservar, já na construção, a coluna que uma melhoria futura vai
-   precisar. Antes, 'melhorarPredio' só procurava espaço NA HORA de melhorar
-   — e se o vizinho já tivesse construído em cima nesse meio tempo, a
-   melhoria falhava com "Não há espaço em volta". Reservando cedo, o espaço
-   já está garantido quando a vez chegar.
-
-   As quatro entradas de MELHORIA de hoje crescem do MESMO jeito — +1 na
-   largura, mesma altura — e é só essa forma que sabe reservar (bate com o
-   leque de posições que 'melhorarPredio' já tenta, [0,0] depois [-1,0]):
-   se uma melhoria futura crescer de outro jeito, esta função devolve null
-   e a melhoria volta a fazer a busca reativa de sempre, sem quebrar nada.
-
-   Tenta a coluna à DIREITA do lote primeiro, depois à ESQUERDA — a checagem
-   é a mesma 'cabeAqui' que já rejeita rua e terreno sólido, então nunca
-   reserva em cima da própria testada (a rua) do prédio.
-*/
-function calcularReservaDeMelhoria(chave, tx, ty, def) {
-  const chaveNova = MELHORIA[chave];
-  if (!chaveNova) return null;
-  const nova = PREDIO[chaveNova];
-  if (nova.w !== def.w + 1 || nova.h !== def.h) return null;
-  if (cabeAqui(tx + def.w, ty, 1, def.h)) return { tx, w: nova.w };
-  if (cabeAqui(tx - 1, ty, 1, def.h)) return { tx: tx - 1, w: nova.w };
-  return null;
 }
 
 function concluirPredio(pr) {
@@ -2952,8 +2926,14 @@ function pertoDaPraia(tx, ty, w, h) {
    molhado ou de pedra, que a quadra regular pode não ter. Sem a segunda
    passada, essas vilas parariam de construir.
 */
+// O jardim (Praça) e o cais não precisam encostar em rua: o jardim mora no
+// meio do quarteirão, o cais na beira d'água.
+const precisaEncostarNaRua = def => !def.beiraDagua && !def.jardim;
+
 function escolherLote(def) {
-  return loteNoQuarteirao(def) || loteNaTestada(def);
+  // O jardim só vai pro centro de um quarteirão — nunca cai na busca livre
+  // por testada, que espalharia praça pela cidade toda.
+  return def.jardim ? loteNoQuarteirao(def) : (loteNoQuarteirao(def) || loteNaTestada(def));
 }
 
 function loteNoQuarteirao(def) {
@@ -2967,11 +2947,8 @@ function loteNoQuarteirao(def) {
     for (const [bx, by] of blocos)
       for (const [tx, ty] of posicoesNoQuarteirao(bx, by, def)) {
         if (!areaValida(tx, ty, def.w, def.h, def)) continue;
-        // O cais é o único prédio que não precisa de rua — ele é a própria
-        // razão de existir da beira d'água, e a faixa de areia logo ali do
-        // lado (nova regra) já deixa a rua sem como chegar perto de qualquer
-        // jeito.
-        if (!def.beiraDagua && !encostaNaRua(tx, ty, def.w, def.h)) continue;
+        // Cais (beira d'água) e jardim (meio do quarteirão) não encostam em rua.
+        if (precisaEncostarNaRua(def) && !encostaNaRua(tx, ty, def.w, def.h)) continue;
         if (def.beiraDagua && !temAguaPerto(tx, ty, def.w, def.h)) continue;
         if (def.beiraRocha && !temRochaPerto(tx, ty, def.w, def.h)) continue;
         if (notaDaZona(def, tx, ty) !== nota) continue;
@@ -3679,7 +3656,11 @@ function anelDoQuarteirao(v, bx, by) {
 
 function erguerNaVilaRival(v, chave) {
   const def = PREDIO[chave];
-  const blocos = v.blocos.length ? v.blocos : [blocoK(...quarteiraoDe(v.tx, v.ty))];
+  // O Centro 16x16 enche o quarteirão-sede — a primeira casa da vila rival
+  // vai no de baixo (o que 'ruaFundadoraRival' também abre).
+  const [hbx, hby] = quarteiraoDe(v.tx, v.ty);
+  const blocos = v.blocos.length ? v.blocos
+    : [blocoK(hbx, hby), blocoK(hbx, hby + 1)];
   for (const k of blocos) {
     const [bx, by] = k.split(',').map(Number);
     for (const [tx, ty] of posicoesNoQuarteirao(bx, by, def)) {
@@ -4174,28 +4155,32 @@ const temZonaDesenhada = () => Object.keys(jogo.zonas).length > 0;
    prédio grande (três de profundidade) cabe uma vez e sobra um tile morto.
 
    Agora existe uma GRADE. As vias só correm sobre as linhas dela, ancoradas no
-   Centro, com PERÍODO de nove tiles: rua, oito de quarteirão, rua. E o
+   Centro, com PERÍODO de DEZOITO tiles: rua, dezessete de quarteirão, rua. E o
    crescimento inverte a lógica — em vez de esticar a fronteira, ele FECHA o
    quarteirão aberto mais perto do centro.
 
-   O oito não é gosto. Quatro prédios grandes (4x3, o maior do jogo) em arranjo
-   dois por dois, todos com testada para a rua, pedem miolo de 8x6:
+   O DEZOITO segue a reforma do lote: agora cada prédio nasce com a pegada da
+   sua forma final (Fazenda já é 6x5, Casarão 5x5), e o Centro é 16x16. Um
+   quarteirão de 18 comporta um ANEL de lotes grandes colado nas quatro ruas,
+   com o miolo livre de quintal e UM jardim no centro:
 
-       #########        # rua
-       #.......#        . miolo do quarteirão, 8x8
-       #[][][].#        [] prédio grande 4x3, encostado na testada
-       #[][][].#        as duas fileiras do meio sobram de quintal
-       #.......#
-       #[][][].#
-       #[][][].#
-       #.......#
-       #########
+       ##################   # rua
+       #[][ ][ ][ ][ ][]#   [] anel de lotes grandes, encostado na rua
+       #[]            [ ]#   .. quintal
+       #[ ]   ####    [ ]#   #### jardim (Praça), sempre no meio, um só
+       #[ ]   ####    [ ]#
+       #[]            [ ]#
+       #[][ ][ ][ ][ ][]#
+       ##################
 
    A folga entre vias sai de cena: a grade garante o espaçamento por
    construção, sem precisar medir nada.
 */
-const PERIODO_MALHA = 9;          // rua, oito de quarteirão, rua
-const MIOLO = PERIODO_MALHA - 1;  // oito tiles de terreno por lado
+const PERIODO_MALHA = 18;             // rua, dezessete de quarteirão, rua
+const MIOLO = PERIODO_MALHA - 1;      // dezessete tiles de terreno por lado
+// O Centro é 16x16; centrado no quarteirão de 18, sobra ~1 tile de folga
+// antes da rua. O deslocamento da origem da grade (abaixo) sai daqui.
+const RECUO_CENTRO = 9;
 
 // Resto positivo: em JavaScript (-1 % 9) é -1, e a conta do quarteirão
 // desandaria em todo o quadrante noroeste do mapa.
@@ -4206,15 +4191,16 @@ const modMalha = (v, o) => (((v - o) % PERIODO_MALHA) + PERIODO_MALHA) % PERIODO
    fosse recalculada e o Centro mudasse de lugar, a grade inteira andaria junto
    e toda rua já construída viraria rua torta.
 
-   O deslocamento de cinco deixa o Centro (3x3) mais ou menos no meio do seu
-   próprio quarteirão, em vez de colado na esquina.
+   O deslocamento de 'RECUO_CENTRO' (9) deixa o Centro 16x16 encostado na
+   esquina noroeste do seu quarteirão de 18, com um tile de folga a
+   sudeste — na prática, ocupando o quarteirão inteiro.
 */
 function origemMalha() {
   if (jogo.malhaOx === undefined || jogo.malhaOx === null) {
     const b = centroDaVila();
     if (!b) return { ox: 0, oy: 0 };
-    jogo.malhaOx = Math.floor(b.cx / TILE) - 5;
-    jogo.malhaOy = Math.floor(b.cy / TILE) - 5;
+    jogo.malhaOx = Math.floor(b.cx / TILE) - RECUO_CENTRO;
+    jogo.malhaOy = Math.floor(b.cy / TILE) - RECUO_CENTRO;
   }
   return { ox: jogo.malhaOx, oy: jogo.malhaOy };
 }
@@ -4332,22 +4318,45 @@ function pisaNaGrade(tx, ty, w, h) {
   return false;
 }
 
+// A posição CENTRALIZADA no quarteirão — do Centro (castelo) e do jardim
+// (Praça). Os dois não encostam em testada: um preenche a quadra, o outro
+// mora no meio dela.
+function posicaoCentralNoQuarteirao(bx, by, def) {
+  const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
+  const ix = ox + bx * P + 1, iy = oy + by * P + 1;
+  return [ix + Math.floor((MIOLO - def.w) / 2), iy + Math.floor((MIOLO - def.h) / 2)];
+}
+
+// O retângulo reservado pro jardim no meio do quarteirão: a pegada da Praça
+// mais um tile de folga. Nada além do jardim entra aí.
+function reservaDoJardim(bx, by) {
+  const [jx, jy] = posicaoCentralNoQuarteirao(bx, by, PREDIO.praca);
+  const d = PREDIO.praca;
+  return { x0: jx - 1, y0: jy - 1, x1: jx + d.w, y1: jy + d.h };
+}
+
 /*
-   As posições de um prédio dentro do quarteirão: coladas nas quatro testadas,
-   deslizando de uma esquina à outra. O miolo do miolo fica de quintal — sem
-   rua encostada não há como servir, e um prédio ilhado no meio da quadra seria
-   exatamente a bagunça que esta fase veio desfazer.
+   As posições de um prédio dentro do quarteirão: um ANEL de lotes colado nas
+   quatro testadas, deslizando de esquina a esquina. O miolo é quintal, e no
+   centro fica reservado o lugar do jardim — nenhum lote do anel encosta nele.
+
+   Centro e Praça não usam o anel: cada um tem uma posição só, centralizada.
 */
 function posicoesNoQuarteirao(bx, by, def) {
+  if (def === PREDIO.centro || def.jardim) return [posicaoCentralNoQuarteirao(bx, by, def)];
+
   const { ox, oy } = origemMalha(), P = PERIODO_MALHA;
   const ix = ox + bx * P + 1, iy = oy + by * P + 1;
   const saida = [];
   if (def.w > MIOLO || def.h > MIOLO) return saida;
   const ultX = ix + MIOLO - def.w, ultY = iy + MIOLO - def.h;
-  for (let x = ix; x <= ultX; x++) saida.push([x, iy]);      // testada norte
-  for (let x = ix; x <= ultX; x++) saida.push([x, ultY]);    // testada sul
-  for (let y = iy; y <= ultY; y++) saida.push([ix, y]);      // testada oeste
-  for (let y = iy; y <= ultY; y++) saida.push([ultX, y]);    // testada leste
+  const jr = reservaDoJardim(bx, by);
+  const livre = (x, y) => !(x <= jr.x1 && x + def.w - 1 >= jr.x0 && y <= jr.y1 && y + def.h - 1 >= jr.y0);
+  const por = (x, y) => { if (livre(x, y)) saida.push([x, y]); };
+  for (let x = ix; x <= ultX; x++) por(x, iy);        // testada norte
+  for (let x = ix; x <= ultX; x++) por(x, ultY);      // testada sul
+  for (let y = iy; y <= ultY; y++) por(ix, y);        // testada oeste
+  for (let y = iy; y <= ultY; y++) por(ultX, y);      // testada leste
   return saida;
 }
 
@@ -4688,23 +4697,27 @@ function custoDoTrecho(tx, ty) {
 
    A vila começava com uma esquina, não com um anel — o anel antigo punha duas
    vias paralelas a quatro blocos uma da outra, apertado demais para caber
-   prédio. Com a grade de nove o anel volta a ser o certo: ele fecha o
-   quarteirão do Centro na primeira hora, e a cidade já nasce com uma quadra
-   inteira de testada para encher.
+   prédio. Com a grade o anel volta a ser o certo: ele fecha o quarteirão do
+   Centro na primeira hora.
+
+   Só que agora o Centro (16x16) OCUPA o quarteirão inteiro — não sobra lote
+   ali pra primeira casa. Então a fundação fecha TAMBÉM o quarteirão logo ao
+   SUL, que nasce vazio e pronto pra encher.
 
    A fundação sai de graça, sem pedra. É a única rua assim no jogo — sem ela
    não haveria testada para a primeira casa, e sem casa não haveria quem
    calçasse a primeira rua.
 */
 function ruaFundadora(centro) {
-  jogo.malhaOx = Math.floor(centro.cx / TILE) - 5;
-  jogo.malhaOy = Math.floor(centro.cy / TILE) - 5;
+  jogo.malhaOx = Math.floor(centro.cx / TILE) - RECUO_CENTRO;
+  jogo.malhaOy = Math.floor(centro.cy / TILE) - RECUO_CENTRO;
   const por = (tx, ty) => {
     if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); limparArvoresRentesA(tx, ty); }
   };
   const [bx, by] = quarteiraoDoCentro();
-  for (let lado = 0; lado < 4; lado++)
-    for (const [tx, ty] of ladoDoQuarteirao(bx, by, lado)) por(tx, ty);
+  for (const [dbx, dby] of [[0, 0], [0, 1]])
+    for (let lado = 0; lado < 4; lado++)
+      for (const [tx, ty] of ladoDoQuarteirao(bx + dbx, by + dby, lado)) por(tx, ty);
 }
 
 /*
@@ -4731,10 +4744,13 @@ function ruaFundadora(centro) {
 */
 function ruaFundadoraRival(v) {
   const [bx, by] = quarteiraoDe(v.tx, v.ty);
-  for (let lado = 0; lado < 4; lado++)
-    for (const [tx, ty] of ladoDoQuarteirao(bx, by, lado)) {
-      if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); limparArvoresRentesA(tx, ty); }
-    }
+  // Igual à do jogador: o Centro 16x16 enche o próprio quarteirão, então
+  // abre também o de baixo pra vila rival ter onde erguer a primeira casa.
+  for (const [dbx, dby] of [[0, 0], [0, 1]])
+    for (let lado = 0; lado < 4; lado++)
+      for (const [tx, ty] of ladoDoQuarteirao(bx + dbx, by + dby, lado)) {
+        if (podeVirarRua(tx, ty)) { jogo.estradas.add(nk(tx, ty)); limparNo(tx, ty); limparArvoresRentesA(tx, ty); }
+      }
 }
 
 function erguerPredio(chave, tx, ty) {
@@ -4814,7 +4830,7 @@ function responderPedido(sim, id) {
   jogo.pedidos.splice(jogo.pedidos.indexOf(ped), 1);
   const def = PREDIO[ped.chave];
   if (!sim) { crônica('Você recusou a obra de ' + def.nome + '.', false, 'obra'); aviso('Pedido recusado'); }
-  else if (!areaValida(ped.tx, ped.ty, def.w, def.h, def) || (!def.beiraDagua && !encostaNaRua(ped.tx, ped.ty, def.w, def.h))) {
+  else if (!areaValida(ped.tx, ped.ty, def.w, def.h, def) || (precisaEncostarNaRua(def) && !encostaNaRua(ped.tx, ped.ty, def.w, def.h))) {
     aviso('O terreno já não serve — eles vão procurar outro');
   } else if (!erguerPredio(ped.chave, ped.tx, ped.ty)) {
     aviso('Faltou recurso para começar');
@@ -5474,7 +5490,14 @@ function conselho() {
   }
   if (!jaTem('estabulo') && pop >= 16 && decidirObra('estabulo')) return;
   if (!jaTem('prefeitura') && pop >= 24 && decidirObra('prefeitura')) return;
-  if (contar('praca') < Math.floor(pop / 25) && pop >= 18 && decidirObra('praca')) return;
+  // Um jardim (Praça) por quarteirão fechado e da vila — sempre no meio da
+  // quadra (ver 'posicoesNoQuarteirao'/'escolherLote').
+  if (pop >= 12) {
+    const meus = quarteiroesPorPerto().filter(([bx, by]) => {
+      const d = donoDoBloco(bx, by); return d === 0 || d === undefined;
+    }).length;
+    if (contar('praca') < meus && decidirObra('praca')) return;
+  }
   if (!jaTem('escola') && pop >= 20 && decidirObra('escola')) return;
 
   // --- 5. Bairro novo quando a vila está cheia e sobra recurso ---
@@ -5501,6 +5524,9 @@ function decidirObra(chave) {
   const def = PREDIO[chave];
   if (!def || !podePagar(def.custo)) return false;
   if (construirAuto(chave)) return true;
+  // Jardim que não coube não é sinal de "falta rua" — é só que todo
+  // quarteirão da vila já tem o seu. Desiste sem abrir via.
+  if (def.jardim) return false;
 
   /*
      Não achou terreno. Cais NÃO entra mais aqui — ele não precisa de rua
@@ -6524,17 +6550,11 @@ function iniciarMudanca(pr) {
 
 function moverPredioPara(pr, tx, ty) {
   if (!cabeAqui(tx, ty, pr.def.w, pr.def.h, pr, pr.def)) { aviso('Não cabe aí'); return false; }
-  if (!pr.def.beiraDagua && !encostaNaRua(tx, ty, pr.def.w, pr.def.h)) { aviso('Precisa encostar numa rua'); return false; }
+  if (precisaEncostarNaRua(pr.def) && !encostaNaRua(tx, ty, pr.def.w, pr.def.h)) { aviso('Precisa encostar numa rua'); return false; }
   marcarOcupacao(pr, false);
   invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
   pr.tx = tx; pr.ty = ty;
   pr.cx = (tx + pr.def.w / 2) * TILE; pr.cy = (ty + pr.def.h / 2) * TILE;
-  // A reserva antiga apontava pra coluna do endereço velho — mudou de lugar,
-  // recalcula do zero (pode não achar de novo, e tudo bem: 'melhorarPredio'
-  // sempre sabe procurar na hora, como fazia antes de reserva existir).
-  pr.reservaTx = undefined; pr.reservaW = undefined;
-  const reserva = calcularReservaDeMelhoria(pr.chave, tx, ty, pr.def);
-  if (reserva) { pr.reservaTx = reserva.tx; pr.reservaW = reserva.w; }
   marcarOcupacao(pr, true);
   invalidarArea(tx, ty, pr.def.w, pr.def.h);
   crônica(pr.def.nome + ' mudou de lugar.', false, 'obra');
@@ -6543,63 +6563,16 @@ function moverPredioPara(pr, tx, ty) {
   return true;
 }
 
-/*
-   MOTOR DE ALINHAMENTO DA MELHORIA — pedido explícito: "quando a fazenda
-   pequena vira grande, ela invade a rua do canto superior direito; monte um
-   motor de posicionamento pra alinhar toda vez que um prédio aumentar".
-
-   Toda melhoria cresce +1 tile de largura, mesmo sprite 1,5× o lote. Se o
-   lote antigo estava numa ESQUINA (encostado em DUAS ruas), crescer a partir
-   do canto mantém a esquina, e a sobra de telhado do prédio maior passa por
-   cima da rua lateral. Em vez de crescer do canto, varre um quadrado de
-   posições em volta e escolhe a que:
-     1. cabe e encosta em rua (requisito de sempre);
-     2. ainda cobre parte do lote antigo (nada de teleporte);
-     3. tem o MENOR "atrito de rua" — e rua LATERAL (leste/oeste) pesa mais
-        que rua acima/abaixo, porque é a lateral que o telhado largo do
-        sprite cruza feio; o beiral por cima da calçada de cima/baixo já era
-        assim pra todo prédio e ninguém reclamou;
-     4. entre essas, a mais perto de onde ele já estava.
-   Não usa 'quarteiraoDe'/'origemMalha' de propósito: essa grade é a do
-   jogador, e este código também roda pra vila rival (via 'conselho' no
-   contexto trocado), cuja malha tem outra origem. Só 'jogo.estradas', que
-   o contexto troca certo.
-*/
-function alinharMelhoria(pr, w, h) {
-  const alvoX = pr.tx + Math.round((pr.def.w - w) / 2);
-  const alvoY = pr.ty + Math.round((pr.def.h - h) / 2);
-  const atritoDeRua = (x, y) => {
-    let cima = 0, baixo = 0, esq = 0, dir = 0;
-    for (let i = 0; i < w; i++) {
-      if (jogo.estradas.has(nk(x + i, y - 1))) cima = 1;
-      if (jogo.estradas.has(nk(x + i, y + h))) baixo = 1;
-    }
-    for (let i = 0; i < h; i++) {
-      if (jogo.estradas.has(nk(x - 1, y + i))) esq = 1;
-      if (jogo.estradas.has(nk(x + w, y + i))) dir = 1;
-    }
-    return (cima + baixo) + (esq + dir) * 3;
-  };
-  let melhor = null;
-  for (let dx = -3; dx <= 3; dx++)
-    for (let dy = -3; dy <= 3; dy++) {
-      const x = alvoX + dx, y = alvoY + dy;
-      if (!cabeAqui(x, y, w, h, pr) || !encostaNaRua(x, y, w, h)) continue;
-      // ainda tem de pegar parte do lote antigo, senão o prédio "pula".
-      if (x > pr.tx + pr.def.w - 1 || x + w - 1 < pr.tx ||
-          y > pr.ty + pr.def.h - 1 || y + h - 1 < pr.ty) continue;
-      const custo = atritoDeRua(x, y) * 100 + Math.abs(dx) + Math.abs(dy);
-      if (!melhor || custo < melhor.custo) melhor = { tx: x, ty: y, custo };
-    }
-  return melhor;
-}
-
 /* --- melhorar --- */
 // Devolve true quando a melhoria realmente aconteceu, false em qualquer
-// desistência (falta material, sem espaço) — item 2: o conselho
-// ('tentarMelhorarAntes') precisa saber se pode contar isso como obra feita
-// nesta rodada, e o botão do menu ('abrirMenuPredio') ignora o retorno, então
-// não muda nada pra quem já chamava esta função antes.
+// desistência (falta material) — item 2: o conselho ('tentarMelhorarAntes')
+// precisa saber se pode contar isso como obra feita nesta rodada, e o botão
+// do menu ('abrirMenuPredio') ignora o retorno.
+//
+// LOTE PELA FORMA FINAL: os elos de uma cadeia de MELHORIA têm a MESMA pegada
+// (Fazenda e Fazenda Grande são as duas 6x5; Casa/Sobrado/Casarão, 5x5).
+// Melhorar é troca de arte NO MESMO LUGAR — some o motor de alinhamento, a
+// busca de espaço em volta e o "Não há espaço".
 function melhorarPredio(pr) {
   const chaveNova = MELHORIA[pr.chave];
   if (!chaveNova) return false;
@@ -6607,29 +6580,12 @@ function melhorarPredio(pr) {
   const custo = custoDaMelhoria(pr.chave, chaveNova);
   if (!podePagar(custo)) { aviso('Falta material: ' + custoTexto(custo)); return false; }
 
-  // Primeiro o motor de alinhamento (tira o prédio maior da esquina); se ele
-  // não achar nada, a busca antiga em volta do canto atual.
-  let destino = alinharMelhoria(pr, nova.w, nova.h);
-  for (const [dx, dy] of destino ? [] : [[0,0],[-1,0],[0,-1],[-1,-1],[1,0],[0,1]]) {
-    const tx = pr.tx + dx, ty = pr.ty + dy;
-    if (cabeAqui(tx, ty, nova.w, nova.h, pr) && encostaNaRua(tx, ty, nova.w, nova.h)) {
-      destino = { tx, ty }; break;
-    }
-  }
-  if (!destino) { aviso('Não há espaço em volta para o ' + nova.nome); return false; }
-
   pagar(custo);
+  const nomeVelho = pr.def.nome;
   marcarOcupacao(pr, false);
   invalidarArea(pr.tx, pr.ty, pr.def.w, pr.def.h);
-  const nomeVelho = pr.def.nome;
   pr.chave = chaveNova; pr.def = nova;
-  pr.tx = destino.tx; pr.ty = destino.ty;
   pr.cx = (pr.tx + nova.w / 2) * TILE; pr.cy = (pr.ty + nova.h / 2) * TILE;
-  // A reserva era pra ESTA melhoria, que acabou de acontecer — some. Se o
-  // prédio novo (ex.: sobrado) tiver a própria melhoria adiante (predio), a
-  // próxima obra que passar por aqui não reserva de novo sozinha; fica pra
-  // busca reativa de sempre, como já era antes de reserva existir.
-  pr.reservaTx = undefined; pr.reservaW = undefined;
   marcarOcupacao(pr, true);
   invalidarArea(pr.tx, pr.ty, nova.w, nova.h);
   // Posto que deixou de existir volta a ficar vago.
@@ -6701,6 +6657,13 @@ let colocando = null;
 let movendo = null;
 
 function tileAlvoDaCamera(def) {
+  // O jardim (Praça) sempre trava no centro do quarteirão sob a câmera —
+  // não existe praça fora do meio da quadra.
+  if (def && def.jardim) {
+    const [bx, by] = quarteiraoDe(Math.round(cam.x / TILE), Math.round(cam.y / TILE));
+    const [tx, ty] = posicaoCentralNoQuarteirao(bx, by, def);
+    return { tx, ty };
+  }
   return { tx: Math.round(cam.x / TILE - def.w / 2), ty: Math.round(cam.y / TILE - def.h / 2) };
 }
 
@@ -6732,9 +6695,8 @@ function confirmarColocacao() {
   }
   if (!areaValida(tx, ty, def.w, def.h, def)) { aviso('Não dá para construir aqui'); return; }
   // A mesma regra vale para você: prédio precisa de testada para a rua —
-  // menos o cais, que não precisa (é o único prédio que fica onde rua
-  // nenhuma chega, por causa da faixa de areia logo ao lado).
-  if (!def.beiraDagua && !encostaNaRua(tx, ty, def.w, def.h)) {
+  // menos o cais (beira d'água) e o jardim (meio do quarteirão).
+  if (precisaEncostarNaRua(def) && !encostaNaRua(tx, ty, def.w, def.h)) {
     aviso('Precisa encostar numa rua — espere a vila abrir uma, ou construa junto ao Centro');
     return;
   }
@@ -9260,14 +9222,29 @@ function caixaDoPredio(pr, q, dx0, dy0) {
      crescer. Resultado: tudo ficou pequeno de novo, o problema que o
      ESCALA_PREDIO existia pra resolver.
   */
-  const escala = pr.def.praca ? Math.min(ESCALA_PREDIO, w / q[4]) : ESCALA_PREDIO;
+  // O Centro (castelo, lote 16x16) e o jardim (Praça, lote 7x5) têm arte
+  // grande de propósito e preenchem o próprio lote — não crescem "1,5x o
+  // padrão". A arte do castelo é quase quadrada (render 3/4), e um losango
+  // é 2:1: enchê-lo na largura faria a torre invadir um quarteirão pra cima.
+  // Escala por 1,7*w casa a largura do lote com uma altura que ainda cabe
+  // no losango. Os demais crescem 1,5x, como sempre.
+  const escala = pr.chave === 'centro' ? (1.7 * w / q[4])
+               : pr.def.jardim         ? Math.min(2.6, 1.7 * w / q[4])
+               : ESCALA_PREDIO;
   const dw = q[4] * escala, dh = q[5] * escala;
   // Vertical: prédio alto (dh > h) continua ancorado na base, crescendo pra
   // cima do próprio lote — é o que faz casa e castelo parecerem em pé. Mas
   // prédio que já cabe no lote (dh <= h) não tem por que colar na base —
   // centralizado, como a horizontal já é, fica no lugar certo.
+  //
+  // O Centro é a exceção: a âncora que o laço de desenho passa é a TESTADA
+  // (frente do lote), que num lote 16x16 projeta lá no MEIO do losango — o
+  // castelo ficava empurrado pro fundo da quadra, com meio quarteirão de
+  // grama vazia na frente. Somar w/4 tiles desce a base do castelo até a
+  // ponta da frente do losango, e ele passa a preencher a quadra inteira.
   const folgaV = h - dh;
-  const deslocaV = folgaV >= 0 ? folgaV / 2 : folgaV;
+  let deslocaV = folgaV >= 0 ? folgaV / 2 : folgaV;
+  if (pr.chave === 'centro') deslocaV = folgaV + pr.def.w * TILE / 4;
   return {
     dx: pr.tx * TILE + (w - dw) / 2 + dx0,
     dy: pr.ty * TILE + deslocaV + dy0,
@@ -10794,7 +10771,7 @@ function desenharVilaNormal() {
     const def = PREDIO[colocando];
     const { tx, ty } = tileAlvoDaCamera(def);
     const ok = (movendo ? cabeAqui(tx, ty, def.w, def.h, movendo, def) : areaValida(tx, ty, def.w, def.h, def))
-      && (def.beiraDagua || encostaNaRua(tx, ty, def.w, def.h));
+      && (!precisaEncostarNaRua(def) || encostaNaRua(tx, ty, def.w, def.h));
     ctx.fillStyle = ok ? 'rgba(130,220,120,.32)' : 'rgba(230,90,80,.32)';
     ctx.fillRect(tx * TILE, ty * TILE, def.w * TILE, def.h * TILE);
     ctx.strokeStyle = ok ? 'rgba(170,255,160,.95)' : 'rgba(255,130,120,.95)';
@@ -10920,7 +10897,10 @@ function vinheta() {
 
 /* ---------------------------------------------------------- persistência - */
 
-const SAVE_KEY = 'reinoInfinito.v2';
+// v3: a grade virou 18x18 e o lote passou a ser da forma final da cadeia —
+// toda rua e todo lote de save v2 nasceriam tortos. Chave nova = save antigo
+// é ignorado e a vila começa do zero (combinado com o usuário).
+const SAVE_KEY = 'reinoInfinito.v3';
 let saveT = 0;
 
 function salvar() {
@@ -10976,11 +10956,8 @@ function gravar() {
       diaTotal: jogo.diaTotal,
       missoes: jogo.missoes,
       pedidos: jogo.pedidos, proxPedidoId, autoAprovar: jogo.autoAprovar,
-      // 'rtx'/'rw' (espaço reservado pra melhoria — ver 'calcularReservaDeMelhoria')
-      // vêm como 'undefined' na maioria dos prédios, e JSON.stringify já
-      // remove sozinho a chave nesse caso — sem precisar de condicional aqui.
       predios: jogo.predios.map(p => ({ id:p.id, c:p.chave, tx:p.tx, ty:p.ty, pr:p.progresso,
-        mor:p.moradores, prod:p.produzindo, trab:p.trabalhador, rtx:p.reservaTx, rw:p.reservaW })),
+        mor:p.moradores, prod:p.produzindo, trab:p.trabalhador })),
       proxPredioId, proxId: jogo.proxId,
       pessoas: jogo.pessoas.map(p => ({ id:p.id, n:p.nome, s:p.sobrenome, sx:p.sexo,
         i:+p.idade.toFixed(2), vm:+p.vidaMax.toFixed(1), tr:p.traco,
@@ -11089,12 +11066,7 @@ function carregar() {
     for (const d of (s.predios || [])) {
       const def = PREDIO[d.c];
       if (!def) continue;
-      // A reserva vem PRONTA do save (quando existia) em vez de recalculada
-      // aqui: no meio deste laço 'ocupado' ainda está incompleta (só os
-      // prédios já recriados até agora), e recalcular veria espaço livre
-      // onde um prédio salvo mais adiante na lista vai nascer.
-      const reservaSalva = d.rtx !== undefined ? { tx: d.rtx, w: d.rw } : null;
-      const pr = criarPredio(d.c, d.tx, d.ty, d.pr, reservaSalva);
+      const pr = criarPredio(d.c, d.tx, d.ty, d.pr);
       pr.id = d.id; pr.moradores = d.mor || []; pr.produzindo = d.prod || 0; pr.trabalhador = d.trab || null;
     }
 
@@ -11201,17 +11173,19 @@ function carregar() {
 /* -------------------------------------------------------------- nova vila */
 
 function acharInicio() {
+  // O Centro agora é 16x16 — a checagem cobre a pegada dele (uns 9 tiles de
+  // raio a partir do ponto central), não só um cantinho.
   for (const estrito of [true, false]) {
     for (let r = 0; r < 600; r += 3) {
       for (let a = 0; a < 20; a++) {
         const ang = a / 20 * 6.2832;
         const tx = Math.round(Math.cos(ang) * r), ty = Math.round(Math.sin(ang) * r);
-        let ok = true;
-        for (let y = -2; y <= 2 && ok; y++)
-          for (let x = -2; x <= 2 && ok; x++) {
+        let ok = true, solidos = 0;
+        for (let y = -9; y <= 9 && ok; y++)
+          for (let x = -9; x <= 9 && ok; x++) {
             const b = biomaEm(tx + x, ty + y);
             if (estrito) { if (b !== B.CAMPO && b !== B.FLORESTA) ok = false; }
-            else if (SOLIDO[b]) ok = false;
+            else if (SOLIDO[b] && ++solidos > 40) ok = false;   // tolera um naco de água/rocha na borda
           }
         if (!ok) continue;
         if (!estrito) return { tx, ty };
@@ -11247,8 +11221,9 @@ function novaVila(seed) {
   colocando = null; placeEl.classList.remove('on'); barEl.classList.remove('escondido'); selecao = [];
 
   const ini = acharInicio();
-  const centro = criarPredio('centro', ini.tx - 1, ini.ty - 1, 1);
-  ruaFundadora(centro);        // a praça em volta do Centro, onde a cidade começa
+  // O ponto de 'acharInicio' vira o CENTRO do castelo 16x16.
+  const centro = criarPredio('centro', ini.tx - 8, ini.ty - 8, 1);
+  ruaFundadora(centro);        // fecha o quarteirão do Centro e o de baixo
 
   // Uma casa já de pé, com frente para a rua: a vila nasce sendo uma vila, e
   // o jogador vê desde o primeiro segundo qual é a regra do lugar.
@@ -11258,11 +11233,12 @@ function novaVila(seed) {
     primeiraCasa = criarPredio('casa', primeiroLote.tx, primeiroLote.ty, 1);
   }
 
-  cam.x = centro.cx; cam.y = centro.cy;
+  cam.x = centro.cx; cam.y = centro.cy + 90;
   cam.z = Math.max(0.9, Math.min(1.6, Math.min(W, H) / 480));
 
-  // Os fundadores: dois casais e uma criança.
-  const base = { x: centro.cx, y: centro.cy + (centro.def.h * TILE) / 2 + 20 };
+  // Os fundadores: dois casais e uma criança, no quarteirão ao sul do
+  // castelo (o que 'ruaFundadora' abriu) — passando a rua que os separa dele.
+  const base = { x: centro.cx, y: centro.cy + (centro.def.h * TILE) / 2 + 64 };
   const sn1 = escolher(SOBRENOMES);
   let sn2 = escolher(SOBRENOMES);
   if (sn2 === sn1) sn2 = escolher(SOBRENOMES);
