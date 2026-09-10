@@ -6331,6 +6331,9 @@ addEventListener('keyup', e => teclas.delete(e.key.toLowerCase()));
 function pessoaEm(wx, wy, r) {
   let melhor = null, d0 = r * r;
   for (const p of jogo.pessoas) {
+    // criança não é desenhada (ver 'criancaEscondida'), então também não é
+    // achada pelo dedo: pegar quem não está na tela confunde.
+    if (criancaEscondida(p)) continue;
     const d = (p.x - wx) ** 2 + (p.y - wy - 6) ** 2;
     if (d < d0) { d0 = d; melhor = p; }
   }
@@ -7818,6 +7821,7 @@ function desenharMinimapa() {
   }
   mmx.fillStyle = '#fff';
   for (const p of jogo.pessoas) {
+    if (criancaEscondida(p)) continue;   // fora da tela, fora do minimapa também
     const x = MMS / 2 + (p.x / TILE - ptx) / MMP, y = MMS / 2 + (p.y / TILE - pty) / MMP;
     if (x >= 0 && x < MMS && y >= 0 && y < MMS) mmx.fillRect(x, y, 1.5, 1.5);
   }
@@ -9934,8 +9938,21 @@ const FATIAS_DO_POVO = 4;
    visível se reveza suavemente em vez de travar sempre nos mesmos rostos.
 */
 const MAX_ADULTOS_NA_TELA = 500;
-const MAX_CRIANCAS_NA_TELA = 50;
 let inicioDoDesenho = 0;
+
+/*
+   PEDIDO EXPLÍCITO — "retire as crianças da visão do jogador". Elas
+   continuam existindo em tudo que não é a tela: nascem, envelhecem, contam
+   na população, viram adultos na idade certa, aparecem na crônica e nas
+   telas de gente. O que sai é só o SPRITE — a fila de desenho não as
+   monta, e o toque não as encontra (aldeão invisível que responde ao dedo
+   confunde mais do que ajuda).
+
+   Isto também resolve, de lambugem, o descasamento de arte: a criança era
+   a única figura que ainda vinha da folha antiga, bem mais saturada que os
+   adultos novos (ver 'Arte nova dos aldeões' no LEIAME).
+*/
+const criancaEscondida = p => faseDaIdade(p.idade) === FASE.CRIANCA;
 
 function atualizarPovo(dt) {
   const margem = 220 / cam.z;
@@ -10630,13 +10647,14 @@ function desenharVilaNormal() {
       */
       const gv = v.pessoas, ng = gv.length;
       v.inicioDoDesenho = ng ? ((v.inicioDoDesenho || 0) + 1) % ng : 0;
-      let adultosV = 0, criancasV = 0;
+      let adultosV = 0;
       for (let k = 0; k < ng; k++) {
         const p = gv[(v.inicioDoDesenho + k) % ng];
+        if (criancaEscondida(p)) continue;
         if (p.dentro) continue;      // sob um teto: a janela acesa já conta a história
         if (p.x < camX - 50 || p.x > camX + vw + 50 || p.y < camY - 50 || p.y > camY + vh + 50) continue;
-        if (faseDaIdade(p.idade) === FASE.CRIANCA) { if (criancasV >= MAX_CRIANCAS_NA_TELA) continue; criancasV++; }
-        else { if (adultosV >= MAX_ADULTOS_NA_TELA) continue; adultosV++; }
+        if (adultosV >= MAX_ADULTOS_NA_TELA) continue;
+        adultosV++;
         const d = projetar(p.x, p.y);
         lista.push({ y:filaPessoaY(p, d.y), k:2, o:p, dx0:d.dx0, dy0:d.dy0 });
       }
@@ -10644,21 +10662,17 @@ function desenharVilaNormal() {
   {
     const povo = jogo.pessoas, n = povo.length;
     inicioDoDesenho = n ? (inicioDoDesenho + 1) % n : 0;
-    let adultosNaTela = 0, criancasNaTela = 0;
+    let adultosNaTela = 0;
     for (let k = 0; k < n; k++) {
       const p = povo[(inicioDoDesenho + k) % n];
+      if (criancaEscondida(p)) continue;
       // Sem noite ninguém se recolhe: a vila fica cheia o tempo todo.
       // Quem entrou no prédio, porém, sai de vista — quem mostra o serviço dali
       // em diante é a janela acesa do próprio prédio.
       if (p.dentro) continue;
       if (p.x < camX - 50 || p.x > camX + vw + 50 || p.y < camY - 50 || p.y > camY + vh + 50) continue;
-      if (faseDaIdade(p.idade) === FASE.CRIANCA) {
-        if (criancasNaTela >= MAX_CRIANCAS_NA_TELA) continue;
-        criancasNaTela++;
-      } else {
-        if (adultosNaTela >= MAX_ADULTOS_NA_TELA) continue;
-        adultosNaTela++;
-      }
+      if (adultosNaTela >= MAX_ADULTOS_NA_TELA) continue;
+      adultosNaTela++;
       const d = projetar(p.x, p.y);
       lista.push({ y:filaPessoaY(p, d.y), k:2, o:p, dx0:d.dx0, dy0:d.dy0 });
     }

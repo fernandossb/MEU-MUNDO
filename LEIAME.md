@@ -2917,10 +2917,27 @@ passo. E o centro horizontal é o **centro de massa do terço de baixo**
 cajado entra e sai dela, e centrar por ela balançaria o corpo de lado a
 cada quadro.
 
-**A criança não veio nas folhas novas** e continua a de sempre, copiada
-tal e qual da folha antiga: é arte de proporção infantil, que reduzir um
-adulto não daria. Ela destoa em cor — é bem mais saturada que os adultos
-novos.
+**A criança não veio nas folhas novas.** A linha dela na folha continua
+sendo a antiga, copiada tal e qual — mas ela não aparece mais em tela
+(ver abaixo).
+
+---
+
+## As crianças saem de vista
+
+Pedido direto: "retire as crianças da visão do jogador".
+
+Elas continuam existindo em tudo que não é a tela: nascem, envelhecem,
+contam na população, viram adultas na maioridade, aparecem na crônica e
+nas telas de gente. O que sai é só o **sprite** — `criancaEscondida`
+corta a criança em três pontos: a fila de desenho (a sua vila e a
+rival), o minimapa, e `pessoaEm`, que é o que o dedo usa pra achar
+alguém. Esse último importa: aldeão invisível que responde ao toque
+confunde mais do que ajuda.
+
+De lambugem, isso resolveu o descasamento de arte — a criança era a
+única figura que ainda vinha da folha antiga, bem mais saturada que os
+adultos novos, e destoava no meio da vila.
 
 ---
 
