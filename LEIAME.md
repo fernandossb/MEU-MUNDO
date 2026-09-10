@@ -3162,6 +3162,30 @@ repetir.
     O caminho da grama também passou a ser guardado entre quadros.
     Resultado: de ~27–37ms pra ~5–15ms na faixa de zoom que travava.
 
+### Quarta passada (pedido do usuário)
+
+- **`GRAMA_TILES` e `RUA_TILES` = 5.** Meio-termo entre 1 (borra) e 18
+  (repetição óbvia). O `onload` recorta o azulejo do centro da foto em
+  resolução nativa quando cabe, senão cobre esticando.
+- **Fazenda Grande escala 1,6** (era `ESCALA_PREDIO × 1,85`).
+- **A bake do chunk, que era o "muito travado":** medida em **~40ms por
+  chunk** (2401 amostras de ruído a `SUB=2` + 576×3 `fillRect` de tufo de
+  capim). Agora:
+  - `SUB` 2 → **1** (a foto de grama cobre o chão; a base só precisa de
+    cor + sombra de relevo + tinta de estação). ~4× menos ruído.
+  - **Sem tufo de capim** no CAMPO/FLORESTA (a foto substitui).
+  - Chunk assado a **meia resolução** (`CPX_BAKE = CPX/2`, esticado no
+    desenho) — 450KB/chunk em vez de 1,8MB.
+  - Cache de chunk **60 → 150**, expira em 12s (não 5s): arrastar por
+    área já vista não remonta.
+  - `CHUNKS_NOVOS_POR_QUADRO` 1 → 2 (bake barato agora).
+  - Resultado: bake ~10ms; arrastar/dar zoom fica em ~5–13ms de quadro
+    (era 40–100ms+).
+- **Tile de rua em cache** (`tileDeRua`): cada tile é assado num canvas
+  28×28 uma vez e vira `drawImage` — no zoom aberto eram ~500
+  `pattern.setTransform + fillRect` por quadro, o maior custo do desenho
+  depois do conserto da gente.
+
 ---
 
 ## Estrutura

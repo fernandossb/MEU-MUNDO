@@ -486,12 +486,16 @@
 const TILE  = 28;
 const CHUNK = 24;
 const CPX   = CHUNK * TILE;
-const SUB   = 2;            // amostras de terreno por tile (suavização)
+const CPX_BAKE = Math.round(CPX / 2);   // resolução em que o chunk é assado
+const SUB   = 1;            // amostras de terreno por tile — 1 desde que a foto
+                           // de grama cobre o chão: assar a 2 custava ~40ms/chunk
+                           // (o "trava ao dar zoom"), a base só precisa dar cor,
+                           // sombra de relevo e tinta de estação.
 
 // Textura de chão (fotos do usuário). Quantos tiles a foto cobre antes de
 // repetir, e o quão forte ela entra por cima do terreno / da rua procedural.
-const GRAMA_TILES = 1, GRAMA_ALFA = 0.72;
-const RUA_TILES = 1;
+const GRAMA_TILES = 5, GRAMA_ALFA = 0.72;
+const RUA_TILES = 5;
 let caminhoGramaCache = null;   // Path2D dos tiles de grama à vista, entre quadros
 
 /*
@@ -1546,11 +1550,17 @@ function montarChunk(cx, cy) {
     }
   pg.putImageData(img, 0, 0);
 
+  // O canvas do chunk é assado a METADE da resolução do mundo (CPX_BAKE) e
+  // esticado no desenho: com SUB=1 a base já é só um degradê borrado + a foto
+  // de grama por cima, então meia resolução não tira nada — e corta o gasto
+  // de memória (450KB/chunk em vez de 1,8MB) e de bake pela metade. A matriz
+  // 'g.scale' deixa o resto da função desenhar em coordenadas de MUNDO.
   const cv = document.createElement('canvas');
-  cv.width = CPX; cv.height = CPX;
+  cv.width = CPX_BAKE; cv.height = CPX_BAKE;
   const g = cv.getContext('2d');
   g.imageSmoothingEnabled = true;
   if ('imageSmoothingQuality' in g) g.imageSmoothingQuality = 'high';
+  g.scale(CPX_BAKE / CPX, CPX_BAKE / CPX);
   g.drawImage(peq, 0, 0, N, N, 0, 0, CPX, CPX);
 
   // A foto de gramado NÃO entra aqui: assada no chunk (672px = 1:1 com o
@@ -1564,12 +1574,8 @@ function montarChunk(cx, cy) {
       const tx = cx * CHUNK + lx, ty = cy * CHUNK + ly;
       const b = biomaEm(tx, ty);
       if (b === B.CAMPO || b === B.FLORESTA) {
-        // Tufos de capim: dois tons, para não virar chuvisco uniforme.
-        for (let i = 0; i < 3; i++) {
-          const hx = hash2(tx, ty, SEED + 200 + i), hy = hash2(tx, ty, SEED + 300 + i);
-          g.fillStyle = i % 2 ? 'rgba(255,255,255,.055)' : 'rgba(24,52,20,.07)';
-          g.fillRect(lx * TILE + hx * TILE, ly * TILE + hy * TILE, 1.5, 3.2 + hy * 1.6);
-        }
+        // Sem tufo de capim aqui: a foto de gramado (desenhada ao vivo) já
+        // dá a textura, e 576 tiles × 3 fillRect pesavam na bake do chunk.
       } else if (b === B.ROCHA || b === B.NEVE) {
         // Lascas e fissuras: pedra chapada é o que mais denuncia jogo simples.
         for (let i = 0; i < 3; i++) {
@@ -1618,12 +1624,10 @@ function montarChunk(cx, cy) {
    preenche sozinho ao longo de uns poucos quadros, sem travar nenhum.
 */
 let chunksNovosNesteQuadro = 0;
-// Medido ao vivo: UM 'montarChunk' sozinho já custa ~22-26ms (a bake fina —
-// grama, rachadura — numa canvas 672² com super-amostra 2x). Mais de 1 por
-// quadro estoura o quadro de 16,7ms de qualquer forma; o orçamento não
-// existe pra "caber tudo rápido", existe pra nunca deixar acumular mais de
-// UM estouro por vez.
-const CHUNKS_NOVOS_POR_QUADRO = 1;
+// Com SUB=1 e sem tufo de capim, 'montarChunk' caiu de ~40ms pra ~10ms. Dá
+// pra assar 2 por quadro sem estourar feio (fecha o buraco ao arrastar/dar
+// zoom no dobro da velocidade), e o quadro seguinte já rende de novo.
+const CHUNKS_NOVOS_POR_QUADRO = 2;
 let chunkVazioCv = null;
 function chunkVazio() {
   if (!chunkVazioCv) { chunkVazioCv = document.createElement('canvas'); chunkVazioCv.width = chunkVazioCv.height = 1; }
@@ -7886,36 +7890,42 @@ function alinharPadrao(padrao, wx, wy) {
   return padrao.pat;
 }
 
-function desenharEstrada(g, tx, ty) {
-  const x = tx * TILE, y = ty * TILE;
-  if (ehPonte(tx, ty)) { desenharPonte(g, tx, ty); return; }
-  const n = jogo.estradas.has(nk(tx, ty - 1)), s = jogo.estradas.has(nk(tx, ty + 1));
-  const o = jogo.estradas.has(nk(tx - 1, ty)), l = jogo.estradas.has(nk(tx + 1, ty));
-
+// Cada tile de rua é assado UMA vez num canvas 28×28 (a foto de pedra alinhada
+// ao mundo + a sombra de borda) e daí em diante é só um 'drawImage'. Sem isto,
+// no zoom de vila aberto eram ~500 'pattern.setTransform + fillRect' por
+// quadro — medido como o maior custo do desenho depois do conserto da gente.
+let cacheEstradaTex = new Map();
+function tileDeRua(tx, ty, sig) {
+  const chave = tx + ',' + ty + ':' + sig;
+  let c = cacheEstradaTex.get(chave);
+  if (c) return c;
+  c = document.createElement('canvas'); c.width = TILE; c.height = TILE;
+  const R = c.getContext('2d');
   if (padraoRua) {
-    // A foto de pedra, o tile inteiro, alinhada ao mundo.
-    g.fillStyle = alinharPadrao(padraoRua, x, y);
-    g.fillRect(x, y, TILE, TILE);
+    R.save(); R.translate(-tx * TILE, -ty * TILE);
+    R.fillStyle = alinharPadrao(padraoRua, 0, 0);
+    R.fillRect(tx * TILE, ty * TILE, TILE, TILE);
+    R.restore();
   } else {
-    // Rota de reserva (foto não carregou): o calçamento vetorial de sempre.
-    const m = 4;
-    g.fillStyle = 'rgba(120,101,72,.55)';
-    g.fillRect(x + m - 1, y + m - 1, TILE - m * 2 + 2, TILE - m * 2 + 2);
-    g.fillStyle = '#c9b287';
-    g.fillRect(x + m, y + m, TILE - m * 2, TILE - m * 2);
-    if (n) g.fillRect(x + m, y, TILE - m * 2, m + 1);
-    if (s) g.fillRect(x + m, y + TILE - m - 1, TILE - m * 2, m + 1);
-    if (o) g.fillRect(x, y + m, m + 1, TILE - m * 2);
-    if (l) g.fillRect(x + TILE - m - 1, y + m, m + 1, TILE - m * 2);
+    R.fillStyle = '#c9b287'; R.fillRect(0, 0, TILE, TILE);
   }
+  R.fillStyle = 'rgba(54,42,28,.34)';
+  if (!(sig & 1)) R.fillRect(0, 0, TILE, 2);            // sem vizinho norte
+  if (!(sig & 2)) R.fillRect(0, TILE - 2, TILE, 2);     // sul
+  if (!(sig & 4)) R.fillRect(0, 0, 2, TILE);            // oeste
+  if (!(sig & 8)) R.fillRect(TILE - 2, 0, 2, TILE);     // leste
+  if (cacheEstradaTex.size > 4000) cacheEstradaTex.clear();
+  cacheEstradaTex.set(chave, c);
+  return c;
+}
 
-  // Sombra de profundidade só onde a rua encontra terra — dá espessura sem
-  // parecer adesivo, e some no meio de um trecho reto.
-  g.fillStyle = 'rgba(54,42,28,.34)';
-  if (!n) g.fillRect(x, y, TILE, 2);
-  if (!s) g.fillRect(x, y + TILE - 2, TILE, 2);
-  if (!o) g.fillRect(x, y, 2, TILE);
-  if (!l) g.fillRect(x + TILE - 2, y, 2, TILE);
+function desenharEstrada(g, tx, ty) {
+  if (ehPonte(tx, ty)) { desenharPonte(g, tx, ty); return; }
+  const sig = (jogo.estradas.has(nk(tx, ty - 1)) ? 1 : 0)
+            | (jogo.estradas.has(nk(tx, ty + 1)) ? 2 : 0)
+            | (jogo.estradas.has(nk(tx - 1, ty)) ? 4 : 0)
+            | (jogo.estradas.has(nk(tx + 1, ty)) ? 8 : 0);
+  g.drawImage(tileDeRua(tx, ty, sig), tx * TILE, ty * TILE);
 }
 
 /*
@@ -9283,7 +9293,7 @@ function caixaDoPredio(pr, q, dx0, dy0) {
   //  - Fazenda Grande: +85% sobre o padrão, a pedido do usuário.
   const escala = pr.chave === 'centro'        ? (w / q[4])
                : pr.def.jardim                ? Math.min(2.2, 1.4 * w / q[4])
-               : pr.chave === 'fazendaGrande' ? ESCALA_PREDIO * 1.85
+               : pr.chave === 'fazendaGrande' ? 1.6
                : ESCALA_PREDIO;
   const dw = q[4] * escala, dh = q[5] * escala;
   // Vertical: o laço ancora o sprite na PONTA INFERIOR do losango (esquina SE)
@@ -10341,7 +10351,7 @@ function desenharRegiao() {
   for (let cy = c0y; cy <= c1y; cy++)
     for (let cx = c0x; cx <= c1x; cx++) {
       const ch = pegarChunk(cx, cy);
-      ctx.drawImage(ch.cv, cx * CPX, cy * CPX);
+      ctx.drawImage(ch.cv, cx * CPX, cy * CPX, CPX, CPX);
     }
   ctx.restore();
 
@@ -10558,7 +10568,7 @@ function desenharVilaNormal() {
   for (let cy = c0y; cy <= c1y; cy++)
     for (let cx = c0x; cx <= c1x; cx++) {
       const ch = pegarChunk(cx, cy);
-      ctx.drawImage(ch.cv, cx * CPX, cy * CPX);
+      ctx.drawImage(ch.cv, cx * CPX, cy * CPX, CPX, CPX);
       visiveis.push(ch);
     }
 
@@ -10575,16 +10585,23 @@ function desenharVilaNormal() {
   // laço de tiles pesa à toa. O caminho é guardado entre quadros — só
   // remonta quando a faixa de tiles à vista muda.
   if (padraoGrama && cam.z >= 0.5) {
-    const chave = tx0 + ':' + ty0 + ':' + tx1 + ':' + ty1 + ':' + jogo.estradas.size;
-    if (!caminhoGramaCache || caminhoGramaCache.chave !== chave) {
+    // Monta o caminho pra uma área MAIOR que a tela (margem de 10 tiles) e só
+    // remonta quando a câmera anda pra fora dela — assim arrastar o mapa não
+    // refaz o laço de milhares de 'biomaEm' a cada quadro.
+    const m = 10;
+    const a0x = tx0 - m, a0y = ty0 - m, a1x = tx1 + m, a1y = ty1 + m;
+    if (!caminhoGramaCache
+        || caminhoGramaCache.estradas !== jogo.estradas.size
+        || tx0 < caminhoGramaCache.a0x || ty0 < caminhoGramaCache.a0y
+        || tx1 > caminhoGramaCache.a1x || ty1 > caminhoGramaCache.a1y) {
       const cg = new Path2D();
-      for (let ty = ty0; ty <= ty1; ty++)
-        for (let tx = tx0; tx <= tx1; tx++) {
+      for (let ty = a0y; ty <= a1y; ty++)
+        for (let tx = a0x; tx <= a1x; tx++) {
           const b = biomaEm(tx, ty);
           if ((b === B.CAMPO || b === B.FLORESTA) && !jogo.estradas.has(nk(tx, ty)))
             cg.rect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
         }
-      caminhoGramaCache = { chave, cg };
+      caminhoGramaCache = { cg, a0x, a0y, a1x, a1y, estradas: jogo.estradas.size };
     }
     ctx.save();
     ctx.fillStyle = alinharPadrao(padraoGrama, 0, 0);
@@ -10935,7 +10952,10 @@ function desenharVilaNormal() {
   ctx.fillStyle = vinheta();
   ctx.fillRect(0, 0, W, H);
 
-  if (chunks.size > 60) for (const [k, ch] of chunks) if (agora - ch.visto > 5000) chunks.delete(k);
+  // Cache de chunk maior (a bake a meia-res custa 450KB, não 1,8MB) e que
+  // segura mais tempo: assim arrastar/dar zoom por uma área já vista não
+  // remonta terreno o tempo todo — a causa principal do "trava ao dar zoom".
+  if (chunks.size > 150) for (const [k, ch] of chunks) if (agora - ch.visto > 12000) chunks.delete(k);
 }
 
 // Mancha de luz quente que sai das janelas. Fica num canvas próprio porque
