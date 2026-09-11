@@ -3245,7 +3245,26 @@ O remontar da camada (só ao cruzar a margem cacheada) custa ~13ms pras
 três juntas — um soluço raro e pontual, do mesmo tamanho do já aceito
 pra assar um chunk novo.
 
----
+### Sétima passada — a repetição do mosaico estava óbvia demais (pedido do usuário)
+
+"A transição de tiles/tiles está muito artificial": o mesmo azulejo
+(`createPattern(c, 'repeat')`) se copiava idêntico infinitas vezes — de
+longe, a olho nu, dava pra ver a foto se repetindo em fileira, viravam
+ondas de água ou dunas de areia todas apontando pro mesmo lado, sempre
+na mesma posição relativa.
+
+`construirCamadaMaterial` trocou o preenchimento por padrão único por um
+**mosaico com variação**: cada célula (mesmo tamanho do azulejo) sorteia
+uma entre 8 orientações — giro de 0/90/180/270° cruzado com espelhar ou
+não — por um hash estável (`hash2`) da própria posição no mundo, então a
+mesma foto nunca repete duas vezes seguidas do mesmo jeito, mas a
+escolha não muda entre quadros (mesmo hash, mesma posição). Como a foto
+já fecha nas 4 bordas (a mesma técnica sem-costura de sempre), girar ou
+espelhar não quebra o encaixe — só muda a orientação de cada peça do
+mosaico. Isso troca o `fillRect` com `CanvasPattern` por um laço de
+`drawImage` (uma dúzia de células por material na faixa cacheada) — só
+acontece no remontar da camada, não a cada quadro, então o custo extra
+(~5ms no remontar) não pesa no desenho normal.
 
 ## O Centro que se multiplicava (e o carregamento lento depois de muito tempo fora)
 

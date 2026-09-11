@@ -7964,10 +7964,31 @@ function construirCamadaMaterial(padrao, pesoFn, a0x, a0y, a1x, a1y) {
   const cv = document.createElement('canvas');
   cv.width = largoPx; cv.height = altoPx;
   const cx2 = cv.getContext('2d');
-  cx2.fillStyle = alinharPadrao(padrao, a0x * TILE, a0y * TILE);
-  cx2.fillRect(0, 0, largoPx, altoPx);
-  cx2.globalCompositeOperation = 'destination-in';
   cx2.imageSmoothingEnabled = true;
+
+  // Em vez de um 'repeat' uniforme (o mesmo azulejo copiado sem parar — a
+  // repetição fica óbvia de longe), cada CÉLULA do mosaico (mesmo tamanho do
+  // azulejo) sorteia uma orientação (giro de 90° + espelho, 8 combinações)
+  // por um hash estável da própria posição no mundo — a mesma foto nunca
+  // repete duas vezes seguidas do mesmo jeito. Como a foto já fecha nas 4
+  // bordas (ver 'semCostura' em montar-chao.js), girar/espelhar mantém o
+  // encaixe: só muda a orientação, não a borda.
+  const lado = padrao.w;
+  const wx0 = a0x * TILE, wy0 = a0y * TILE;
+  const c0x = Math.floor(wx0 / lado) - 1, c1x = Math.ceil((wx0 + largoPx) / lado) + 1;
+  const c0y = Math.floor(wy0 / lado) - 1, c1y = Math.ceil((wy0 + altoPx) / lado) + 1;
+  for (let cy = c0y; cy <= c1y; cy++)
+    for (let cx = c0x; cx <= c1x; cx++) {
+      const variante = Math.floor(hash2(cx, cy, 8123) * 8);
+      cx2.save();
+      cx2.translate(cx * lado - wx0 + lado / 2, cy * lado - wy0 + lado / 2);
+      cx2.rotate((variante % 4) * Math.PI / 2);
+      if (variante >= 4) cx2.scale(-1, 1);
+      cx2.drawImage(padrao.img, -lado / 2, -lado / 2, lado, lado);
+      cx2.restore();
+    }
+
+  cx2.globalCompositeOperation = 'destination-in';
   cx2.drawImage(masc, 0, 0, tw, th, 0, 0, largoPx, altoPx);
   return { cv, a0x, a0y, a1x, a1y };
 }
@@ -9274,7 +9295,7 @@ imgChao.onload = () => {
       cg.drawImage(imgChao, q[0], q[1], q[2], q[3], 0, 0, q[2] * s, q[3] * s);
     }
     const p = document.createElement('canvas').getContext('2d').createPattern(c, 'repeat');
-    padroesPorNome[nome]({ pat: p, w: lado });
+    padroesPorNome[nome]({ pat: p, w: lado, img: c });
   }
   chunks.clear();                 // rebaka o terreno já visto com a grama
   if (typeof cacheEstradaTex !== 'undefined' && cacheEstradaTex) cacheEstradaTex.clear();
