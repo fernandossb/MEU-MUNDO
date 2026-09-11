@@ -3266,6 +3266,24 @@ mosaico. Isso troca o `fillRect` com `CanvasPattern` por um laço de
 acontece no remontar da camada, não a cada quadro, então o custo extra
 (~5ms no remontar) não pesa no desenho normal.
 
+### Oitava passada — a foto de grama trocada (pedido do usuário)
+
+"A textura de grama está muito ampliada, não passa a sensação de
+grama" — a primeira foto era um capim mais grosso/comprido, que mesmo
+em resolução nativa lia como "grama gigante" perto dos prédios. O
+usuário mandou uma substituta (grama mais fina e densa) em duas
+tentativas: a primeira trazia uma marca d'água circular no meio (selo
+de banco de imagens tipo Dreamstime) e foi recusada — usar uma foto
+com marca d'água distribuiria conteúdo sem licença dentro do jogo; a
+segunda, sem marca, foi a usada.
+
+Só trocou o arquivo-fonte da entrada `grama` em `montar-chao.js` — o
+resto do pipeline (recorte nativo sem embaçar, sem-costura, máscara de
+elevação, mosaico com orientação variada) é o mesmo de antes, e roda
+igual pra qualquer foto que entrar ali.
+
+---
+
 ## O Centro que se multiplicava (e o carregamento lento depois de muito tempo fora)
 
 Dois relatos do usuário, mesma raiz: "estão sendo criados vários centros

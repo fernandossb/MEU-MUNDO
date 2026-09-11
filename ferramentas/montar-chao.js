@@ -86,7 +86,7 @@ function prep(arq, largAlvo) {
 }
 
 const materiais = [
-  ['grama', 'tex-gramado.png', 560],
+  ['grama', 'tex-gramado-fina.png', 560],
   ['rua', 'tex-rua.png', 560],
   ['areia', 'tex-areia.png', 560],
   ['agua', 'tex-agua.png', 560],
