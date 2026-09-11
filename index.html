@@ -498,8 +498,10 @@ const GRAMA_TILES = 5, GRAMA_ALFA = 0.72;
 const RUA_TILES = 5;
 const AREIA_TILES = 5, AREIA_ALFA = 0.75;
 const AGUA_TILES = 5, AGUA_ALFA = 0.68;
-let caminhoGramaCache = null;   // Path2D dos tiles de grama à vista, entre quadros
-let caminhoAreiaCache = null, caminhoAguaCache = null;
+// Camada (canvas) de cada foto de chão já com a borda esfumaçada (ver
+// 'pesoAgua'/'pesoAreia'/'pesoGrama'), guardada entre quadros — só remonta
+// quando a câmera sai da faixa de tiles coberta.
+let camadaGramaCache = null, camadaAreiaCache = null, camadaAguaCache = null;
 
 /*
    A PROJEÇÃO ISOMÉTRICA.
@@ -758,6 +760,30 @@ function biomaEm(tx, ty) {
   if (cacheBioma.size > 90000) cacheBioma.clear();   // teto de memória
   cacheBioma.set(k, b);
   return b;
+}
+
+// Quanto cada foto de chão (água/areia/grama) "pesa" num pixel, em função da
+// MESMA elevação contínua que decide o bioma — em vez do corte 90° de
+// 'biomaEm', a transição sobe e desce suavemente ao redor de cada fronteira
+// (±FEATHER_BIOMA), acompanhando o contorno orgânico do ruído em vez do
+// degrau do grid de tiles. É o que resolve o "encontro de terrenos grosseiro":
+// nenhuma foto termina de repente, ela se dilui na cor procedural contínua
+// que já existe por baixo (ver 'corDaRampa').
+const FEATHER_BIOMA = 0.012;
+function suave(a, b, x) {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
+}
+function pesoAgua(e) {
+  return 1 - suave(0.365 - FEATHER_BIOMA, 0.365 + FEATHER_BIOMA, e);
+}
+function pesoAreia(e) {
+  return suave(0.365 - FEATHER_BIOMA, 0.365 + FEATHER_BIOMA, e)
+       * (1 - suave(0.405 - FEATHER_BIOMA, 0.405 + FEATHER_BIOMA, e));
+}
+function pesoGrama(e) {
+  return suave(0.405 - FEATHER_BIOMA, 0.405 + FEATHER_BIOMA, e)
+       * (1 - suave(0.74 - FEATHER_BIOMA, 0.74 + FEATHER_BIOMA, e));
 }
 
 const RAMPA = [
@@ -7915,6 +7941,48 @@ function alinharPadrao(padrao, wx, wy) {
   return padrao.pat;
 }
 
+/* Monta a CAMADA (canvas) de uma foto de chão (água/areia/grama) já com a
+   borda esfumaçada: uma máscara de 1 amostra de elevação por tile (mesmo
+   campo contínuo que decide o bioma — ver 'pesoAgua' etc.) é ampliada com
+   suavização bilinear até o tamanho real em pixels, e recorta o alfa do
+   preenchimento via 'destination-in'. O resultado é uma foto que se dissolve
+   na cor procedural do chunk (que já é contínua) em vez de cortar em degrau
+   na borda do tile — sem precisar testar tile a tile no desenho de cada
+   quadro, só na hora de montar/remontar a camada. */
+function construirCamadaMaterial(padrao, pesoFn, a0x, a0y, a1x, a1y) {
+  const tw = a1x - a0x + 1, th = a1y - a0y + 1;
+  const masc = document.createElement('canvas');
+  masc.width = tw; masc.height = th;
+  const mctx = masc.getContext('2d');
+  const img = mctx.createImageData(tw, th);
+  for (let ty = 0; ty < th; ty++)
+    for (let tx = 0; tx < tw; tx++)
+      img.data[(ty * tw + tx) * 4 + 3] = Math.round(pesoFn(elevacao(a0x + tx, a0y + ty)) * 255);
+  mctx.putImageData(img, 0, 0);
+
+  const largoPx = tw * TILE, altoPx = th * TILE;
+  const cv = document.createElement('canvas');
+  cv.width = largoPx; cv.height = altoPx;
+  const cx2 = cv.getContext('2d');
+  cx2.fillStyle = alinharPadrao(padrao, a0x * TILE, a0y * TILE);
+  cx2.fillRect(0, 0, largoPx, altoPx);
+  cx2.globalCompositeOperation = 'destination-in';
+  cx2.imageSmoothingEnabled = true;
+  cx2.drawImage(masc, 0, 0, tw, th, 0, 0, largoPx, altoPx);
+  return { cv, a0x, a0y, a1x, a1y };
+}
+
+function desenharCamadaMaterial(ctx, camada, alfaBase, alfaOverlay) {
+  const x = camada.a0x * TILE, y = camada.a0y * TILE;
+  ctx.save();
+  ctx.globalAlpha = alfaBase;
+  ctx.drawImage(camada.cv, x, y);
+  ctx.globalCompositeOperation = 'overlay';
+  ctx.globalAlpha = alfaOverlay;
+  ctx.drawImage(camada.cv, x, y);
+  ctx.restore();
+}
+
 // Cada tile de rua é assado UMA vez num canvas 28×28 (a foto de pedra alinhada
 // ao mundo + a sombra de borda) e daí em diante é só um 'drawImage'. Sem isto,
 // no zoom de vila aberto eram ~500 'pattern.setTransform + fillRect' por
@@ -9210,6 +9278,7 @@ imgChao.onload = () => {
   }
   chunks.clear();                 // rebaka o terreno já visto com a grama
   if (typeof cacheEstradaTex !== 'undefined' && cacheEstradaTex) cacheEstradaTex.clear();
+  camadaGramaCache = camadaAreiaCache = camadaAguaCache = null;
 };
 imgChao.src = FOLHA_CHAO;
 
@@ -10604,96 +10673,34 @@ function desenharVilaNormal() {
   const tx0 = Math.floor(camX / TILE), ty0 = Math.floor(camY / TILE);
   const tx1 = Math.ceil((camX + vw) / TILE), ty1 = Math.ceil((camY + vh) / TILE);
 
-  // A FOTO DE GRAMADO, AO VIVO. Assá-la no chunk (672px = 1:1 com o mundo)
-  // borrava tudo no zoom. Aqui ela entra alinhada ao mundo, nos tiles CAMPO/
-  // FLORESTA que a câmera alcança — inclusive sob prédio (o quintal do lote é
-  // grama; o sprite desenha por cima depois). Só a rua fica de fora. A base
-  // procedural do chunk continua embaixo (sombra de relevo, tinta de estação).
+  // AS FOTOS DE CHÃO, AO VIVO — água, areia e grama. Assá-las no chunk (672px
+  // = 1:1 com o mundo) virava borrão no zoom + cisalhamento isométrico; aqui
+  // cada uma entra alinhada ao mundo, com a borda esfumaçada por elevação
+  // (ver 'construirCamadaMaterial') pra dissolver na cor procedural contínua
+  // em vez de cortar em degrau na borda do tile. A base do chunk continua
+  // embaixo (sombra de relevo, tinta de estação, profundidade da água).
   //
-  // Só no zoom de vila (>= 0,5): mais longe a textura fica sub-pixel e o
-  // laço de tiles pesa à toa. O caminho é guardado entre quadros — só
-  // remonta quando a faixa de tiles à vista muda.
+  // Só no zoom de vila (>= 0,5): mais longe a textura fica sub-pixel e a
+  // camada pesa à toa. Cada camada é guardada entre quadros — só remonta
+  // quando a faixa de tiles à vista muda (margem de 10 tiles).
+  const m = 10;
+  const a0x = tx0 - m, a0y = ty0 - m, a1x = tx1 + m, a1y = ty1 + m;
+  const foraDaFaixa = c => !c || tx0 < c.a0x || ty0 < c.a0y || tx1 > c.a1x || ty1 > c.a1y;
+
   if (padraoGrama && cam.z >= 0.5) {
-    // Monta o caminho pra uma área MAIOR que a tela (margem de 10 tiles) e só
-    // remonta quando a câmera anda pra fora dela — assim arrastar o mapa não
-    // refaz o laço de milhares de 'biomaEm' a cada quadro.
-    const m = 10;
-    const a0x = tx0 - m, a0y = ty0 - m, a1x = tx1 + m, a1y = ty1 + m;
-    if (!caminhoGramaCache
-        || caminhoGramaCache.estradas !== jogo.estradas.size
-        || tx0 < caminhoGramaCache.a0x || ty0 < caminhoGramaCache.a0y
-        || tx1 > caminhoGramaCache.a1x || ty1 > caminhoGramaCache.a1y) {
-      const cg = new Path2D();
-      for (let ty = a0y; ty <= a1y; ty++)
-        for (let tx = a0x; tx <= a1x; tx++) {
-          const b = biomaEm(tx, ty);
-          if ((b === B.CAMPO || b === B.FLORESTA) && !jogo.estradas.has(nk(tx, ty)))
-            cg.rect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
-        }
-      caminhoGramaCache = { cg, a0x, a0y, a1x, a1y, estradas: jogo.estradas.size };
-    }
-    ctx.save();
-    ctx.fillStyle = alinharPadrao(padraoGrama, 0, 0);
-    ctx.globalAlpha = GRAMA_ALFA;
-    ctx.fill(caminhoGramaCache.cg);
-    ctx.globalCompositeOperation = 'overlay';
-    ctx.globalAlpha = 0.4;
-    ctx.fill(caminhoGramaCache.cg);
-    ctx.restore();
+    if (foraDaFaixa(camadaGramaCache))
+      camadaGramaCache = construirCamadaMaterial(padraoGrama, pesoGrama, a0x, a0y, a1x, a1y);
+    desenharCamadaMaterial(ctx, camadaGramaCache, GRAMA_ALFA, 0.4);
   }
-
-  // A FOTO DE AREIA, mesma lógica da grama, nos tiles de praia (B.AREIA).
   if (padraoAreia && cam.z >= 0.5) {
-    const m = 10;
-    const a0x = tx0 - m, a0y = ty0 - m, a1x = tx1 + m, a1y = ty1 + m;
-    if (!caminhoAreiaCache
-        || caminhoAreiaCache.estradas !== jogo.estradas.size
-        || tx0 < caminhoAreiaCache.a0x || ty0 < caminhoAreiaCache.a0y
-        || tx1 > caminhoAreiaCache.a1x || ty1 > caminhoAreiaCache.a1y) {
-      const cg = new Path2D();
-      for (let ty = a0y; ty <= a1y; ty++)
-        for (let tx = a0x; tx <= a1x; tx++) {
-          const b = biomaEm(tx, ty);
-          if (b === B.AREIA && !jogo.estradas.has(nk(tx, ty)))
-            cg.rect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
-        }
-      caminhoAreiaCache = { cg, a0x, a0y, a1x, a1y, estradas: jogo.estradas.size };
-    }
-    ctx.save();
-    ctx.fillStyle = alinharPadrao(padraoAreia, 0, 0);
-    ctx.globalAlpha = AREIA_ALFA;
-    ctx.fill(caminhoAreiaCache.cg);
-    ctx.globalCompositeOperation = 'overlay';
-    ctx.globalAlpha = 0.4;
-    ctx.fill(caminhoAreiaCache.cg);
-    ctx.restore();
+    if (foraDaFaixa(camadaAreiaCache))
+      camadaAreiaCache = construirCamadaMaterial(padraoAreia, pesoAreia, a0x, a0y, a1x, a1y);
+    desenharCamadaMaterial(ctx, camadaAreiaCache, AREIA_ALFA, 0.4);
   }
-
-  // A FOTO DE ÁGUA, nos tiles fundos e rasos (B.AGUA/B.RASO) — a base
-  // procedural continua embaixo dando a sombra de profundidade.
   if (padraoAgua && cam.z >= 0.5) {
-    const m = 10;
-    const a0x = tx0 - m, a0y = ty0 - m, a1x = tx1 + m, a1y = ty1 + m;
-    if (!caminhoAguaCache
-        || tx0 < caminhoAguaCache.a0x || ty0 < caminhoAguaCache.a0y
-        || tx1 > caminhoAguaCache.a1x || ty1 > caminhoAguaCache.a1y) {
-      const cg = new Path2D();
-      for (let ty = a0y; ty <= a1y; ty++)
-        for (let tx = a0x; tx <= a1x; tx++) {
-          const b = biomaEm(tx, ty);
-          if (b === B.AGUA || b === B.RASO)
-            cg.rect(tx * TILE, ty * TILE, TILE + 0.5, TILE + 0.5);
-        }
-      caminhoAguaCache = { cg, a0x, a0y, a1x, a1y };
-    }
-    ctx.save();
-    ctx.fillStyle = alinharPadrao(padraoAgua, 0, 0);
-    ctx.globalAlpha = AGUA_ALFA;
-    ctx.fill(caminhoAguaCache.cg);
-    ctx.globalCompositeOperation = 'overlay';
-    ctx.globalAlpha = 0.35;
-    ctx.fill(caminhoAguaCache.cg);
-    ctx.restore();
+    if (foraDaFaixa(camadaAguaCache))
+      camadaAguaCache = construirCamadaMaterial(padraoAgua, pesoAgua, a0x, a0y, a1x, a1y);
+    desenharCamadaMaterial(ctx, camadaAguaCache, AGUA_ALFA, 0.35);
   }
 
   // Estradas por cima do terreno, antes de tudo que tem altura.

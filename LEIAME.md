@@ -3214,6 +3214,37 @@ de profundidade, a terra mantém a variação de relevo. `AREIA_TILES` e
 ~1,4ms de quadro em média varrendo uma faixa de praia inteira, sem perda
 de fluidez.
 
+### Sexta passada — o encontro dos terrenos estava "grosseiro" (pedido do usuário)
+
+Com as três fotos no ar, sobrou um problema novo: cada uma preenchia um
+**retângulo cheio por tile**, ligado ao corte 90° de `biomaEm` — sem
+gradiente nenhum entre um tile e o vizinho. A cor procedural por baixo
+sempre foi contínua (interpola a `RAMPA` pela elevação suave do ruído);
+a foto por cima é que cortava em degrau reto, visível como uma "escada"
+seguindo o grid isométrico bem na fronteira água/areia e areia/grama.
+
+Correção: em vez de "este tile é areia, pinta cheio", cada material
+ganhou um **peso contínuo** (`pesoAgua`/`pesoAreia`/`pesoGrama`) que
+sobe e desce em rampa suave (`suave`, um smoothstep) ao redor da MESMA
+elevação que já decide o bioma — a foto se dissolve na cor procedural em
+vez de cortar. Isso descarta o Path2D por tile: agora cada foto vira uma
+**camada** (`construirCamadaMaterial`) — uma máscara de 1 amostra de
+elevação por tile, ampliada com suavização bilinear do canvas até o
+tamanho real em pixels (o próprio `drawImage` interpola a rampa entre
+amostras, de graça) e recortada no preenchimento da foto via
+`destination-in`. Resultado: uma foto com a borda já esfumaçada, pronta
+pra um simples `drawImage` a cada quadro — SEM testar tile a tile toda
+hora (só na hora de montar/remontar a camada, mesmo gatilho de antes:
+câmera saiu da faixa cacheada).
+
+Medido: quadro parado (camada em cache) ~1ms pras três fotos juntas —
+mais barato que antes, porque a invalidação não depende mais de
+`jogo.estradas.size` (a máscara não sabe de rua; a rua desenha por cima
+de qualquer jeito, então deixou de precisar excluir o tile por baixo).
+O remontar da camada (só ao cruzar a margem cacheada) custa ~13ms pras
+três juntas — um soluço raro e pontual, do mesmo tamanho do já aceito
+pra assar um chunk novo.
+
 ---
 
 ## O Centro que se multiplicava (e o carregamento lento depois de muito tempo fora)
