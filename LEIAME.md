@@ -3544,6 +3544,31 @@ inverno (já que essa leva não tem foto `_neve`)? Não — `n.neve` vem de
 calendário. Uma árvore no meio da vila continua na foto o ano inteiro,
 inverno incluso; só quem nasce na linha de neve usa o vetorial.
 
+### Rochas e árvores voltam ao desenho vetorial — a leva inteira foi revertida
+
+Depois de três rodadas de ajuste (borda esfumaçada, tronco borrado,
+bétula removida) o usuário decidiu que não valia mais a pena insistir:
+"vc não vai conseguir, volte os sprites antigos agora e desfaça tudo
+que fez pra trocá-los". Revertido por completo:
+
+- **Rochas**: de volta ao bloco poligonal 100% procedural de
+  `spritePedra` — `MAPA_PEDRAS`/`FOLHA_PEDRAS`/`imgPedras` e o ramo de
+  foto em `desenharNo` saíram do jogo. Fotos de rocha nunca tinham
+  existido antes desta sessão, então aqui o "antigo" é o vetorial puro.
+- **Árvores**: `MAPA_ARVORES`/`ESPECIES_ARVORE`/`FOLHA_ARVORES`
+  voltaram ao estado de ANTES desta leva — a primeira geração de fotos
+  (bidoeiro/carvalho/morta/fruta, de uma sessão anterior a esta), não o
+  vetorial puro: essa primeira leva nunca foi alvo de reclamação, só a
+  segunda (as seis fotos novas, incluindo a bétula problemática).
+- `ferramentas/extrair-rochas.js`, `extrair-arvores2.js` e
+  `reembutir-rochas.js` saíram do repositório — ferramentas que só
+  serviam pra montar a leva agora revertida.
+
+Ficam de fora do revert (o pedido foi só sobre os SPRITES de rocha e
+árvore): a textura de terra no sopé pedregoso, o +70% de escala nos
+prédios sem evolução e o contraste mais forte do sombreamento por
+inclinação — nenhum dos três teve reclamação.
+
 ---
 
 ## Estrutura
