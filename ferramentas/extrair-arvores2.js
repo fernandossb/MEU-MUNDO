@@ -1,8 +1,30 @@
 /*
    Segunda leva de árvores: 6 fotos com fundo branco chapado de estúdio (não
    transparente de verdade, ao contrário do que a prévia com xadrez sugeria —
-   conferido pixel a pixel: alfa 255 em tudo). Mesmo flood-fill de
-   'extrair-rochas.js' pra tirar o fundo, adaptado pra cor clara.
+   conferido pixel a pixel: alfa 255 em tudo, sem exceção).
+
+   PRIMEIRA TENTATIVA (flood-fill contra a cor fixa do canto, sem alfa
+   suave) deixava um contorno branco bem visível ao redor de toda árvore.
+   SEGUNDA TENTATIVA (gradiente local, ver 'extrair-rochas.js') melhorou a
+   borda EXTERNA mas ainda sobrava branco: a copa de uma árvore tem vãos
+   entre folha e folha por onde o fundo aparece, e boa parte desses vãos
+   não tem caminho de passo pequeno até a borda da foto (ficam cercados de
+   folha escura por todo lado, com um salto e não um degradê) — o
+   flood-fill nunca alcançava, e esses pixels claros ficavam presos dentro
+   do "objeto", sobrevivendo pra sombra do 'reduzir()' puxar um halo.
+
+   Terceira: além do passo pequeno (segue gradiente), 'removerFundo' aceita
+   um salto grande direto pra qualquer vizinho que já é claramente fundo por
+   conta própria (bem claro E pouco saturado — cinza/branco de estúdio, sem
+   o verde de folha nem o marrom de galho) — isso alcança os vãos cercados
+   sem precisar de um degradê guiando o caminho. Descontamina a cor da
+   faixa que sobra encostada no fundo, senão o anti-serrilhado da foto
+   original continua puxando um resto de branco pro pixel de borda.
+
+   'zonaProtegida' desliga esse salto numa caixa da imagem — a magnólia
+   protege a copa inteira (flor pode nascer em qualquer parte dela) e a
+   bétula só o terço de baixo (onde fica o tronco), deixando a copa
+   continuar pegando o salto contra o halo.
 
    Substitui o time inteiro de espécies "folhosas" (a conífera e os nomes
    fantasiosos de antes saem; NÃO existe foto de neve nesta leva — o inverno
@@ -16,37 +38,84 @@ const DIR = 'C:/Users/PPCP/Downloads/aldeoes2/';
 const ALTURA_ALVO = 50; // mesmo alvo da leva anterior — casa com MAPA_ARVORES já existente
 
 const ESPECIES = [
-  ['carvalho',  'arvore1.png', 24],   // carvalho grande, galhos nodosos
-  ['conifera',  'arvore2.png', 24],   // pinheiro
-  ['bordo',     'arvore3.png', 24],   // bordo japonês, folhas avermelhadas
-  ['magnolia',  'arvore4.png', 40],   // magnólia florida — tolerância maior derrubava as flores brancas; reduzida pra preservá-las
-  ['bidoeiro',  'arvore5.png', 24],   // bétula
-  ['nogueira',  'arvore6.png', 24],   // copa larga e densa
+  ['carvalho',  'arvore1.png', 20, 60, null],                          // carvalho grande, galhos nodosos
+  ['conifera',  'arvore2.png', 20, 60, null],                          // pinheiro
+  ['bordo',     'arvore3.png', 20, 60, null],                          // bordo japonês, folhas avermelhadas
+  ['magnolia',  'arvore4.png', 20, 45, {x0:0,y0:0,x1:1,y1:1}],         // magnólia florida — flor branca em qualquer parte da copa, protege tudo
+  ['bidoeiro',  'arvore5.png', 20, 60, {x0:0.2,y0:0.5,x1:0.8,y1:1}],   // bétula — só o tronco (casca branca) é protegido; a copa continua pegando o salto
+  ['nogueira',  'arvore6.png', 20, 60, null],                         // copa larga e densa
 ];
 
-function removerFundoClaro(im, tolerancia) {
+function removerFundo(im, tolLocal, feather, zonaProtegida) {
   const { larg: w, alt: h, px } = im;
-  const ref = [px[0], px[1], px[2]];
-  const visitado = new Uint8Array(w * h);
-  const perto = i => {
-    const dr = px[i*4] - ref[0], dg = px[i*4+1] - ref[1], db = px[i*4+2] - ref[2];
-    return Math.sqrt(dr*dr + dg*dg + db*db) <= tolerancia;
-  };
+  const n = w * h;
+  const estado = new Uint8Array(n); // 0 = objeto (no fim), 1 = fundo confirmado
+  const corFundo = new Float32Array(n * 3);
+  const dist = (r1,g1,b1,r2,g2,b2) => Math.sqrt((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);
+  // Bem claro E pouco saturado (cinza/branco de estúdio) — nem o verde da
+  // folha nem o marrom do galho passam aqui. Mas casca de bétula e pétala
+  // de flor são BRANCAS também — indistinguíveis do fundo pela cor sozinha
+  // — por isso 'zonaProtegida' desliga o salto numa caixa (em fração da
+  // imagem) onde esse pedaço de árvore normalmente aparece.
+  const zp = zonaProtegida;
+  const protegido = (x, y) => zp && x >= zp.x0*w && x <= zp.x1*w && y >= zp.y0*h && y <= zp.y1*h;
+  const claramenteFundo = (x, y, r, g, b) =>
+    !protegido(x, y) && Math.min(r,g,b) > 190 && (Math.max(r,g,b) - Math.min(r,g,b)) < 20;
+
   const fila = [];
   const semear = (x, y) => {
-    if (x<0||y<0||x>=w||y>=h) return;
-    const i=y*w+x;
-    if (visitado[i]) return;
-    visitado[i]=1;
-    if (perto(i)) fila.push(i);
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = y * w + x;
+    if (estado[i]) return;
+    estado[i] = 1;
+    corFundo[i*3] = px[i*4]; corFundo[i*3+1] = px[i*4+1]; corFundo[i*3+2] = px[i*4+2];
+    fila.push(i);
   };
-  for (let x=0;x<w;x++){ semear(x,0); semear(x,h-1); }
-  for (let y=0;y<h;y++){ semear(0,y); semear(w-1,y); }
+  for (let x = 0; x < w; x++) { semear(x, 0); semear(x, h - 1); }
+  for (let y = 0; y < h; y++) { semear(0, y); semear(w - 1, y); }
+
   while (fila.length) {
     const i = fila.pop();
-    px[i*4+3]=0;
-    const x=i%w, y=(i/w)|0;
-    semear(x+1,y); semear(x-1,y); semear(x,y+1); semear(x,y-1);
+    const x = i % w, y = (i / w) | 0;
+    const cr = corFundo[i*3], cg = corFundo[i*3+1], cb = corFundo[i*3+2];
+    for (const [nx, ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (estado[ni]) continue;
+      const nr = px[ni*4], ng = px[ni*4+1], nb = px[ni*4+2];
+      const passa = dist(cr,cg,cb, nr,ng,nb) <= tolLocal || claramenteFundo(nx,ny, nr,ng,nb);
+      if (passa) {
+        estado[ni] = 1;
+        corFundo[ni*3] = nr; corFundo[ni*3+1] = ng; corFundo[ni*3+2] = nb;
+        fila.push(ni);
+      }
+    }
+  }
+
+  // Pixels de objeto que encostam no fundo: alfa suave + descontaminação.
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (estado[i] === 1) { px[i*4+3] = 0; continue; }
+    let ref = null;
+    for (const [nx, ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1],[x+1,y+1],[x-1,y-1],[x+1,y-1],[x-1,y+1]]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (estado[ni] !== 1) continue;
+      ref = [corFundo[ni*3], corFundo[ni*3+1], corFundo[ni*3+2]];
+      break;
+    }
+    if (!ref) continue;
+    const d = dist(px[i*4],px[i*4+1],px[i*4+2], ref[0],ref[1],ref[2]);
+    if (d >= feather) continue;
+    const a = Math.max(0, Math.min(1, d / feather));
+    if (a < 1) {
+      for (let c = 0; c < 3; c++) {
+        const obs = px[i*4+c];
+        const puro = a > 0.02 ? (obs - (1-a)*ref[c]) / a : obs;
+        px[i*4+c] = Math.max(0, Math.min(255, Math.round(puro)));
+      }
+    }
+    px[i*4+3] = Math.round(255 * a);
   }
   return im;
 }
@@ -107,9 +176,9 @@ function reduzir(im, L, A) {
 }
 
 const quadros = [];
-for (const [especie, arq, tol] of ESPECIES) {
+for (const [especie, arq, tolLocal, feather, zonaProtegida] of ESPECIES) {
   const bruto = decodificar(DIR + arq);
-  const rec = recortarAlfa(manterMaiorIlha(removerFundoClaro(bruto, tol)));
+  const rec = recortarAlfa(manterMaiorIlha(removerFundo(bruto, tolLocal, feather, zonaProtegida)));
   const razao = rec.larg / rec.alt;
   const dh = ALTURA_ALVO, dw = Math.round(dh * razao);
   const cabe = dw <= rec.larg && dh <= rec.alt;

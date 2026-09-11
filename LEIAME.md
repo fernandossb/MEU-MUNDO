@@ -3456,6 +3456,55 @@ forte, e o relevo que já existia passou a se VER.
 
 ---
 
+## O halo branco nas rochas e árvores novas
+
+"Os sprites novos das árvores e da pedra estão com o contorno branco
+extremamente visível" — a pedra ainda vinha com uma sombra cinza do
+lado esquerdo, e toda árvore tinha uma borda branca ao redor do
+desenho inteiro. Raiz do problema, em duas partes:
+
+**A sombra da pedra.** O flood-fill original comparava cada pixel
+candidato contra uma referência FIXA (a cor do canto). A sombra
+projetada no chão do estúdio é um degradê muito comprido — ~280px do
+cinza-claro até o pé da pedra — onde cada PASSO é pequeno, mas a
+distância TOTAL até o canto ultrapassa a tolerância bem antes do
+degradê acabar, e o resto ficava preso como se fosse pedra.
+
+**A borda branca da árvore.** Aqui o problema era diferente: a copa
+de uma árvore tem vãos entre folha e folha por onde o fundo aparece,
+e boa parte desses vãos fica cercada de folha escura por todo lado —
+sem um caminho de passo pequeno até a borda da foto pro flood-fill
+alcançar. Esses pixels claros sobreviviam presos dentro do "objeto",
+e a média ponderada por alfa do `reduzir()` espalhava essa mistura
+clara pro contorno do sprite reduzido — o halo.
+
+**A correção**, em `extrair-rochas.js` e `extrair-arvores2.js`
+(função `removerFundo`, a mesma nos dois):
+1. O flood-fill passou a comparar cada pixel candidato contra o
+   VIZINHO que acabou de virar fundo, não contra uma referência
+   fixa — anda por um degradê comprido inteiro sem precisar de
+   tolerância folgada, mas ainda para na hora numa borda de verdade
+   (o salto é grande de uma vez, não gradual). Resolveu a sombra da
+   pedra sozinho.
+2. Pra alcançar os vãos cercados da árvore, ganhou um SALTO extra:
+   aceita entrar direto num vizinho que já é claramente fundo por
+   conta própria (bem claro E pouco saturado — nem o verde da folha,
+   nem o marrom do galho passam nesse teste).
+3. A faixa de pixels que ainda encosta no fundo ganha alfa suave (não
+   0/255 direto) e tem a cor DESCONTAMINADA — tira a mistura com o
+   fundo que sobrava no anti-serrilhado da foto original.
+
+**O salto do item 2 tem um problema**: casca de bétula e pétala de
+magnólia são brancas — indistinguíveis do fundo pela cor sozinha.
+Sem cuidado, o salto comia tronco e flor de verdade, não só vão de
+fundo. Solução: `zonaProtegida`, uma caixa (em fração da imagem)
+onde o salto fica desligado — a magnólia protege a copa inteira (flor
+nasce em qualquer parte dela), a bétula só o terço de baixo (onde
+fica o tronco); a copa da bétula continua pegando o salto contra o
+halo normalmente.
+
+---
+
 ## Estrutura
 
 ```

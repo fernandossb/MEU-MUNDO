@@ -1,8 +1,23 @@
 /*
    Sprites de ROCHA pra substituir o desenho vetorial (spritePedra) — mesma
    ideia da leva de árvores (extrair-arvores.js), só que a foto de origem tem
-   fundo cinza-claro de estúdio (não preto), então o recorte por flood-fill
-   caça pixels PRÓXIMOS da cor do canto em vez de pixels escuros.
+   fundo cinza-claro de estúdio (não preto).
+
+   PRIMEIRA VERSÃO (flood-fill contra a cor FIXA do canto) deixava passar a
+   sombra projetada da pedra no chão do estúdio — um degradê MUITO longo e
+   gradual (~280px, do cinza-claro até o pé da pedra) onde cada PASSO é
+   pequeno, mas a distância TOTAL até o canto passa da tolerância bem antes
+   de a sombra acabar. 'removerFundo' resolve comparando cada pixel candidato
+   contra o VIZINHO que acabou de virar fundo (não contra uma referência
+   fixa) — assim o preenchimento "anda" degrau a degrau por um degradê longo
+   inteiro, mas ainda para na hora numa borda de verdade (o salto pro cinza
+   da pedra é enorme de uma vez, não gradual).
+
+   Depois do flood-fill, a faixa de pixels que ainda encosta no fundo ganha
+   alfa suave (não 0/255 direto) e tem a cor DESCONTAMINADA — sem isso, o
+   anti-serrilhado da foto original (pixel de borda = mistura de pedra com
+   fundo claro) sobrava opaco e claro demais, e ESSA mistura é o halo branco
+   que aparecia ao redor do sprite depois de reduzido de tamanho.
 */
 const fs = require('fs');
 const { decodificar, codificar } = require('./png.js');
@@ -12,29 +27,71 @@ const ALTURA_ALVO = 44; // px de altura na tela — perto do 40x34 do sprite vet
 
 const ROCHAS = ['rocha1.png', 'rocha2.png'];
 
-function removerFundoClaro(im, tolerancia) {
+function removerFundo(im, tolLocal, feather) {
   const { larg: w, alt: h, px } = im;
-  const ref = [px[0], px[1], px[2]]; // canto 0,0 é sempre fundo
-  const visitado = new Uint8Array(w * h);
-  const perto = i => {
-    const dr = px[i*4] - ref[0], dg = px[i*4+1] - ref[1], db = px[i*4+2] - ref[2];
-    return Math.sqrt(dr*dr + dg*dg + db*db) <= tolerancia;
-  };
+  const n = w * h;
+  const estado = new Uint8Array(n); // 0 = objeto (no fim), 1 = fundo confirmado
+  const corFundo = new Float32Array(n * 3);
+  const dist = (r1,g1,b1,r2,g2,b2) => Math.sqrt((r1-r2)**2+(g1-g2)**2+(b1-b2)**2);
+  // Salto pra fundo óbvio mesmo sem degradê guiando o caminho (ver a mesma
+  // ideia em 'extrair-arvores2.js', onde é essencial pros vãos da copa) —
+  // aqui com uma faixa bem mais estreita (só quase-branco de verdade), pra
+  // não arriscar comer o quartzo claro/líquen da própria pedra.
+  const claramenteFundo = (r,g,b) => Math.min(r,g,b) > 205 && (Math.max(r,g,b) - Math.min(r,g,b)) < 12;
+
   const fila = [];
   const semear = (x, y) => {
-    if (x<0||y<0||x>=w||y>=h) return;
-    const i=y*w+x;
-    if (visitado[i]) return;
-    visitado[i]=1;
-    if (perto(i)) fila.push(i);
+    if (x < 0 || y < 0 || x >= w || y >= h) return;
+    const i = y * w + x;
+    if (estado[i]) return;
+    estado[i] = 1;
+    corFundo[i*3] = px[i*4]; corFundo[i*3+1] = px[i*4+1]; corFundo[i*3+2] = px[i*4+2];
+    fila.push(i);
   };
-  for (let x=0;x<w;x++){ semear(x,0); semear(x,h-1); }
-  for (let y=0;y<h;y++){ semear(0,y); semear(w-1,y); }
+  for (let x = 0; x < w; x++) { semear(x, 0); semear(x, h - 1); }
+  for (let y = 0; y < h; y++) { semear(0, y); semear(w - 1, y); }
+
   while (fila.length) {
     const i = fila.pop();
-    px[i*4+3]=0;
-    const x=i%w, y=(i/w)|0;
-    semear(x+1,y); semear(x-1,y); semear(x,y+1); semear(x,y-1);
+    const x = i % w, y = (i / w) | 0;
+    const cr = corFundo[i*3], cg = corFundo[i*3+1], cb = corFundo[i*3+2];
+    for (const [nx, ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1]]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (estado[ni]) continue;
+      const nr = px[ni*4], ng = px[ni*4+1], nb = px[ni*4+2];
+      if (dist(cr,cg,cb, nr,ng,nb) <= tolLocal || claramenteFundo(nr,ng,nb)) {
+        estado[ni] = 1;
+        corFundo[ni*3] = nr; corFundo[ni*3+1] = ng; corFundo[ni*3+2] = nb;
+        fila.push(ni);
+      }
+    }
+  }
+
+  // Pixels de objeto que encostam no fundo: alfa suave + descontaminação.
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x;
+    if (estado[i] === 1) { px[i*4+3] = 0; continue; }
+    let ref = null;
+    for (const [nx, ny] of [[x+1,y],[x-1,y],[x,y+1],[x,y-1],[x+1,y+1],[x-1,y-1],[x+1,y-1],[x-1,y+1]]) {
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (estado[ni] !== 1) continue;
+      ref = [corFundo[ni*3], corFundo[ni*3+1], corFundo[ni*3+2]];
+      break;
+    }
+    if (!ref) continue;
+    const d = dist(px[i*4],px[i*4+1],px[i*4+2], ref[0],ref[1],ref[2]);
+    if (d >= feather) continue;
+    const a = Math.max(0, Math.min(1, d / feather));
+    if (a < 1) {
+      for (let c = 0; c < 3; c++) {
+        const obs = px[i*4+c];
+        const puro = a > 0.02 ? (obs - (1-a)*ref[c]) / a : obs;
+        px[i*4+c] = Math.max(0, Math.min(255, Math.round(puro)));
+      }
+    }
+    px[i*4+3] = Math.round(255 * a);
   }
   return im;
 }
@@ -94,12 +151,13 @@ function reduzir(im, L, A) {
   return { larg:L, alt:A, px };
 }
 
-const TOLERANCIA = +(process.env.TOL || 26);
+const TOL_LOCAL = +(process.env.TOL || 14);
+const FEATHER = +(process.env.FEATHER || 60);
 const quadros = [];
 for (const arq of ROCHAS) {
   const chave = 'rocha' + (quadros.length + 1);
   const bruto = decodificar(DIR + arq);
-  const rec = recortarAlfa(manterMaiorIlha(removerFundoClaro(bruto, TOLERANCIA)));
+  const rec = recortarAlfa(manterMaiorIlha(removerFundo(bruto, TOL_LOCAL, FEATHER)));
   const razao = rec.larg / rec.alt;
   const dh = ALTURA_ALVO, dw = Math.round(dh * razao);
   const cabe = dw <= rec.larg && dh <= rec.alt;
