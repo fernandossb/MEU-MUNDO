@@ -3503,6 +3503,28 @@ nasce em qualquer parte dela), a bétula só o terço de baixo (onde
 fica o tronco); a copa da bétula continua pegando o salto contra o
 halo normalmente.
 
+### O tronco da bétula continuava ruim
+
+Mesmo protegido do halo, "o tronco da árvore ainda está péssimo" — a
+casca clara com listras escuras é conteúdo de ALTA frequência (muito
+detalhe, alto contraste), e o tronco inteiro cabe numa faixa de só
+~12px de largura no sprite final. `reduzir()` já faz média por caixa
+corretamente, mas nesse pixel-budget o resultado da média é um borrão
+GRANULADO — parece ruído, não casca.
+
+Testado antes de aceitar a causa: borrar a imagem ANTES de reduzir, com
+um raio pequeno (2-3px na resolução original, ~250px de largura) quase
+não mudava nada — o efeito do borrão desaparece quase por completo
+depois de reduzir ~7,5× (um raio de 3px vira menos de 1px de fato no
+resultado final). Só um raio proporcional ao fator de redução (~10px)
+suaviza o bastante pra virar uma casca clara com listras SUAVES em vez
+de ruído granulado.
+
+`borrarZona()`, nova em `extrair-arvores2.js`, faz esse borrão só
+DENTRO da `zonaProtegida` — a mesma caixa que já protege o tronco do
+salto de fundo — deixando a copa (onde o detalhe já lê bem no tamanho
+final) sem tocar.
+
 ---
 
 ## Estrutura

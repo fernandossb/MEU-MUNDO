@@ -26,6 +26,19 @@
    bétula só o terço de baixo (onde fica o tronco), deixando a copa
    continuar pegando o salto contra o halo.
 
+   Mesmo protegido, o TRONCO da bétula ainda saía com um aspecto ruim —
+   uma casca clara com listras escuras (textura de verdade, não é o
+   fundo) é conteúdo de ALTA frequência, e o 'reduzir()' — mesmo fazendo
+   média por caixa corretamente — comprime isso numa faixa de ~12px de
+   largura no sprite final: o resultado é um borrão granulado, sem nada
+   a ver com casca de bétula. Testado: nem borrar ANTES de reduzir (raio
+   pequeno, tipo 3px na resolução original) ajudava — o efeito de um
+   borrão pequeno se perde quase por completo depois de reduzir ~7,5×.
+   Só um raio bem maior (proporcional ao fator de redução, ~10px)
+   suaviza o bastante pra virar uma casca clara com listras SUAVES em
+   vez de ruído — 'raioBorraZona' faz isso só dentro da 'zonaProtegida'
+   (a copa continua nítida).
+
    Substitui o time inteiro de espécies "folhosas" (a conífera e os nomes
    fantasiosos de antes saem; NÃO existe foto de neve nesta leva — o inverno
    cai de volta pro sprite vetorial daquela espécie, que continua servindo de
@@ -38,12 +51,12 @@ const DIR = 'C:/Users/PPCP/Downloads/aldeoes2/';
 const ALTURA_ALVO = 50; // mesmo alvo da leva anterior — casa com MAPA_ARVORES já existente
 
 const ESPECIES = [
-  ['carvalho',  'arvore1.png', 20, 60, null],                          // carvalho grande, galhos nodosos
-  ['conifera',  'arvore2.png', 20, 60, null],                          // pinheiro
-  ['bordo',     'arvore3.png', 20, 60, null],                          // bordo japonês, folhas avermelhadas
-  ['magnolia',  'arvore4.png', 20, 45, {x0:0,y0:0,x1:1,y1:1}],         // magnólia florida — flor branca em qualquer parte da copa, protege tudo
-  ['bidoeiro',  'arvore5.png', 20, 60, {x0:0.2,y0:0.5,x1:0.8,y1:1}],   // bétula — só o tronco (casca branca) é protegido; a copa continua pegando o salto
-  ['nogueira',  'arvore6.png', 20, 60, null],                         // copa larga e densa
+  ['carvalho',  'arvore1.png', 20, 60, null,                        0],   // carvalho grande, galhos nodosos
+  ['conifera',  'arvore2.png', 20, 60, null,                        0],   // pinheiro
+  ['bordo',     'arvore3.png', 20, 60, null,                        0],   // bordo japonês, folhas avermelhadas
+  ['magnolia',  'arvore4.png', 20, 45, {x0:0,y0:0,x1:1,y1:1},       0],   // magnólia florida — flor branca em qualquer parte da copa, protege tudo (sem borrar: a flor tem que ficar nítida)
+  ['bidoeiro',  'arvore5.png', 20, 60, {x0:0.2,y0:0.5,x1:0.8,y1:1}, 10],  // bétula — tronco protegido do salto E borrado (casca vira ruído sem isso)
+  ['nogueira',  'arvore6.png', 20, 60, null,                        0],   // copa larga e densa
 ];
 
 function removerFundo(im, tolLocal, feather, zonaProtegida) {
@@ -143,6 +156,34 @@ function manterMaiorIlha(im) {
   for (let i=0;i<larg*alt;i++) if (!mantido[i]) px[i*4+3]=0;
   return im;
 }
+// Borra só dentro de 'zona' (mesmo formato de 'zonaProtegida' — fração da
+// imagem), em dois passes separáveis (horizontal depois vertical, mais
+// barato que um kernel 2D cheio). Média ponderada por alfa, pra não puxar
+// preto de pixel já transparente pra dentro do resultado.
+function borrarZona(im, zona, raio) {
+  const { larg: w, alt: h, px } = im;
+  if (!zona || !raio) return im;
+  const dentro = (x, y) => x >= zona.x0*w && x <= zona.x1*w && y >= zona.y0*h && y <= zona.y1*h;
+  const passe = (origem, horizontal) => {
+    const out = Buffer.from(origem);
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y*w+x)*4;
+      if (!dentro(x,y) || origem[i+3] === 0) continue;
+      let r=0,g=0,b=0,a=0,pesoA=0,n=0;
+      for (let k=-raio;k<=raio;k++) {
+        const nx = horizontal ? x+k : x, ny = horizontal ? y : y+k;
+        if (nx<0||ny<0||nx>=w||ny>=h) continue;
+        const ni=(ny*w+nx)*4, al=origem[ni+3]/255;
+        r+=origem[ni]*al; g+=origem[ni+1]*al; b+=origem[ni+2]*al; pesoA+=al; a+=origem[ni+3]; n++;
+      }
+      if (pesoA>0.01) { out[i]=Math.round(r/pesoA); out[i+1]=Math.round(g/pesoA); out[i+2]=Math.round(b/pesoA); }
+      out[i+3]=Math.round(a/n);
+    }
+    return out;
+  };
+  im.px = passe(passe(px, true), false);
+  return im;
+}
 function recortarAlfa(im) {
   let x0=im.larg,y0=im.alt,x1=-1,y1=-1;
   for (let y=0;y<im.alt;y++) for (let x=0;x<im.larg;x++)
@@ -176,9 +217,10 @@ function reduzir(im, L, A) {
 }
 
 const quadros = [];
-for (const [especie, arq, tolLocal, feather, zonaProtegida] of ESPECIES) {
+for (const [especie, arq, tolLocal, feather, zonaProtegida, raioBorraZona] of ESPECIES) {
   const bruto = decodificar(DIR + arq);
-  const rec = recortarAlfa(manterMaiorIlha(removerFundo(bruto, tolLocal, feather, zonaProtegida)));
+  let rec = recortarAlfa(manterMaiorIlha(removerFundo(bruto, tolLocal, feather, zonaProtegida)));
+  rec = borrarZona(rec, zonaProtegida, raioBorraZona);
   const razao = rec.larg / rec.alt;
   const dh = ALTURA_ALVO, dw = Math.round(dh * razao);
   const cabe = dw <= rec.larg && dh <= rec.alt;
