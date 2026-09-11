@@ -1644,7 +1644,6 @@ function montarChunk(cx, cy) {
         n.s = 0.82 + hash2(tx, ty, SEED + 950) * 0.42;
         n.semente = hash2(tx, ty, SEED + 960);
         n.conifera = n.tipo === 'madeira' && coniferaEm(tx, ty);
-        n.neve = b === B.NEVE;
         nos.push(n);
       }
     }
@@ -8658,230 +8657,6 @@ function copa(g, cx, cy, raio, v, paleta) {
   g.globalCompositeOperation = 'source-over';
 }
 
-const PALETAS_FOLHA = [
-  ['#1d3d20', '#2f5c2c', '#4a8138', '#79b04a'],
-  ['#1b3a26', '#2b5734', '#468045', '#71a95c'],
-  ['#243d1c', '#395c26', '#568a34', '#8cbb4c'],
-  ['#1a3524', '#2d5535', '#437b45', '#6da45e'],
-];
-
-function spriteArvore(v) {
-  const L = 46, A = 58;
-  return sprite('arv' + v, L, A, L / 2, A - 3, g => {
-    const cx = L / 2, base = A - 4;
-    const paleta = PALETAS_FOLHA[v % PALETAS_FOLHA.length];
-
-    // Sombra no chão, alongada para o lado oposto à luz.
-    g.fillStyle = 'rgba(22,30,18,.26)';
-    g.beginPath(); g.ellipse(cx + 3, base, 12, 4.6, 0, 0, 6.2832); g.fill();
-
-    // Tronco: dois lados, um na sombra, com raízes alargando na base.
-    const altTronco = 20 + dado(v, 1) * 6;
-    g.fillStyle = '#5c4630';
-    g.beginPath();
-    g.moveTo(cx - 4.2, base);
-    g.quadraticCurveTo(cx - 2.4, base - altTronco * 0.6, cx - 1.9, base - altTronco);
-    g.lineTo(cx + 1.9, base - altTronco);
-    g.quadraticCurveTo(cx + 2.4, base - altTronco * 0.6, cx + 4.2, base);
-    g.closePath(); g.fill();
-    g.fillStyle = 'rgba(0,0,0,.24)';
-    g.beginPath();
-    g.moveTo(cx + 0.6, base); g.lineTo(cx + 0.6, base - altTronco);
-    g.lineTo(cx + 1.9, base - altTronco); g.quadraticCurveTo(cx + 2.4, base - altTronco * 0.6, cx + 4.2, base);
-    g.closePath(); g.fill();
-    // Casca
-    g.strokeStyle = 'rgba(30,20,12,.30)'; g.lineWidth = 0.5;
-    for (let i = 0; i < 5; i++) {
-      const y = base - 3 - i * (altTronco / 6);
-      g.beginPath(); g.moveTo(cx - 3 + dado(v, 30 + i), y); g.lineTo(cx - 1 + dado(v, 40 + i) * 2, y - 2.5); g.stroke();
-    }
-
-    // Galhos entrando na copa: aparecem nos buracos e dão estrutura.
-    g.strokeStyle = '#4a3726'; g.lineCap = 'round';
-    for (let i = 0; i < 4; i++) {
-      const ang = -1.9 + i * 0.62 + dado(v, 50 + i) * 0.3;
-      g.lineWidth = 1.8 - i * 0.15;
-      g.beginPath();
-      g.moveTo(cx, base - altTronco + 2);
-      g.quadraticCurveTo(cx + Math.cos(ang) * 7, base - altTronco - 4,
-                         cx + Math.cos(ang) * 14, base - altTronco - 10 - dado(v, 60 + i) * 5);
-      g.stroke();
-    }
-    g.lineCap = 'butt';
-
-    const raio = 17.5 + dado(v, 2) * 3.5;
-    copa(g, cx, base - altTronco - 9, raio, v, paleta);
-
-    // Frutinhas em uma variante ou outra.
-    if (v % 3 === 0) {
-      g.fillStyle = '#b8433c';
-      for (let i = 0; i < 7; i++) {
-        const ang = dado(v, 900 + i) * 6.2832, r = raio * (0.35 + dado(v, 920 + i) * 0.5);
-        g.beginPath();
-        g.arc(cx + Math.cos(ang) * r, base - altTronco - 9 + Math.sin(ang) * r * 0.8, 1.1, 0, 6.2832);
-        g.fill();
-      }
-    }
-  });
-}
-
-function spriteConifera(v, comNeve) {
-  const L = 34, A = 62;
-  return sprite('con' + v + (comNeve ? 'n' : ''), L, A, L / 2, A - 3, g => {
-    const cx = L / 2, base = A - 4;
-    g.fillStyle = 'rgba(22,30,18,.26)';
-    g.beginPath(); g.ellipse(cx + 2, base, 9, 3.6, 0, 0, 6.2832); g.fill();
-
-    g.fillStyle = '#4a3524';
-    g.fillRect(cx - 2, base - 12, 4, 12);
-    g.fillStyle = 'rgba(0,0,0,.25)';
-    g.fillRect(cx + 0.4, base - 12, 1.6, 12);
-
-    // Saias de galho com dentes irregulares. Cada variante tem número e
-    // largura próprios, senão as seis coníferas saem iguais.
-    const camadas = 5 + (v % 3);
-    const largBase = 14 + dado(v, 90) * 4;
-    const passo = (A - 22) / camadas;
-    const escuro = '#1b3826', medio = '#27543a', claro = '#356e46';
-
-    for (let i = 0; i < camadas; i++) {
-      const t = i / (camadas - 1);
-      const larg = largBase * (1 - t * 0.74);
-      const yBase = base - 9 - i * passo;
-      const ponta = yBase - passo * 1.75;
-
-      // Contorno da saia, guardado para reaproveitar no recorte de luz e neve.
-      const contorno = g2 => {
-        g2.beginPath();
-        g2.moveTo(cx, ponta);
-        for (let k = 0; k <= 8; k++) {
-          const f = k / 8;
-          const x = cx - larg + f * larg * 2;
-          const dente = (k % 2 ? 2.2 : 0) + dado(v, i * 11 + k) * 1.8;
-          g2.lineTo(x, yBase + dente);
-        }
-        g2.closePath();
-      };
-
-      g.fillStyle = medio; contorno(g); g.fill();
-
-      // Meia-luz na esquerda e sombra na direita: é o que dá volume ao cone.
-      g.save(); contorno(g); g.clip();
-      g.fillStyle = claro;
-      g.fillRect(cx - larg - 1, ponta - 1, larg * 0.92, passo * 3);
-      g.fillStyle = escuro;
-      g.fillRect(cx + larg * 0.38, ponta - 1, larg, passo * 3);
-      g.restore();
-
-      if (comNeve) {
-        // Neve só na crista dos galhos, acompanhando a inclinação.
-        g.save(); contorno(g); g.clip();
-        g.fillStyle = 'rgba(248,251,255,.9)';
-        g.beginPath();
-        g.moveTo(cx, ponta);
-        g.lineTo(cx - larg, yBase);
-        g.lineTo(cx - larg * 0.5, yBase - passo * 0.28);
-        g.lineTo(cx, yBase - passo * 0.1);
-        g.lineTo(cx + larg * 0.55, yBase - passo * 0.3);
-        g.lineTo(cx + larg, yBase);
-        g.lineTo(cx + larg * 0.2, ponta + passo * 0.5);
-        g.closePath(); g.fill();
-        g.restore();
-      }
-    }
-  });
-}
-
-const PALETAS_PEDRA = [
-  ['#4e535a', '#6f757d', '#9aa1a9', '#c3cad2'],
-  ['#4f4d46', '#726f66', '#9b978c', '#c2beb2'],
-  ['#4a4f52', '#6b7175', '#949a9f', '#bcc3c8'],
-];
-
-function spritePedra(v, comNeve) {
-  const L = 40, A = 34;
-  return sprite('ped' + v + (comNeve ? 'n' : ''), L, A, L / 2, A - 4, g => {
-    const cx = L / 2, base = A - 5;
-    const pal = PALETAS_PEDRA[v % PALETAS_PEDRA.length];
-
-    g.fillStyle = 'rgba(22,30,18,.30)';
-    g.beginPath(); g.ellipse(cx + 3, base + 1, 14, 4.4, 0, 0, 6.2832); g.fill();
-
-    // Contorno do bloco: polígono irregular, sempre o mesmo por variante.
-    const pontos = [];
-    const N = 9;
-    for (let i = 0; i < N; i++) {
-      const ang = (i / N) * 6.2832 - 1.57;
-      const r = 12 + dado(v, i) * 6;
-      pontos.push([cx + Math.cos(ang) * r, base - 9 + Math.sin(ang) * r * 0.72]);
-    }
-    // Face frontal
-    g.fillStyle = pal[1];
-    g.beginPath();
-    g.moveTo(pontos[0][0], pontos[0][1]);
-    for (const p of pontos) g.lineTo(p[0], p[1]);
-    g.closePath(); g.fill();
-
-    // Face de cima, virada para a luz: recorta os pontos superiores.
-    const topo = pontos.filter(p => p[1] < base - 9);
-    if (topo.length > 2) {
-      g.fillStyle = pal[2];
-      g.beginPath();
-      g.moveTo(cx, base - 9);
-      for (const p of topo) g.lineTo(p[0], p[1] + 1);
-      g.closePath(); g.fill();
-      g.fillStyle = pal[3];
-      g.beginPath();
-      g.moveTo(cx - 2, base - 12);
-      for (const p of topo.slice(0, Math.ceil(topo.length / 2))) g.lineTo(p[0], p[1] + 2.5);
-      g.closePath(); g.fill();
-    }
-    // Face direita, na sombra
-    g.fillStyle = pal[0];
-    g.beginPath();
-    g.moveTo(cx + 2, base - 12);
-    for (const p of pontos.filter(p => p[0] > cx)) g.lineTo(p[0], p[1]);
-    g.lineTo(cx + 3, base);
-    g.closePath(); g.fill();
-
-    // Veios e trincas
-    g.strokeStyle = 'rgba(20,22,24,.34)';
-    for (let i = 0; i < 3; i++) {
-      g.lineWidth = 0.6 + dado(v, 200 + i) * 0.5;
-      g.beginPath();
-      let x = cx - 8 + dado(v, 210 + i) * 16, y = base - 18 + dado(v, 220 + i) * 6;
-      g.moveTo(x, y);
-      for (let k = 0; k < 3; k++) {
-        x += (dado(v, 230 + i * 4 + k) - 0.4) * 7;
-        y += 2.4 + dado(v, 240 + i * 4 + k) * 2.4;
-        g.lineTo(x, y);
-      }
-      g.stroke();
-    }
-    // Granulado do granito
-    for (let i = 0; i < 60; i++) {
-      const px = cx - 15 + dado(v, 300 + i * 2) * 30;
-      const py = base - 22 + dado(v, 301 + i * 2) * 22;
-      g.fillStyle = i % 3 === 0 ? 'rgba(255,255,255,.20)' : 'rgba(0,0,0,.13)';
-      g.fillRect(px, py, 1, 1);
-    }
-    // Musgo na base, do lado sombreado
-    g.fillStyle = 'rgba(74,110,52,.42)';
-    for (let i = 0; i < 6; i++) {
-      const px = cx - 12 + dado(v, 400 + i) * 22;
-      g.beginPath(); g.ellipse(px, base - 2 + dado(v, 410 + i) * 2, 2.6, 1.4, 0, 0, 6.2832); g.fill();
-    }
-    if (comNeve) {
-      g.fillStyle = 'rgba(255,255,255,.82)';
-      g.beginPath();
-      g.moveTo(cx - 10, base - 13);
-      g.quadraticCurveTo(cx, base - 20, cx + 10, base - 12);
-      g.quadraticCurveTo(cx, base - 15, cx - 10, base - 13);
-      g.closePath(); g.fill();
-    }
-  });
-}
-
 function spriteMoita(v) {
   const L = 30, A = 26;
   return sprite('moi' + v, L, A, L / 2, A - 3, g => {
@@ -8913,35 +8688,35 @@ function spriteMoita(v) {
 // (semente do próprio nó), pra ser sempre a mesma árvore no mesmo lugar.
 const ESPECIES_ARVORE = ['carvalho', 'nogueira', 'carvalho', 'nogueira', 'carvalho', 'nogueira'];
 
+// O vetorial que cobria árvore e pedra antes das fotos foi removido
+// ('spriteArvore'/'spriteConifera'/'spritePedra' — ver LEIAME.md). Sem
+// fallback nenhum pra desenhar, então enquanto a folha ainda decodifica
+// (a foto é embutida no arquivo, mas o navegador decodifica 'Image.src'
+// fora da linha mesmo sendo 'data:'), o nó simplesmente não aparece por
+// um ou dois quadros, em vez de piscar o desenho antigo por cima do
+// chão — pedido do usuário: "ainda aparece de relance aqueles sprites
+// procedurais". Só a moita ('comida') continua vetorial: nunca ganhou
+// foto própria, é o desenho de verdade dela, não um substituto provisório.
 function desenharNo(g, n, px, py) {
   const v = Math.floor((n.semente || 0) * VARIANTES) % VARIANTES;
   const s = (n.s || 1) * 0.78;
-  if (n.tipo === 'madeira' && folhaArvoresPronta) {
-    const chave = (n.conifera ? 'conifera' : ESPECIES_ARVORE[v]) + (n.neve ? '_neve' : '');
-    const q = MAPA_ARVORES[chave];
-    if (q) {
-      const dw = q[4] * s, dh = q[5] * s;
-      // Mesma âncora do desenho vetorial que substitui: horizontal centrada,
-      // base do tronco ~3px abaixo do centro do próprio tile (onde 'base' da
-      // sombra do vetorial também caía).
-      g.drawImage(imgArvores, q[0], q[1], q[2], q[3], px - dw / 2, py + 3 * s - dh, dw, dh);
-      return;
-    }
+  if (n.tipo === 'madeira') {
+    if (!folhaArvoresPronta) return;
+    const q = MAPA_ARVORES[n.conifera ? 'conifera' : ESPECIES_ARVORE[v]];
+    const dw = q[4] * s, dh = q[5] * s;
+    // Horizontal centrada, base do tronco ~3px abaixo do centro do tile.
+    g.drawImage(imgArvores, q[0], q[1], q[2], q[3], px - dw / 2, py + 3 * s - dh, dw, dh);
+    return;
   }
-  if (n.tipo === 'pedra' && folhaPedrasPronta) {
+  if (n.tipo === 'pedra') {
+    if (!folhaPedrasPronta) return;
     const q = MAPA_PEDRAS['rocha' + (1 + v % 2)];
-    if (q) {
-      const dw = q[4] * s, dh = q[5] * s;
-      // Mesma âncora do bloco vetorial que substitui (ver 'spritePedra'):
-      // horizontal centrada, base ~5px abaixo do centro do tile.
-      g.drawImage(imgPedras, q[0], q[1], q[2], q[3], px - dw / 2, py + 5 * s - dh, dw, dh);
-      return;
-    }
+    const dw = q[4] * s, dh = q[5] * s;
+    // Horizontal centrada, base ~5px abaixo do centro do tile.
+    g.drawImage(imgPedras, q[0], q[1], q[2], q[3], px - dw / 2, py + 5 * s - dh, dw, dh);
+    return;
   }
-  let sp;
-  if (n.tipo === 'madeira') sp = n.conifera ? spriteConifera(v, n.neve) : spriteArvore(v);
-  else if (n.tipo === 'pedra') sp = spritePedra(v, n.neve);
-  else sp = spriteMoita(v);
+  const sp = spriteMoita(v);
   g.drawImage(sp.cv, px - sp.ax * s, py - sp.ay * s, sp.larg * s, sp.alt * s);
 }
 
@@ -9356,8 +9131,7 @@ imgArvores.onload = () => { folhaArvoresPronta = true; };
 imgArvores.src = FOLHA_ARVORES;
 
 // Mesma ideia da folha de árvore, só que pra pedregulho decorativo: duas
-// fotos (MAPA_PEDRAS.rocha1/rocha2) substituem o bloco poligonal vetorial de
-// 'spritePedra' — ver 'desenharNo'.
+// fotos (MAPA_PEDRAS.rocha1/rocha2) — ver 'desenharNo'.
 const MAPA_PEDRAS = {"rocha1":[0,0,55,44,55,44],"rocha2":[0,44,48,44,48,44]};
 const FOLHA_PEDRAS = "data:image/png;base64,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";
 const imgPedras = new Image();

@@ -3708,6 +3708,45 @@ já desenhava na frente por conta própria. Só se aplica a árvore
 
 ---
 
+## Limpeza: o vetorial de árvore/pedra que ainda piscava na abertura
+
+Pedido do usuário, aproveitando crédito sobrando: vasculhar o código atrás
+de sobra. Ele tinha reparado que "ainda aparece de relance aqueles sprites
+procedurais" ao abrir o jogo, e apostava que só a moita (fruto que o
+colhedor busca) ainda usava desenho vetorial de verdade.
+
+Ele estava certo, e o motivo do "de relance" tinha explicação: embora a
+folha de sprites venha embutida como `data:` no próprio arquivo, o
+navegador decodifica um `Image.src` de qualquer jeito fora da linha —
+`folhaArvoresPronta`/`folhaPedrasPronta` só viram `true` no `onload`, um
+quadro (às vezes dois) depois do primeiro desenho. Até lá, `desenharNo`
+caía no vetorial antigo (`spriteArvore`/`spriteConifera`/`spritePedra`)
+como reserva — e é esse vetorial, com traço totalmente diferente da foto,
+que piscava por cima do chão.
+
+Conserto: tirado o fallback. Se a folha ainda não carregou, o nó
+simplesmente não desenha nada por aquele quadro (em vez de desenhar o
+vetorial) — o mato "aparece" um instante depois de tudo o mais, sem
+nenhum piscar de estilo errado. Sem fallback nenhum chamando essas três
+funções, elas viraram código morto de verdade (conferido: nenhuma outra
+chamada no arquivo inteiro) — removidas junto com as paletas que só elas
+usavam (`PALETAS_FOLHA`, `PALETAS_PEDRA`), ~8KB de código.
+
+De quebra, achei um bug de verdade nessa faxina: a busca da foto de
+árvore incluía um sufixo `_neve` (`chave = especie + (n.neve ? '_neve' :
+'')`) que **nunca existiu** em `MAPA_ARVORES` (só tem `conifera`,
+`carvalho`, `nogueira`, sem variante de neve) — toda árvore em bioma de
+neve caía no vetorial antigo, sempre, não só no quadro de abertura.
+Corrigido tirando o sufixo (a pedra, ao lado, nunca teve essa distinção
+na busca da foto — só o vetorial dela usava `comNeve`, pra tingir de
+branco). Testado ao vivo num trecho de neve: pinheiro e rocha agora saem
+foto de verdade, iguais ao resto do mapa.
+
+`spriteMoita` (a moita/`comida`, que o colhedor de fato busca) continua
+vetorial — nunca ganhou foto própria, não é reserva de nada.
+
+---
+
 ## Estrutura
 
 ```
