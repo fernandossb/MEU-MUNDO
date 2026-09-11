@@ -3186,6 +3186,34 @@ repetir.
   `pattern.setTransform + fillRect` por quadro, o maior custo do desenho
   depois do conserto da gente.
 
+### Quinta passada — água e areia (pedido do usuário)
+
+"A textura da grama não ficou boa, não está casando com a textura da
+água e da beira da água também. A textura não passa realismo" — o
+diagnóstico: grama/rua já eram foto real, enquanto água e areia
+continuavam 100% cor procedural (`RAMPA`/`corDaRampa`). A costura entre
+"foto" e "gradiente vetorial" chamava mais atenção do que resolvia.
+Perguntado o caminho, o usuário escolheu mandar fotos de água e de areia
+pra fechar o conjunto, em vez de simplificar grama/rua de volta.
+
+`montar-chao.js` deixou de ser hardcoded pra duas fotos e virou genérico
+pra uma lista de materiais — mesma técnica de sem-costura de antes,
+empilhados numa folha só (`chao.png`/`FOLHA_CHAO`). A foto de areia
+chegou pequena (250×200); `prep()` ganhou um teto (largura final nunca
+maior que a largura da foto original) pra nunca ampliar uma foto pequena
+e borrar — fica no tamanho nativo dela.
+
+Mesmo tratamento ao vivo da grama, mais dois passes no laço de
+`desenharVilaNormal`, antes da rua: **areia** nos tiles `B.AREIA`, alfa
+0,75; **água** nos tiles `B.AGUA`/`B.RASO`, alfa 0,68 — cada um com seu
+próprio `Path2D` em cache (`caminhoAreiaCache`/`caminhoAguaCache`, mesma
+lógica de área com margem e só remonta quando a câmera sai da faixa
+cacheada). A base procedural continua por baixo: a água mantém a sombra
+de profundidade, a terra mantém a variação de relevo. `AREIA_TILES` e
+`AGUA_TILES` = 5, mesmo padrão de `GRAMA_TILES`/`RUA_TILES`. Medido:
+~1,4ms de quadro em média varrendo uma faixa de praia inteira, sem perda
+de fluidez.
+
 ---
 
 ## O Centro que se multiplicava (e o carregamento lento depois de muito tempo fora)

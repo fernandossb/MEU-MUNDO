@@ -1,12 +1,13 @@
 /*
-   Monta a folha do CHÃO: a textura de gramado e a de rua (pedra), as duas
-   fotos que o usuário mandou, viram tiles REPETÍVEIS e vão pra uma folha só
+   Monta a folha do CHÃO: gramado, rua (pedra), areia e água — as quatro
+   fotos que o usuário mandou, viradas em tiles REPETÍVEIS numa folha só
    ('FOLHA_CHAO' no index.html).
 
-   - 'montarChunk' desenha a grama por cima do terreno procedural (só CAMPO/
-     FLORESTA), no modo 'multiply' e com alfa — a base procedural dá a
-     variação de cor/sombra em escala grande, a foto dá a textura fina.
-   - 'desenharEstrada' usa a pedra no lugar dos paralelepípedos vetoriais.
+   Todo material é desenhado AO VIVO (não assado no chunk — vira borrão no
+   zoom/cisalhamento, ver histórico) por cima da base procedural do bioma
+   correspondente: 'montarChunk' pra grama, 'desenharEstrada' pra rua, e o
+   laço de 'desenharVilaNormal' pra areia/água (a base ainda dá a sombra de
+   profundidade da água e a variação de relevo — a foto só entra por cima).
 
    SEM COSTURA. As fotos não são tileáveis (bordas não casam). Técnica:
    desloca a imagem por meia largura/altura (leva as costuras da borda pro
@@ -18,9 +19,9 @@ const fs = require('fs');
 const { decodificar, codificar } = require('./png.js');
 
 const ORIG = 'C:/Users/PPCP/Downloads/aldeoes2/';
-const LARG = 560;   // largura guardada (tile repetível) — altura pela proporção
 
 function reduzir(im, L, A) {
+  if (L === im.larg && A === im.alt) return im;
   const px = Buffer.alloc(L * A * 4);
   const ex = im.larg / L, ey = im.alt / A;
   for (let y = 0; y < A; y++) {
@@ -71,29 +72,45 @@ function semCostura(im) {
   return { larg: L, alt: A, px: o };
 }
 
-function prep(arq) {
+/* 'largAlvo': largura guardada na folha. Fotos já pequenas (a de areia veio
+   250x200) não sobem de tamanho — ampliar só borraria; ficam no próprio
+   tamanho. As grandes (grama, rua, água) descem pra um teto de peso. */
+function prep(arq, largAlvo) {
   let im = decodificar(ORIG + arq);
-  const A = Math.round(LARG * im.alt / im.larg);
-  im = reduzir(im, LARG, A);
+  const L = Math.min(largAlvo, im.larg);
+  const A = Math.round(L * im.alt / im.larg);
+  im = reduzir(im, L, A);
   im = semCostura(im);
   console.log(arq.padEnd(18) + im.larg + 'x' + im.alt);
   return im;
 }
 
-const grama = prep('tex-gramado.png');
-const rua = prep('tex-rua.png');
+const materiais = [
+  ['grama', 'tex-gramado.png', 560],
+  ['rua', 'tex-rua.png', 560],
+  ['areia', 'tex-areia.png', 560],
+  ['agua', 'tex-agua.png', 560],
+];
+const prontos = materiais.map(([nome, arq, largAlvo]) => [nome, prep(arq, largAlvo)]);
 
-/* Folha: grama em cima, rua embaixo, empilhadas. */
-const AG = grama.alt, AR = rua.alt;
-const H = AG + AR;
-const folha = Buffer.alloc(LARG * H * 4);
-grama.px.copy(folha, 0);
-rua.px.copy(folha, LARG * AG * 4);
+/* Folha: uma faixa por material, empilhadas. Larguras diferentes (areia é
+   mais estreita) — a folha usa a MAIOR largura, o resto sobra transparente
+   (nunca lido: o mapa guarda a largura real de cada um). */
+const largFolha = Math.max(...prontos.map(([, im]) => im.larg));
+const alturaTotal = prontos.reduce((s, [, im]) => s + im.alt, 0);
+const folha = Buffer.alloc(largFolha * alturaTotal * 4);
+const mapa = {};
+let y = 0;
+for (const [nome, im] of prontos) {
+  for (let ly = 0; ly < im.alt; ly++)
+    im.px.copy(folha, ((y + ly) * largFolha) * 4, (ly * im.larg) * 4, (ly * im.larg + im.larg) * 4);
+  mapa[nome] = [0, y, im.larg, im.alt];
+  y += im.alt;
+}
 
-const png = codificar(LARG, H, folha);
+const png = codificar(largFolha, alturaTotal, folha);
 fs.writeFileSync('chao.png', png);
 fs.writeFileSync('chao.b64.txt', png.toString('base64'));
-const mapa = { grama: [0, 0, LARG, AG], rua: [0, AG, LARG, AR] };
 fs.writeFileSync('chao.mapa.txt', JSON.stringify(mapa));
 console.log('\nchao.png: ' + (png.length / 1024).toFixed(0) + ' KB   base64: ' + (png.toString('base64').length / 1024).toFixed(0) + ' KB');
 console.log('MAPA_CHAO = ' + JSON.stringify(mapa));
