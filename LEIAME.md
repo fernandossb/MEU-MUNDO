@@ -3598,6 +3598,44 @@ de aplicar em lote.
 
 ---
 
+## Rochas e árvores, terceira tentativa — desta vez com fundo de verdade
+
+Depois do revert, o usuário voltou com fotos novas: "agora vamos fazer
+corretamente". A diferença que resolveu tudo: as duas fotos de árvore
+desta leva JÁ VÊM com alfa de verdade (conferido pixel a pixel: alfa
+varia 0..255, com franja de anti-serrilhado de verdade nas bordas) —
+geradas por IA com fundo transparente pedido de propósito, ao contrário
+de TODAS as fotos anteriores (que eram fundo chapado opaco disfarçado).
+Isso elimina a causa raiz do halo branco de vez: não existe fundo
+nenhum pra sobrar.
+
+`extrair-arvores3.js` reflete isso — sem `removerFundo`, só
+`recortarAlfa` + `reduzir` de sempre. A conífera não tinha foto nova
+nesta leva; foi preservada extraindo o recorte de dentro do próprio
+`FOLHA_ARVORES` já embutido no index.html (decodificado, recortado
+pelas coordenadas antigas, reempacotado na folha nova) — não precisou
+pedir a foto de novo nem perder a única espécie "de agulha" que já
+funcionava.
+
+As fotos de rocha eram as MESMAS de duas passadas atrás — o usuário
+confirmou que "o motor de limpeza da pedra de antes tinha funcionado
+mto bem", então `extrair-rochas.js` e `reembutir-rochas.js` voltaram
+exatamente como estavam (mesmo `removerFundo` com salto pra fundo
+claro e descontaminação de franja), só reconstruídos porque o revert
+anterior tinha apagado os arquivos.
+
+Uma franja amarelo-esverdeada ficou visível nas bordas das duas fotos
+de árvore em resolução original (RGB tingido mesmo em pixel com alfa
+substancial — não é o alfa=quase-0 inofensivo, é cor de verdade
+vazando) — provavelmente um resquício do processo de geração (green
+screen ou reforço de contorno). Não foi corrigida à parte: depois do
+`reduzir()` pro tamanho final do sprite (48-50px), a franja se dilui
+na média com o verde da copa e não ficou visível nos testes ao vivo.
+Se voltar a aparecer, o próximo passo é supressão de vazamento
+(spill suppression) nos pixels de alfa parcial.
+
+---
+
 ## Estrutura
 
 ```
