@@ -9312,10 +9312,14 @@ function caixaDoPredio(pr, q, dx0, dy0) {
   //  - Centro: escala 1 (largura do lote cravada). E o laço de desenho o
   //    ancora no CENTRO do losango, não na ponta — o castelo fica centrado.
   //  - jardim (Praça): preenche o lote.
-  //  - Fazenda Grande: +85% sobre o padrão, a pedido do usuário.
+  //  - Fazenda Grande: ESCALA_PREDIO × 1,6 (era ×1,85) — pedido do usuário.
+  //    Escala "1,6" pura (sem multiplicar pelo padrão) tinha ficado quase
+  //    idêntica ao 1,5 de todo mundo — 11px de diferença, some no meio do
+  //    resto da tela. "1,6 de escala" era sobre o ESCALA_PREDIO, como o
+  //    +85% anterior, não um valor absoluto.
   const escala = pr.chave === 'centro'        ? (w / q[4])
                : pr.def.jardim                ? Math.min(2.2, 1.4 * w / q[4])
-               : pr.chave === 'fazendaGrande' ? 1.6
+               : pr.chave === 'fazendaGrande' ? ESCALA_PREDIO * 1.6
                : ESCALA_PREDIO;
   const dw = q[4] * escala, dh = q[5] * escala;
   // Vertical: o laço ancora o sprite na PONTA INFERIOR do losango (esquina SE)
