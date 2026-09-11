@@ -3636,6 +3636,38 @@ Se voltar a aparecer, o próximo passo é supressão de vazamento
 
 ---
 
+## O centro sumiu — um script genérico pisou numa chave que não era dele
+
+Depois do commit que limpou as manchas brancas dos prédios, o usuário
+avisou: "o centro da cidade sumiu". O dado da vila estava intacto
+(`jogo.predios` com `progresso:1, concluido:true`) — o problema era só
+visual. Rastreado até `MAPA_PREDIOS.centro`, que apontava para
+`[[580, 8898, 296, 245, ...]]`, um recorte fora dos limites da folha
+de 949×885px do castelo — `drawImage` recortando região inexistente
+não desenha nada, e nenhum erro aparece no console.
+
+A causa: o castelo tem folha própria (`FOLHA_CENTRO`/`imgCentro`),
+separada da folha grande de todos os outros prédios, e só
+`reembutir-centro.js` deveria escrever `MAPA_PREDIOS.centro`. Mas
+`predios.json` — o manifesto da folha grande, gerado por uma etapa
+anterior do pipeline de arte, de antes do castelo ganhar folha
+separada — ainda carrega uma entrada `"centro"` vestigial. O script
+genérico `reembutir.js` (rodado para embutir a limpeza de buracos dos
+prédios) escreve *toda* chave do manifesto em `MAPA_PREDIOS`, sem
+filtrar — e essa chave fantasma sobrescreveu silenciosamente o valor
+correto que `reembutir-centro.js` tinha posto ali antes.
+
+Conserto imediato: rodar `reembutir-centro.js` de novo, que usa uma
+regex direcionada só na linha `centro:` e restaurou
+`[[0, 0, 949, 885, 147, 137]]`. Conserto de causa raiz, pra nunca mais
+acontecer: `reembutir.js` agora preserva a linha `centro:` que já
+estiver no arquivo (em vez de escrever a partir do manifesto) e ignora
+essa chave do `predios.json` por completo — não importa o que o
+manifesto da folha grande carregue, a folha do castelo nunca mais é
+tocada por esse script.
+
+---
+
 ## Estrutura
 
 ```

@@ -16,11 +16,22 @@ if (i1 < 0) { console.error('fim da folha não encontrado'); process.exit(1); }
 t = t.slice(0, i0) + marcaIni + b64 + t.slice(i1);
 
 /* --- o manifesto --- */
-const linhas = Object.keys(mapa).map(k => '  ' + k + ': ' + JSON.stringify(mapa[k]) + ',').join('\n');
+// 'centro' tem folha PRÓPRIA (FOLHA_CENTRO/imgCentro — ver reembutir-centro.js)
+// e não tem nada a ver com a folha grande daqui. O predios.json às vezes
+// carrega uma entrada 'centro' vestigial (de antes do castelo ganhar folha
+// separada); se ela entrasse na troca, sobrescrevia as coordenadas corretas
+// com coordenadas da folha ERRADA — o castelo sumia (drawImage recortando
+// fora dos limites de imgCentro). Preserva o que já está no arquivo.
+const centroAtual = t.match(/\n(\s*centro:\s*\[\[[^\]]*\]\],)/);
+const linhas = Object.keys(mapa)
+  .filter(k => k !== 'centro')
+  .map(k => '  ' + k + ': ' + JSON.stringify(mapa[k]) + ',').join('\n');
 const j0 = t.indexOf('const MAPA_PREDIOS = {');
 const j1 = t.indexOf('\n};', j0);
 if (j0 < 0 || j1 < 0) { console.error('MAPA_PREDIOS não encontrado'); process.exit(1); }
-t = t.slice(0, j0) + 'const MAPA_PREDIOS = {\n' + linhas + t.slice(j1);
+const linhaCentro = centroAtual ? centroAtual[1] : '';
+if (!centroAtual) console.warn('aviso: linha "centro:" não encontrada no arquivo atual — MAPA_PREDIOS.centro vai ficar de fora');
+t = t.slice(0, j0) + 'const MAPA_PREDIOS = {\n' + linhaCentro + '\n' + linhas + t.slice(j1);
 
 fs.writeFileSync(ALVO, t);
 console.log('folha e manifesto trocados (' + (b64.length / 1024).toFixed(0) + ' KB de base64)');
