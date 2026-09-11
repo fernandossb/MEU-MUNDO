@@ -3282,6 +3282,17 @@ resto do pipeline (recorte nativo sem embaçar, sem-costura, máscara de
 elevação, mosaico com orientação variada) é o mesmo de antes, e roda
 igual pra qualquer foto que entrar ali.
 
+### Nona passada — água e areia também trocadas (pedido do usuário)
+
+Aprovado o resultado da grama nova ("realismo incrível"), o usuário
+pediu o mesmo pras outras duas: fotos novas de areia e água,
+substituindo as da quinta passada. Mesma troca — só o arquivo-fonte das
+entradas `areia`/`agua` em `montar-chao.js` — e o mesmo cuidado de
+conferir a imagem antes de embutir (essas vieram limpas, sem marca
+d'água). O restante do pipeline nem percebe a troca: recorte nativo,
+sem-costura, borda esfumaçada por elevação e mosaico variado continuam
+os mesmos, únicos, pra qualquer foto que entre nas quatro entradas.
+
 ---
 
 ## O Centro que se multiplicava (e o carregamento lento depois de muito tempo fora)
