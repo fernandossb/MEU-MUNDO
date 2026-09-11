@@ -26,23 +26,26 @@
    bétula só o terço de baixo (onde fica o tronco), deixando a copa
    continuar pegando o salto contra o halo.
 
-   Mesmo protegido, o TRONCO da bétula ainda saía com um aspecto ruim —
-   uma casca clara com listras escuras (textura de verdade, não é o
-   fundo) é conteúdo de ALTA frequência, e o 'reduzir()' — mesmo fazendo
-   média por caixa corretamente — comprime isso numa faixa de ~12px de
-   largura no sprite final: o resultado é um borrão granulado, sem nada
-   a ver com casca de bétula. Testado: nem borrar ANTES de reduzir (raio
-   pequeno, tipo 3px na resolução original) ajudava — o efeito de um
-   borrão pequeno se perde quase por completo depois de reduzir ~7,5×.
-   Só um raio bem maior (proporcional ao fator de redução, ~10px)
-   suaviza o bastante pra virar uma casca clara com listras SUAVES em
-   vez de ruído — 'raioBorraZona' faz isso só dentro da 'zonaProtegida'
-   (a copa continua nítida).
+   O TRONCO DA BÉTULA foi tentativa atrás de tentativa (proteger do salto,
+   depois borrar só a zona do tronco com raio proporcional ao fator de
+   redução) e mesmo assim o usuário achou o resultado ruim — casca clara
+   com listra escura é conteúdo de alta frequência, comprimido numa faixa
+   de só ~12px de largura no sprite final, e nenhum tratamento testado
+   deixou aquilo com cara de árvore de verdade. Pedido do usuário:
+   remover a espécie do jogo, em vez de insistir num quarto ajuste. A
+   entrada fica FORA de 'ESPECIES' (não é mais assada na folha) — o
+   arquivo 'arvore5.png' e a função 'borrarZona' continuam aqui, sem uso,
+   caso uma foto de bétula melhor apareça um dia.
 
    Substitui o time inteiro de espécies "folhosas" (a conífera e os nomes
-   fantasiosos de antes saem; NÃO existe foto de neve nesta leva — o inverno
-   cai de volta pro sprite vetorial daquela espécie, que continua servindo de
-   respaldo em 'desenharNo' quando a chave '_neve' não existe na folha).
+   fantasiosos de antes saem; NÃO existe foto de neve nesta leva — falta a
+   chave '_neve' em MAPA_ARVORES, e cai de volta pro sprite vetorial daquela
+   espécie, que continua servindo de respaldo em 'desenharNo'). IMPORTANTE:
+   isso NÃO é o mês do calendário — 'n.neve' vem de `b === B.NEVE` (o nó
+   nasceu num tile do BIOMA de neve, lá no alto da montanha), não da estação
+   do ano. Uma árvore no meio da vila, em pleno inverno no calendário,
+   continua usando a foto normalmente; só quem nasce na linha de neve cai
+   pro vetorial o ano inteiro.
 */
 const fs = require('fs');
 const { decodificar, codificar } = require('./png.js');
@@ -55,7 +58,7 @@ const ESPECIES = [
   ['conifera',  'arvore2.png', 20, 60, null,                        0],   // pinheiro
   ['bordo',     'arvore3.png', 20, 60, null,                        0],   // bordo japonês, folhas avermelhadas
   ['magnolia',  'arvore4.png', 20, 45, {x0:0,y0:0,x1:1,y1:1},       0],   // magnólia florida — flor branca em qualquer parte da copa, protege tudo (sem borrar: a flor tem que ficar nítida)
-  ['bidoeiro',  'arvore5.png', 20, 60, {x0:0.2,y0:0.5,x1:0.8,y1:1}, 10],  // bétula — tronco protegido do salto E borrado (casca vira ruído sem isso)
+  // bétula (arvore5.png) removida do jogo — pedido do usuário, tronco nunca ficou bom
   ['nogueira',  'arvore6.png', 20, 60, null,                        0],   // copa larga e densa
 ];
 

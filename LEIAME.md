@@ -3525,6 +3525,25 @@ DENTRO da `zonaProtegida` — a mesma caixa que já protege o tronco do
 salto de fundo — deixando a copa (onde o detalhe já lê bem no tamanho
 final) sem tocar.
 
+### A bétula saiu do jogo
+
+Mesmo depois do ajuste acima, "as árvores ainda estão ruins" — pedido
+do usuário: **tirar a bétula do jogo**, em vez de insistir num quarto
+ajuste no mesmo tronco. `ESPECIES_ARVORE` (index.html) perdeu as duas
+entradas `'bidoeiro'`, substituídas por repetir `carvalho` e `nogueira`
+mais uma vez cada (6 posições, 4 espécies restantes). A entrada
+`bidoeiro` saiu de `ESPECIES` em `extrair-arvores2.js` também — a folha
+final nem carrega mais `arvore5.png`. O arquivo-fonte e a função
+`borrarZona` continuam no repositório sem uso, caso uma foto de bétula
+melhor apareça um dia.
+
+De passagem, uma suspeita levantada e DESCARTADA ao ler o código: será
+que "ainda ruim" era o jogo caindo pro desenho vetorial antigo no
+inverno (já que essa leva não tem foto `_neve`)? Não — `n.neve` vem de
+`b === B.NEVE`, o BIOMA de neve (alto da montanha), não do mês do
+calendário. Uma árvore no meio da vila continua na foto o ano inteiro,
+inverno incluso; só quem nasce na linha de neve usa o vetorial.
+
 ---
 
 ## Estrutura
