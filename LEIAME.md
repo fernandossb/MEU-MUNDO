@@ -3188,6 +3188,37 @@ repetir.
 
 ---
 
+## O Centro que se multiplicava (e o carregamento lento depois de muito tempo fora)
+
+Dois relatos do usuário, mesma raiz: "estão sendo criados vários centros
+de vila, como se fosse um prédio normal" e "o jogo demora demais pra
+carregar quando o jogador fica muito tempo fora".
+
+`conselho()` tem um item — "bairro novo" — que ergue um Centro extra
+quando a população está perto do teto e sobra madeira/pedra. Diferente
+de TODA outra obra da função (depósito, oficina, serraria, praça — cada
+uma trava em `contar(x) < proporção da população`), esta não tinha teto
+nenhum. E o gatilho, "população perto do teto", não é raro: é o estado
+NORMAL de uma vila em crescimento — a população sempre corre atrás da
+capacidade que acabou de abrir. Com recurso farto, todo dia a folga
+pequena erguia um Centro NOVO — cada um abrindo um quarteirão de 18×18
+inteiro e somando +6 ao teto, alimentando o próprio gatilho de novo.
+Numa recuperação offline de semanas/meses (`recuperarOfflineAssincrono`
+simula dia a dia, até 3 anos de jogo), isso nunca parava: a vila inchava
+sem limite, e cada dia simulado saía mais caro que o anterior (mais
+prédio, mais gente, mais quarteirão pra `conselho()`/`distribuirOficios()`
+varrerem) — daí o carregamento lento.
+
+Conserto, no mesmo padrão das outras obras: um hub a mais só a cada 500
+habitantes (`contar('centro') < 1 + pop/500`), e só cogita quando o
+bairro atual está de verdade sem lote (`vagasNoBairro(3) < 3`) — não
+mais só "a população alcançou o teto", que é o dia a dia de qualquer
+vila saudável. Testado ao vivo: uma vila mantida em recurso farto e
+população no teto por ~220 dias simulados seguidos (antes disparava
+Centro atrás de Centro) ficou com **1 Centro só**.
+
+---
+
 ## Estrutura
 
 ```

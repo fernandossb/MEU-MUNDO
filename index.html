@@ -5514,8 +5514,30 @@ function conselho() {
   }
   if (!jaTem('escola') && pop >= 20 && decidirObra('escola')) return;
 
-  // --- 5. Bairro novo quando a vila está cheia e sobra recurso ---
-  if (pop >= cap - 2 && jogo.recursos.madeira > 500 && jogo.recursos.pedra > 250) {
+  /*
+     --- 5. Bairro novo quando a vila está cheia e sobra recurso ---
+
+     BUG ACHADO AO VIVO — "estão sendo criados vários centros de vila, como
+     se fosse um prédio normal" + "o jogo demora demais pra carregar depois
+     de muito tempo fora". Causa: esta era a ÚNICA obra do conselho sem teto
+     por população (toda outra — depósito, oficina, serraria, praça — tem
+     'contar(x) < proporção de pop'). E a condição de gatilho, "pop perto do
+     teto", não é rara — é o estado NORMAL de toda vila crescendo (a
+     população sempre corre atrás da capacidade que acabou de abrir). Com
+     madeira/pedra fartos, todo dia em que a folga era pequena erguia um
+     Centro NOVO — cada um abrindo um quarteirão de 18x18 e somando +6 de
+     teto, alimentando o próprio gatilho de novo. Numa recuperação offline
+     de meses, isso não para: a vila incha sem limite, e cada dia simulado
+     fica mais caro que o anterior (mais prédios, mais gente, mais
+     quarteirão) — daí o carregamento lento.
+
+     Conserto, no mesmo padrão das outras obras: teto por população (1 hub
+     a mais a cada 500 habitantes) e só cogita quando o bairro atual está
+     de verdade sem lote — não só "a população alcançou o teto".
+  */
+  if (pop >= cap - 2 && contar('centro') < 1 + Math.floor(pop / 500)
+      && vagasNoBairro(3) < 3
+      && jogo.recursos.madeira > 500 && jogo.recursos.pedra > 250) {
     if (decidirObra('centro')) return;
   }
 
