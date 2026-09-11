@@ -3571,6 +3571,33 @@ inclinação — nenhum dos três teve reclamação.
 
 ---
 
+## As manchas brancas nos prédios — finalmente achadas
+
+O "fundo quadriculado" que o usuário relatava não era um xadrez —
+era o fundo de estúdio (branco/cinza-claro) sobrando OPACO em vãos
+FECHADOS do sprite: o espaço embaixo da barraca de mercado, embaixo do
+beiral de uma pousada, atrás da placa do estábulo. Essa arte é de uma
+leva anterior a esta sessão (não fotos árvore/rocha) — o recorte de
+fundo daquela leva só andava a partir da BORDA do sprite pra dentro; um
+vão inteiramente cercado por parede/telhado nunca teve caminho até a
+borda, e ficou intocado.
+
+`ferramentas/limpar-buracos-predios.js` não parte de foto nenhuma — ele
+lê o `predios.png` JÁ PRONTO e, pra CADA recorte do manifesto
+(`predios.json`), acha ilhas de pixel bem claro e pouco saturado
+(a mesma assinatura do fundo de estúdio, bem diferente de qualquer
+parede/telha/madeira) que NÃO encostam na borda do próprio recorte —
+ou seja, um vão fechado — e apaga (alfa 0), com a mesma
+descontaminação de franja de `extrair-arvores.js`/`extrair-rochas.js`.
+Achado programaticamente, sem precisar abrir os ~75 sprites um a um:
+**43 variantes com buraco, 203 buracos, 6459px no total** — mercado,
+estábulo, pousada (predio), fazenda e serraria foram os piores casos.
+Cada achado foi conferido visualmente (destacando os buracos em
+magenta antes de apagar) contra pelo menos um exemplo por prédio antes
+de aplicar em lote.
+
+---
+
 ## Estrutura
 
 ```
