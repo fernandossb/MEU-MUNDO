@@ -3668,6 +3668,46 @@ tocada por esse script.
 
 ---
 
+## Árvore não nasce em cima de lote, e fica na frente do prédio vizinho
+
+Dois pedidos na mesma mensagem: árvore não pode renascer em cima de
+lote, e árvore perto de lote tem que ficar na frente do prédio, não
+sumir atrás dele.
+
+Pro seu prédio, a regra "não nasce em cima" já valia — `criarPredio`,
+`moverPredioPara`, `melhorarPredio` e `demolirPredio` sempre chamam
+`marcarOcupacao` (marca o tile como ocupado) seguido de `invalidarArea`
+(zera o recurso natural do lote e tira o nó do chunk já assado), e
+`rebrotarMata`/`montarChunk` checam `ocupado` antes de deixar mato
+voltar ou nascer. Só que `erguerNaVilaRival` — o único lugar que
+levanta prédio de vila rival, chamado toda vez que ela cresce sozinha —
+chamava `marcarOcupacao` sem o `invalidarArea` que sempre vem junto.
+Resultado: se o chunk já tinha sido assado com árvore/pedra ANTES da
+vila rival construir ali (o normal, já que o terreno em volta dela é
+visitado antes de virar cidade), a árvore ficava presa no `nos[]` do
+chunk, visível por cima do lote, e sem `restante` zerado o mato podia
+até voltar na primavera seguinte. Bastava copiar a mesma chamada que
+as outras quatro funções já fazem.
+
+Pra "ficar na frente": o desenho ordena tudo (árvore, prédio, gente)
+numa lista só, por profundidade isométrica (`y` projetado), técnica
+"pintor" — quem tem `y` maior desenha por cima. O prédio ancora essa
+profundidade na testada do lote (canto SE, o ponto mais à frente); uma
+árvore vizinha, mas fora do lote, tinha profundidade PRÓPRIA (o centro
+do seu próprio tile) — perto o bastante da testada do prédio pra se
+sobrepor na tela, mas com profundidade menor sempre que caía a
+noroeste do lote, então o prédio desenhava por cima e escondia a copa.
+Mesmo truque que já resolvia o aldeão sumindo atrás do próprio celeiro
+(`filaPessoaY`, empurra a profundidade da pessoa pra logo depois da do
+prédio quando ela está pisando no lote dele): `profArvore` olha os 8
+vizinhos do tile da árvore, acha o prédio ocupando algum deles, mede a
+profundidade DESSE prédio e empurra a da árvore pra logo depois — só
+quando a árvore já tem profundidade menor que a do prédio, senão ela
+já desenhava na frente por conta própria. Só se aplica a árvore
+(`n.tipo === 'madeira'`, o pedido não falou de pedra/moita).
+
+---
+
 ## Estrutura
 
 ```

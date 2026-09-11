@@ -3740,6 +3740,7 @@ function erguerNaVilaRival(v, chave) {
       };
       v.predios.push(pr);
       marcarOcupacao(pr, true);
+      invalidarArea(tx, ty, def.w, def.h);
       return true;
     }
   }
@@ -10875,13 +10876,6 @@ function desenharVilaNormal() {
     return noLote ? Math.max(dY, alvo.y + 0.02) : dY;
   };
 
-  const lista = [];
-  for (const ch of visiveis)
-    for (const n of ch.nos) {
-      if (n.x < camX - 40 || n.x > camX + vw + 40 || n.y < camY - 60 || n.y > camY + vh + 60) continue;
-      const p = mundoParaIso(n.x, n.y);   // calcula uma vez, usa na ordenação E no desenho
-      lista.push({ y:p.y, k:0, o:n, px:p.x, py:p.y });
-    }
   /*
      ÂNCORA DO PRÉDIO = ESQUINA SE DO LOTE (a ponta INFERIOR do losango —
      o ponto mais baixo/à frente na tela). Pedido do usuário: "os prédios
@@ -10889,11 +10883,45 @@ function desenharVilaNormal() {
      traz o sprite de volta pro centro horizontal do losango. O CENTRO
      (castelo) foge dessa regra: fica CENTRADO no losango (âncora no centro
      do lote, corrigeX = 0), ver 'caixaDoPredio'.
+
+     Hoisted pra cima do laço dos nós: 'profArvore' logo abaixo também
+     precisa dela, pra medir a profundidade do prédio vizinho.
   */
   const anchoraPredio = pr => pr.chave === 'centro'
     ? [pr.cx, pr.cy]
     : [(pr.tx + pr.def.w) * TILE, (pr.ty + pr.def.h) * TILE];
   const corrigeX = pr => pr.chave === 'centro' ? 0 : pr.def.w * TILE / 2;
+
+  /*
+     PEDIDO EXPLÍCITO — árvore nascida perto de um lote (mas fora dele:
+     'ocupado' já impede nascer EM CIMA) deve ficar na FRENTE do prédio
+     vizinho, não sumir atrás dele por causa da ordenação por profundidade
+     (o sprite do prédio, ancorado na testada, tem 'y' de sobra pra
+     esconder o que estiver logo atrás dele na tela). Mesmo truque de
+     'filaPessoaY' um pouco abaixo: empurra a profundidade da árvore pra
+     logo depois da profundidade do prédio vizinho mais à frente, se for
+     maior que a dela mesma.
+  */
+  const profArvore = (n, dY) => {
+    if (n.tipo !== 'madeira') return dY;
+    let maxY = -Infinity;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const viz = ocupado.get(nk(n.tx + dx, n.ty + dy));
+        if (!viz) continue;
+        const py = mundoParaIso(...anchoraPredio(viz)).y;
+        if (py > maxY) maxY = py;
+      }
+    return maxY > -Infinity ? Math.max(dY, maxY + 0.02) : dY;
+  };
+
+  const lista = [];
+  for (const ch of visiveis)
+    for (const n of ch.nos) {
+      if (n.x < camX - 40 || n.x > camX + vw + 40 || n.y < camY - 60 || n.y > camY + vh + 60) continue;
+      const p = mundoParaIso(n.x, n.y);   // calcula uma vez, usa na ordenação E no desenho
+      lista.push({ y:profArvore(n, p.y), k:0, o:n, px:p.x, py:p.y });
+    }
   /*
      CULL DO PRÉDIO — a margem é grande de propósito. O sprite é ancorado na
      ponta do losango e CRESCE PRA CIMA (até ~420px no castelo); um prédio
