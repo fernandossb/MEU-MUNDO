@@ -3328,6 +3328,26 @@ de rua a pista continua opaca, sem costura entre tiles vizinhos. Mesmo
 tratamento em `desenharEstradaRival` (calçada de vila rival), pra manter
 os dois consistentes.
 
+### Décima primeira passada — pedra pequena, borda mais suave (pedido do usuário)
+
+"A textura ficou muito grande, sem realismo — as pedras eram pra ficar
+bem pequenas e criar um mosaico mais delicado": o recorte nativo
+(sem-costura, sem embaçar) preserva o tamanho da pedra tal como está na
+FOTO — e a foto de origem (1024×1024) tinha pedras grandes de sobra pro
+recorte de 140×140 (`RUA_TILES=5`, ver `tileDeRua`); cada pedra saía
+maior que 1 tile de jogo, o oposto de "mosaico delicado".
+
+Diferente da grama/areia/água (onde reduzir a foto só existe pra não
+AMPLIAR uma foto pequena — ver `prep` em `montar-chao.js`), aqui o
+recorte é usado pra ENCOLHER a pedra de propósito: o teto de largura da
+entrada `rua` caiu de 560 pra 200px antes do recorte nativo. Como o
+recorte continua nativo (140 ≤ 200, não passa pro ramo que estica a
+foto), a pedra fica menor sem borrar — é a mesma foto, só que
+"fotografada de mais longe" antes de entrar no jogo.
+
+A margem da borda esfumaçada (décima passada) subiu 50% — de 0,16×TILE
+pra 0,24×TILE — em `tileDeRua` e `desenharEstradaRival`.
+
 ---
 
 ## O Centro que se multiplicava (e o carregamento lento depois de muito tempo fora)
