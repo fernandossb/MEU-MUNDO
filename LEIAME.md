@@ -3293,6 +3293,41 @@ d'água). O restante do pipeline nem percebe a troca: recorte nativo,
 sem-costura, borda esfumaçada por elevação e mosaico variado continuam
 os mesmos, únicos, pra qualquer foto que entre nas quatro entradas.
 
+### Décima passada — rua nova, sem giro de 90°, com borda esfumaçada (pedido do usuário)
+
+Três pedidos numa vez. A foto de rua nova é uma calçada de pedra em
+leque (um "ciottolato a ventaglio" — pedrinhas dispostas em arcos
+radiais), bem diferente das fotos orgânicas de antes: tem uma direção
+MUITO marcada. Foi isso que expôs o problema do item 1 — **"a variação
+de ângulo de 90° deve ser retirada"**: o mosaico com giro/espelho por
+célula (sétima passada), que passava despercebido em grama/areia/água
+(textura sem direção definida), ficava óbvio e feio numa foto com arcos
+radiais — cada célula girada mostrava um pedaço do leque apontando pra
+um lado diferente, um quebra-cabeça errado. `construirCamadaMaterial`
+voltou a preencher com `CanvasPattern` uniforme (sem o laço de
+`drawImage` com rotação); a borda esfumaçada por elevação (sexta
+passada) continua intacta — só a variação de orientação saiu.
+
+**Item 2**, a troca em si: só o arquivo-fonte da entrada `rua` em
+`montar-chao.js`, mesmo padrão das trocas anteriores (conferida antes,
+sem marca d'água).
+
+**Item 3 — suavizar a troca da paisagem pra rua**, "similar ao efeito
+dado a troca da grama pra areia": a rua nunca teve isso — `tileDeRua`
+marcava a borda com uma linha de sombra de 2px, um corte ainda bem
+duro. Como a borda esfumaçada por elevação (sexta passada) depende de
+um campo contínuo que a rua não tem (ela é onde o jogador construiu, não
+elevação), a receita foi adaptada: cada tile de rua, ao ser assado (já
+é feito uma vez só, em cache — ver comentário de `tileDeRua`), ganha uma
+máscara de alfa que dissolve pra 0 nos lados SEM vizinho de rua, ao
+longo de ~16% do tile — bem mais estreito que a margem usada no
+terreno, porque a rua tem só 1 tile de largura: um trecho reto tem os
+dois lados perpendiculares abertos ao mesmo tempo, e uma margem larga
+apagaria a pista inteira em vez de só a beirada. Nos lados COM vizinho
+de rua a pista continua opaca, sem costura entre tiles vizinhos. Mesmo
+tratamento em `desenharEstradaRival` (calçada de vila rival), pra manter
+os dois consistentes.
+
 ---
 
 ## O Centro que se multiplicava (e o carregamento lento depois de muito tempo fora)
