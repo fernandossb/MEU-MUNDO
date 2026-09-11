@@ -3348,6 +3348,18 @@ foto), a pedra fica menor sem borrar — é a mesma foto, só que
 A margem da borda esfumaçada (décima passada) subiu 50% — de 0,16×TILE
 pra 0,24×TILE — em `tileDeRua` e `desenharEstradaRival`.
 
+### Décima segunda passada — mosaico a 20% (pedido do usuário)
+
+"Pode deixar o recorte do mosaico com 20% do tamanho atual": o teto de
+largura da entrada `rua` caiu de 200 pra 40px. Só que nesse tamanho o
+recorte de 1 tile (antes 140px, `RUA_TILES=5`) já não cabia mais dentro
+da foto (140 > 40) — cairia no ramo que ESTICA a foto pra cobrir o
+quadrado, o mesmo jeito que borrava tudo lá na terceira passada.
+`RUA_TILES` caiu de 5 pra 1 junto (recorte de 28px, o tamanho de 1
+tile), pra o recorte continuar nativo (28 ≤ 40) e a pedra não voltar a
+borrar — agora bem mais fina, quase um grão fino em vez de pedra
+distinta.
+
 ---
 
 ## O Centro que se multiplicava (e o carregamento lento depois de muito tempo fora)
