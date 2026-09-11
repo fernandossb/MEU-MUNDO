@@ -90,6 +90,7 @@ const materiais = [
   ['rua', 'tex-rua2.png', 40],
   ['areia', 'tex-areia2.png', 560],
   ['agua', 'tex-agua2.png', 560],
+  ['terra', 'tex-terra.png', 560],
 ];
 const prontos = materiais.map(([nome, arq, largAlvo]) => [nome, prep(arq, largAlvo)]);
 

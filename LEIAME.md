@@ -3393,6 +3393,69 @@ Centro atrás de Centro) ficou com **1 Centro só**.
 
 ---
 
+## Cinco pedidos de uma vez: terra, rocha, árvores, escala e relevo
+
+Uma lista numerada só, cinco frentes bem diferentes.
+
+**1 — Foto de terra, no sopé pedregoso.** A grama (CAMPO/FLORESTA), a
+areia (praia) e a água já tinham foto; faltava o `B.ROCHA` — a faixa de
+elevação entre a floresta e a linha da neve, hoje um gradiente
+procedural liso. Quinta entrada no mesmo pipeline de sempre
+(`montar-chao.js`), `TERRA_TILES = 1` (pedido explícito) e `pesoTerra(e)`
+fecha exatamente onde `pesoGrama` abre mão (~0,74) e dissolve de volta
+antes da neve (~0,88) — mesma borda esfumaçada de sempre, "quando não
+tiver vizinho" vira "quando a elevação sai da faixa".
+
+**2 — Fotos de rocha nos nós de pedra.** As pedras nunca tiveram fase de
+foto (diferente da árvore, que já tinha — ver "A árvore ganhou foto").
+`extrair-rochas.js` é a mesma técnica de `extrair-arvores.js`, só que o
+fundo do estúdio é cinza-claro, não preto: o flood-fill caça por
+DISTÂNCIA DE COR até o pixel do canto, não por brilho absoluto. Duas
+variantes (`rocha1`/`rocha2`), sorteadas pela mesma semente que já
+decidia a variante do desenho vetorial (`v % 2`) — o fallback vetorial
+(`spritePedra`) continua ali, só não é mais usado enquanto a folha
+carrega.
+
+**3 — Seis fotos novas de árvore.** Aqui teve um tropeço: a prévia das
+seis fotos parecia ter fundo xadrez (transparência de verdade), mas a
+folha extraída saiu com um quadrado branco atrás de cada copa. Checagem
+pixel a pixel: alfa 255 em toda a imagem, sem exceção — não havia
+transparência nenhuma, só um branco de estúdio bem comum, e o "xadrez"
+era só impressão de mirar uma prévia pequena. Trocado o extrator pra
+flood-fill (igual ao da rocha, ver item 2). Espécies renomeadas pelo
+CONTEÚDO da foto, não pela ordem de download — outro tropeço: o primeiro
+mapeamento (por nome de arquivo) saiu errado, corrigido conferindo cada
+imagem uma a uma. `ESPECIES_ARVORE` agora tem 5 espécies distintas
+(bidoeiro, carvalho, bordo, magnólia, nogueira — o bidoeiro repete pra
+fechar 6 posições) mais a conífera à parte, como sempre. Sem foto de
+neve nesta leva: no inverno, essas cinco caem de volta pro desenho
+vetorial da espécie (o mesmo respaldo que já existia).
+
+**4 — +70% de escala pra quem nunca evolui.** `TEM_EVOLUCAO` é o
+conjunto de toda chave que aparece em `MELHORIA`, de origem ou de
+destino (casa/sobrado/casarão, depósito/mercado, fazenda/fazenda
+grande). Quem fica de fora — oficina, estábulo, cais, serraria, escola,
+prefeitura, mina — ganha `ESCALA_PREDIO × 1,7` em vez do `× 1` padrão:
+sem uma forma maior esperando na frente pra crescer, esses ficavam
+pequenos perto do resto da vila. Centro e Praça continuam fora da conta
+— já têm fórmula de escala própria, afinada pra encher o próprio lote
+sem transbordar.
+
+**5 — Relevo mais visível.** Antes de mexer em qualquer coisa, medido
+ao vivo (via `elevacao()` do próprio jogo, 200 mil amostras): o mapa já
+tem ~42% de terreno alto (rocha + neve) contra os "~7%" que um
+comentário antigo no código dizia — comentário desatualizado, não a
+realidade atual. E a rocha mais próxima do centro (0,0) fica a só 64
+tiles. Ou seja: o problema NÃO era pouca montanha — é pouco relevo
+VISÍVEL nelas. Em vez de mexer nos pesos do ruído (arriscado: o
+comentário original avisa que isso pode empurrar a linha da água),
+a correção foi só no contraste do sombreamento por inclinação
+(`corTerrenoDe`): de `×430`/±46 pra `×620`/±62. Mesmos limiares de
+bioma, mesma % de água — só a luz/sombra entre vizinhos ficou mais
+forte, e o relevo que já existia passou a se VER.
+
+---
+
 ## Estrutura
 
 ```
